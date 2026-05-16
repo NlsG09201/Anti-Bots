@@ -10,15 +10,23 @@ $deploy = $PSScriptRoot
 $keyFile = Join-Path $deploy "render.api.key"
 if (-not $env:RENDER_API_KEY -and -not (Test-Path $keyFile)) {
     Write-Host ""
-    Write-Host "Pega tu Render API Key completa (empieza con rnd_) y Enter:" -ForegroundColor Yellow
-    Write-Host "Crear en: https://dashboard.render.com/u/settings#api-keys" -ForegroundColor Gray
-    $key = (Read-Host).Trim()
+    Write-Host "A) API key rnd_... (automatico)  |  B) Manual sin API (pegar en web)" -ForegroundColor Cyan
+    Write-Host "Escribe A o B y Enter:" -ForegroundColor Yellow
+    $choice = (Read-Host).Trim().ToUpper()
+    if ($choice -eq "B" -or $choice -eq "M") {
+        & (Join-Path $deploy "import-render-manual.ps1")
+        exit 0
+    }
+    Write-Host ""
+    Write-Host "Pega la API key COMPLETA (rnd_...) y Enter:" -ForegroundColor Yellow
+    Write-Host "https://dashboard.render.com/u/settings#api-keys" -ForegroundColor Gray
+    $key = (Read-Host).Trim().TrimStart([char]0xFEFF)
     if ($key -notmatch '^rnd_') {
-        Write-Host "ERROR: La clave debe empezar con rnd_. No uses un numero suelto." -ForegroundColor Red
+        Write-Host "ERROR: Debe empezar con rnd_. Ejecuta: .\import-render-manual.ps1" -ForegroundColor Red
         exit 1
     }
     [System.IO.File]::WriteAllText($keyFile, $key, [System.Text.UTF8Encoding]::new($false))
-    Write-Host "Guardada en deploy/render.api.key (sin BOM)" -ForegroundColor Green
+    Write-Host "Guardada en deploy/render.api.key" -ForegroundColor Green
 } elseif (Test-Path $keyFile) {
     $existing = [System.IO.File]::ReadAllText($keyFile, [System.Text.UTF8Encoding]::new($false)).Trim().TrimStart([char]0xFEFF)
     if ($existing -notmatch '^rnd_') {
