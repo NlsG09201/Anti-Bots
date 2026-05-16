@@ -1,5 +1,9 @@
 .env
 .env.local
+.env.production
+deploy/render.env
+backend/.env
+frontend/.env.local
 *.db
 __pycache__/
 *.pyc

@@ -54,8 +54,6 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
                 60,
             )
         except Exception:
-            if settings.is_production:
-                raise
             allowed, current = True, 0
 
         if not allowed:

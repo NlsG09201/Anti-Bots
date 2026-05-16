@@ -61,7 +61,13 @@ export default function LoginPage() {
         await finishLogin(tokens.access_token);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error de autenticación");
+      if (err instanceof TypeError) {
+        setError(
+          "No se puede conectar con la API. Comprueba que Render esté Live, Upstash configurado y redeploy en Vercel.",
+        );
+      } else {
+        setError(err instanceof Error ? err.message : "Error de autenticación");
+      }
     } finally {
       setLoading(false);
     }
