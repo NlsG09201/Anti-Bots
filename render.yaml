@@ -15,7 +15,7 @@ services:
       - key: COOKIE_SECURE
         value: "true"
       - key: COOKIE_SAMESITE
-        value: none
+        value: "none"
       - key: APP_CORS_ORIGINS
         value: https://anti-bots.vercel.app,https://anti-bots-vhbo.vercel.app
       - key: APP_FRONTEND_URL

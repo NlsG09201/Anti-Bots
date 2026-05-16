@@ -2,6 +2,7 @@
 .env.local
 .env.production
 deploy/render.env
+deploy/render.import.env
 backend/.env
 frontend/.env.local
 *.db
