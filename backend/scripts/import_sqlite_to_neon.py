@@ -2,14 +2,17 @@
 
 Uso:
   cd backend
-  set DATABASE_URL=postgresql+asyncpg://...@neon.../neondb?sslmode=require
+  $env:DATABASE_URL="postgresql+asyncpg://neondb_owner:CONTRASEÑA_REAL@ep-....neon.tech/neondb?sslmode=require"
   python -m scripts.import_sqlite_to_neon
+
+La contraseña la copias en Neon Console → Connection string (no uses TU_PASSWORD).
 """
 import asyncio
 import json
+import os
+import re
 import sqlite3
 import sys
-from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -19,7 +22,11 @@ from sqlalchemy import text
 from app.core.config import get_settings
 from app.infrastructure.database.session import engine
 
-SQLITE_PATH = Path(__file__).resolve().parents[1] / "streamshield.db"
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+SQLITE_PATH = BACKEND_DIR / "streamshield.db"
+RENDER_ENV = BACKEND_DIR.parent / "deploy" / "render.env"
+
+PLACEHOLDER_MARKERS = ("TU_PASSWORD", "PEGAR_", "CHANGE_ME", "your-password", "password@")
 
 TABLES = [
     "tenants",
@@ -137,31 +144,94 @@ async def import_table(pg_conn, sqlite_conn: sqlite3.Connection, table: str) -> 
     return count
 
 
-async def main() -> None:
-    settings = get_settings()
-    if settings.database_url.startswith("sqlite"):
-        print("ERROR: DATABASE_URL debe ser la URL de Neon (PostgreSQL).", file=sys.stderr)
+def _load_database_url_from_render_env() -> str | None:
+    if not RENDER_ENV.exists():
+        return None
+    for line in RENDER_ENV.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("DATABASE_URL=") and not line.startswith("#"):
+            return line.split("=", 1)[1].strip()
+    return None
+
+
+def _validate_database_url(url: str) -> None:
+    if url.startswith("sqlite"):
+        print(
+            "ERROR: DATABASE_URL apunta a SQLite.\n"
+            "Define la URL de Neon antes de ejecutar:\n"
+            '  $env:DATABASE_URL="postgresql+asyncpg://neondb_owner:CONTRASEÑA@ep-....neon.tech/neondb?sslmode=require"',
+            file=sys.stderr,
+        )
         sys.exit(1)
+    if not url.startswith("postgresql"):
+        print(f"ERROR: DATABASE_URL no es PostgreSQL: {url[:40]}...", file=sys.stderr)
+        sys.exit(1)
+    if "postgresql://" in url and "+asyncpg" not in url:
+        print(
+            "ERROR: Usa postgresql+asyncpg:// (no postgresql://)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    for marker in PLACEHOLDER_MARKERS:
+        if marker.lower() in url.lower():
+            print(
+                f"ERROR: DATABASE_URL contiene '{marker}' — es un placeholder.\n"
+                "Copia la connection string REAL desde https://console.neon.tech\n"
+                "  → tu proyecto → Connection string → Pooled → asyncpg",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    if not re.search(r"://[^:]+:[^@]+@", url):
+        print("ERROR: DATABASE_URL sin contraseña en la URL.", file=sys.stderr)
+        sys.exit(1)
+
+
+async def main() -> None:
+    if not os.environ.get("DATABASE_URL"):
+        from_file = _load_database_url_from_render_env()
+        if from_file:
+            os.environ["DATABASE_URL"] = from_file
+            print("Usando DATABASE_URL de deploy/render.env\n")
+
+    settings = get_settings()
+    _validate_database_url(settings.database_url)
 
     if not SQLITE_PATH.exists():
         print(f"ERROR: No existe {SQLITE_PATH}", file=sys.stderr)
         sys.exit(1)
 
+    host = settings.database_url.split("@")[-1].split("?")[0]
     print(f"Origen:  {SQLITE_PATH}")
-    print("Destino: Neon (PostgreSQL)\n")
+    print(f"Destino: Neon ({host})\n")
 
     sqlite_conn = sqlite3.connect(SQLITE_PATH)
     total = 0
 
-    async with engine.begin() as pg_conn:
-        for table in TABLES:
-            try:
-                total += await import_table(pg_conn, sqlite_conn, table)
-            except Exception as exc:
-                print(f"  {table}: ERROR - {exc}", file=sys.stderr)
+    try:
+        async with engine.begin() as pg_conn:
+            for table in TABLES:
+                try:
+                    total += await import_table(pg_conn, sqlite_conn, table)
+                except Exception as exc:
+                    print(f"  {table}: ERROR - {exc}", file=sys.stderr)
+    except Exception as exc:
+        err = str(exc).lower()
+        if "password authentication failed" in err or "invalidpassword" in err:
+            print(
+                "\nERROR: Contraseña de Neon incorrecta.\n"
+                "1. Entra en https://console.neon.tech\n"
+                "2. Tu proyecto → Connection details → Reset password (si hace falta)\n"
+                "3. Copia la URL pooled y cambia postgresql:// por postgresql+asyncpg://\n"
+                "4. Ejecuta de nuevo con la contraseña nueva en DATABASE_URL y en Render",
+                file=sys.stderr,
+            )
+        else:
+            print(f"\nERROR de conexión: {exc}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        sqlite_conn.close()
+        await engine.dispose()
 
-    sqlite_conn.close()
-    await engine.dispose()
     print(f"\nOK: {total} filas importadas.")
 
 
