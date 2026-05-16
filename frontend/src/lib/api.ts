@@ -1,8 +1,5 @@
-// Vacío = mismo origen (Vercel reescribe /api/* → Render). Evita CORS y "Failed to fetch".
-const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  (typeof window !== "undefined" ? "" : "http://localhost:8000")
-);
+// Vacío = mismo origen; Vercel reescribe /api/* → Render (ver next.config.js).
+const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
