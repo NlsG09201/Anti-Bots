@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from typing import List
 
@@ -5,9 +6,16 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _env_files() -> tuple[str, ...] | None:
+    """En Render no cargar .env del disco (solo variables del dashboard)."""
+    if os.getenv("RENDER"):
+        return None
+    return (".env",)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_env_files(),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
