@@ -13,8 +13,7 @@ Set-Clipboard -Value $content
 Write-Host ""
 Write-Host "OK: Variables copiadas al portapapeles." -ForegroundColor Green
 Write-Host ""
-if ($env:RENDER_API_KEY) {
-    Write-Host "RENDER_API_KEY detectada -> subiendo via API..." -ForegroundColor Cyan
+if ($env:RENDER_API_KEY -or (Test-Path (Join-Path $PSScriptRoot "render.api.key"))) {
     & (Join-Path $PSScriptRoot "push-render-env.ps1")
     exit $LASTEXITCODE
 }

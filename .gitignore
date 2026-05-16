@@ -3,6 +3,7 @@
 .env.production
 deploy/render.env
 deploy/render.import.env
+deploy/render.api.key
 backend/.env
 frontend/.env.local
 *.db
