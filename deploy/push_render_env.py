@@ -27,13 +27,22 @@ EXTRA_VARS = {
 def _api_key() -> str:
     key = os.environ.get("RENDER_API_KEY", "").strip()
     if not key and API_KEY_FILE.exists():
-        key = API_KEY_FILE.read_text(encoding="utf-8").strip()
+        # utf-8-sig quita BOM que PowerShell a veces añade al guardar el archivo
+        key = API_KEY_FILE.read_text(encoding="utf-8-sig").strip()
+    key = key.lstrip("\ufeff").strip()
     if not key:
         print(
             "ERROR: Falta RENDER_API_KEY.\n"
             "  1. https://dashboard.render.com/u/settings#api-keys -> Create\n"
-            "  2. echo rnd_xxx > deploy/render.api.key\n"
-            "     o set RENDER_API_KEY=rnd_xxx",
+            "  2. Guarda solo la clave rnd_... en deploy/render.api.key\n"
+            "     o: set RENDER_API_KEY=rnd_xxx",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not key.startswith("rnd_"):
+        print(
+            f"ERROR: La API key no es valida (debe empezar con rnd_, recibido: {key[:12]}...).\n"
+            "  Borra deploy/render.api.key y vuelve a ejecutar push-render-env.ps1",
             file=sys.stderr,
         )
         sys.exit(1)
