@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useAuthStore } from "@/stores/authStore";
-
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+import { resolveWsBaseUrl } from "@/lib/runtime-urls";
 
 export interface WSMessage {
   type: string;
@@ -21,7 +20,10 @@ export function useWebSocket(onMessage?: (msg: WSMessage) => void) {
   const connect = useCallback(() => {
     if (!accessToken) return;
 
-    const ws = new WebSocket(`${WS_URL}/ws/live?token=${accessToken}`);
+    const wsUrl = resolveWsBaseUrl();
+    if (!wsUrl) return;
+
+    const ws = new WebSocket(`${wsUrl}/ws/live?token=${accessToken}`);
     wsRef.current = ws;
 
     ws.onopen = () => {

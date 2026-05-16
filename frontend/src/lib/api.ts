@@ -1,5 +1,7 @@
-// Vacío = mismo origen; Vercel reescribe /api/* → Render (ver next.config.js).
-const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
+import { resolveApiBaseUrl } from "@/lib/runtime-urls";
+
+// En Vercel: "" → /api/* mismo origen (rewrite a Render). Ignora localhost en el build.
+const API_URL = resolveApiBaseUrl();
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
