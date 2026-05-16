@@ -13,8 +13,8 @@ from app.core.exceptions import StreamShieldError
 from app.core.logging import setup_logging, get_logger
 from app.core.startup import run_startup_checks
 from app.infrastructure.cache.redis_client import close_redis
+from app.infrastructure.database.init_db import init_database
 from app.infrastructure.database.session import engine
-from app.infrastructure.database.base import Base
 from app.infrastructure.security.csrf import CSRFMiddleware
 from app.infrastructure.security.middleware import (
     AntiDDoSMiddleware,
@@ -37,8 +37,7 @@ async def lifespan(app: FastAPI):
     run_startup_checks()
     logger.info("starting_application", env=settings.app_env)
     try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        await init_database(engine)
     except Exception as exc:
         logger.error(
             "database_startup_failed",

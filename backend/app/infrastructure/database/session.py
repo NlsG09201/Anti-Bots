@@ -1,3 +1,4 @@
+import os
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -10,9 +11,11 @@ _db_url, _connect_args = prepare_asyncpg_url(settings.database_url)
 
 _engine_kwargs: dict = {"echo": settings.app_debug, "connect_args": _connect_args}
 if "sqlite" not in settings.database_url:
+    # Pool pequeño en Render free + Neon pooler
+    pool_size = 5 if os.getenv("RENDER") else 20
     _engine_kwargs.update(
-        pool_size=20,
-        max_overflow=10,
+        pool_size=pool_size,
+        max_overflow=5 if os.getenv("RENDER") else 10,
         pool_pre_ping=True,
         pool_recycle=3600,
     )

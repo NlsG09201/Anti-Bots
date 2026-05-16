@@ -94,13 +94,22 @@ class Settings(BaseSettings):
     otel_exporter_otlp_endpoint: str = "http://otel-collector:4317"
     prometheus_enabled: bool = True
 
-    @field_validator("cookie_samesite")
+    @field_validator("cookie_samesite", mode="before")
     @classmethod
     def validate_samesite(cls, v: str) -> str:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return "lax"
         allowed = {"lax", "strict", "none"}
-        if v.lower() not in allowed:
+        if str(v).lower() not in allowed:
             raise ValueError(f"cookie_samesite must be one of {allowed}")
-        return v.lower()
+        return str(v).lower()
+
+    @field_validator("redis_url", "celery_broker_url", "celery_result_backend", mode="before")
+    @classmethod
+    def ignore_redis_placeholders(cls, v: str) -> str:
+        if v and "PEGAR_" in str(v):
+            return ""
+        return v or ""
 
     @field_validator("celery_result_backend", mode="before")
     @classmethod

@@ -21,7 +21,7 @@ services:
       - key: APP_FRONTEND_URL
         value: https://anti-bots.vercel.app
       - key: TRUSTED_HOSTS
-        value: anti-bots-api.onrender.com
+        value: anti-bots-api.onrender.com,.onrender.com
       # Secrets + DATABASE_URL + REDIS_URL: Render Dashboard → Environment
       # Import from deploy/render.env (local only, not in git)
     startCommand: python scripts/render_check_env.py && uvicorn app.main:app --host 0.0.0.0 --port $PORT

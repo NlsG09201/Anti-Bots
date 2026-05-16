@@ -50,7 +50,7 @@ def validate_production_settings() -> list[str]:
             "DATABASE_URL points to localhost — set Neon URL in Render Environment"
         )
 
-    if (
+    if not settings.redis_url or (
         "PEGAR_" in settings.redis_url
         or settings.redis_url.startswith("redis://:redis")
         or "localhost" in settings.redis_url
