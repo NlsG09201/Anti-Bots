@@ -5,6 +5,7 @@ deploy/render.env
 deploy/render.import.env
 deploy/render.api.key
 deploy/vps/.env
+deploy/vps/config.ps1
 backend/.env
 frontend/.env.local
 *.db

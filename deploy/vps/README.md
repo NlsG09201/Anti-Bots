@@ -13,30 +13,39 @@ Vercel (frontend) → https://api.tudominio.com → Caddy → API (uvicorn) → 
 - Base Neon ya creada (`Anti-Bot`)
 - Repo clonado en el servidor
 
-## 1. Generar `.env` en Windows
+## Despliegue automatico desde Windows (recomendado)
+
+1. Crea el VPS (Hetzner CX22, Ubuntu 24.04) y el DNS **A** `api` → IP del VPS ([guia DNS](DNS.md)).
+2. Opcional: copia `config.example.ps1` → `config.ps1` con IP y dominio.
+3. Ejecuta:
+
+```powershell
+cd deploy
+.\deploy-vps.ps1
+```
+
+Te pedira IP, dominio (`api.tudominio.com`), subira `.env`, clonara el repo, instalara Docker y copiara las variables de Vercel al portapapeles.
+
+Con config guardada:
+
+```powershell
+.\deploy-vps.ps1 -VpsIp "95.217.x.x" -ApiDomain "api.midominio.com"
+```
+
+## Manual (paso a paso)
+
+### Generar `.env`
 
 ```powershell
 cd deploy\vps
 .\prepare-vps-env.ps1
-# Dominio: api.tudominio.com
 ```
 
-O manualmente: `cp env.example .env` y edita en el VPS.
-
-## 2. Subir al VPS
+### Subir al VPS
 
 ```powershell
-# Ejemplo (cambia user e IP)
 scp deploy\vps\.env root@TU_IP:~/Anti-Bots/deploy/vps/.env
-```
-
-En el VPS:
-
-```bash
-git clone https://github.com/NlsG09201/Anti-Bots.git
-cd Anti-Bots
-# Coloca .env en deploy/vps/.env
-bash deploy/vps/setup-server.sh
+ssh root@TU_IP "cd Anti-Bots && git pull && bash deploy/vps/setup-server.sh"
 ```
 
 ## 3. Neon
