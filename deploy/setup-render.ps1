@@ -13,6 +13,17 @@ Set-Clipboard -Value $content
 Write-Host ""
 Write-Host "OK: Variables copiadas al portapapeles." -ForegroundColor Green
 Write-Host ""
+if ($env:RENDER_API_KEY) {
+    Write-Host "RENDER_API_KEY detectada -> subiendo via API..." -ForegroundColor Cyan
+    & (Join-Path $PSScriptRoot "push-render-env.ps1")
+    exit $LASTEXITCODE
+}
+
+Write-Host "Opcion A (API):"
+Write-Host '  $env:RENDER_API_KEY = "rnd_..."'
+Write-Host "  .\deploy\push-render-env.ps1"
+Write-Host ""
+Write-Host "Opcion B (manual):"
 Write-Host "1. Abre https://dashboard.render.com"
 Write-Host "2. Servicio anti-bots-api -> Environment"
 Write-Host "3. Add from .env -> Ctrl+V -> Save Changes"
