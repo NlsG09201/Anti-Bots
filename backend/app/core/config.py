@@ -9,18 +9,28 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _RENDER_SECRET_ENV = Path("/etc/secrets/.env")
 
 
-def _env_files() -> tuple[str, ...] | None:
+def render_secret_env_path() -> Path | None:
+    """Ruta al Secret File de Render, si existe."""
+    return _RENDER_SECRET_ENV if _RENDER_SECRET_ENV.is_file() else None
+
+
+def _resolve_env_file() -> str | None:
     """Render: dashboard env vars, o Secret File en /etc/secrets/.env"""
     if os.getenv("RENDER"):
-        if _RENDER_SECRET_ENV.is_file():
-            return (str(_RENDER_SECRET_ENV),)
-        return None
-    return (".env",)
+        secret = render_secret_env_path()
+        return str(secret) if secret else None
+    local = Path(".env")
+    return str(local) if local.is_file() else None
+
+
+def _strip_wrapping_quotes(value: object) -> object:
+    if isinstance(value, str) and len(value) >= 2 and value[0] == value[-1] == '"':
+        return value[1:-1]
+    return value
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=_env_files(),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -99,6 +109,11 @@ class Settings(BaseSettings):
     otel_exporter_otlp_endpoint: str = "http://otel-collector:4317"
     prometheus_enabled: bool = True
 
+    @field_validator("database_url", "app_secret_key", "jwt_secret_key", mode="before")
+    @classmethod
+    def strip_env_quotes(cls, v: object) -> object:
+        return _strip_wrapping_quotes(v)
+
     @field_validator("cookie_samesite", mode="before")
     @classmethod
     def validate_samesite(cls, v: str) -> str:
@@ -142,4 +157,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    env_file = _resolve_env_file()
+    if env_file:
+        return Settings(_env_file=env_file)
     return Settings()

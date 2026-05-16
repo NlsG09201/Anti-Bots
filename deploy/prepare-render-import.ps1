@@ -14,7 +14,9 @@ Get-Content $src -Encoding UTF8 | ForEach-Object {
     if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') {
         $key = $Matches[1]
         $val = $Matches[2].Trim()
-        if ($val -match '^".*"$') {
+        if ($key -eq 'DATABASE_URL') {
+            $lines += "$key=$val"
+        } elseif ($val -match '^".*"$') {
             $lines += "$key=$val"
         } elseif ($val -match '[\s+#=]' -or $val -match '\+') {
             $escaped = $val -replace '"', '\"'
