@@ -1,0 +1,5 @@
+# Dominio desde .env → variable API_DOMAIN (ej. api.tudominio.com)
+{$API_DOMAIN} {
+	encode gzip
+	reverse_proxy api:8000
+}
