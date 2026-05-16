@@ -36,8 +36,16 @@ REQUEST_LATENCY = Histogram("http_request_duration_seconds", "HTTP request laten
 async def lifespan(app: FastAPI):
     run_startup_checks()
     logger.info("starting_application", env=settings.app_env)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as exc:
+        logger.error(
+            "database_startup_failed",
+            error=str(exc),
+            hint="Check DATABASE_URL in Render Environment (Neon pooler + sslmode=require)",
+        )
+        raise
     yield
     await close_redis()
     await engine.dispose()

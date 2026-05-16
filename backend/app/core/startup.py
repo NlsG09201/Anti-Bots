@@ -45,6 +45,21 @@ def validate_production_settings() -> list[str]:
     if settings.database_url.startswith("sqlite"):
         errors.append("SQLite is not allowed in production; use PostgreSQL")
 
+    if "localhost" in settings.database_url or "127.0.0.1" in settings.database_url:
+        errors.append(
+            "DATABASE_URL points to localhost — set Neon URL in Render Environment"
+        )
+
+    if (
+        "PEGAR_" in settings.redis_url
+        or settings.redis_url.startswith("redis://:redis")
+        or "localhost" in settings.redis_url
+    ):
+        logger.warning(
+            "redis_not_configured",
+            hint="Set REDIS_URL (Upstash rediss://) for distributed rate limiting",
+        )
+
     return errors
 
 
@@ -55,7 +70,14 @@ def run_startup_checks() -> None:
     if errors:
         for err in errors:
             logger.error("startup_validation_failed", error=err)
+            print(f"startup_validation_failed: {err}", file=sys.stderr, flush=True)
         if settings.is_production:
+            print(
+                "Render: set DATABASE_URL, APP_SECRET_KEY, JWT_SECRET_KEY, AES_ENCRYPTION_KEY "
+                "in Dashboard → Environment (import deploy/render.env).",
+                file=sys.stderr,
+                flush=True,
+            )
             sys.exit(1)
 
     logger.info(

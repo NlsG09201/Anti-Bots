@@ -8,5 +8,21 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: APP_CORS_ORIGINS
+        value: https://anti-bots.vercel.app,https://anti-bots-vhbo.vercel.app
+      - key: APP_FRONTEND_URL
+        value: https://anti-bots.vercel.app
+      - key: TRUSTED_HOSTS
+        value: anti-bots-api.onrender.com
+      # Secrets + DATABASE_URL + REDIS_URL: Render Dashboard → Environment
+      # Import from deploy/render.env (local only, not in git)
+    startCommand: python scripts/render_check_env.py && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
