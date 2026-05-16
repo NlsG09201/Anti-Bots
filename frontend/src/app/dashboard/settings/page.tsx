@@ -1,0 +1,225 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Shield, Tv, CheckCircle, AlertCircle } from "lucide-react";
+import { api } from "@/lib/api";
+import { useAuthStore } from "@/stores/authStore";
+
+function SettingsContent() {
+  const searchParams = useSearchParams();
+  const { accessToken, user } = useAuthStore();
+  const token = accessToken!;
+  const queryClient = useQueryClient();
+
+  const [mfaCode, setMfaCode] = useState("");
+  const [setupData, setSetupData] = useState<{
+    qr_code_base64: string;
+    provisioning_uri: string;
+  } | null>(null);
+  const [message, setMessage] = useState("");
+
+  const isAdmin =
+    user?.role === "admin" || user?.role === "super_admin" || user?.role === "analyst";
+
+  useEffect(() => {
+    if (searchParams.get("twitch") === "connected") {
+      setMessage("Twitch conectado correctamente. EventSub suscripciones activadas.");
+      queryClient.invalidateQueries({ queryKey: ["twitch-status"] });
+    }
+  }, [searchParams, queryClient]);
+
+  const { data: mfaStatus } = useQuery({
+    queryKey: ["mfa-status"],
+    queryFn: () => api.mfa.status(token),
+    enabled: !!token && isAdmin,
+  });
+
+  const { data: twitchStatus } = useQuery({
+    queryKey: ["twitch-status"],
+    queryFn: () => api.twitch.status(token),
+    enabled: !!token,
+  });
+
+  const setupMfa = useMutation({
+    mutationFn: () => api.mfa.setup(token),
+    onSuccess: (data) => setSetupData(data),
+  });
+
+  const enableMfa = useMutation({
+    mutationFn: () => api.mfa.enable(token, mfaCode),
+    onSuccess: () => {
+      setMessage("MFA activado correctamente");
+      setSetupData(null);
+      setMfaCode("");
+      queryClient.invalidateQueries({ queryKey: ["mfa-status"] });
+    },
+  });
+
+  const disableMfa = useMutation({
+    mutationFn: () => api.mfa.disable(token, mfaCode),
+    onSuccess: () => {
+      setMessage("MFA desactivado");
+      setMfaCode("");
+      queryClient.invalidateQueries({ queryKey: ["mfa-status"] });
+    },
+  });
+
+  const connectTwitch = useMutation({
+    mutationFn: () => api.twitch.authorize(token),
+    onSuccess: (data) => {
+      window.location.href = data.authorization_url;
+    },
+  });
+
+  return (
+    <div className="space-y-8 max-w-3xl">
+      <div>
+        <h1 className="text-2xl font-bold text-white">Configuración</h1>
+        <p className="text-cyber-muted text-sm mt-1">Integraciones y seguridad de cuenta</p>
+      </div>
+
+      {message && (
+        <div className="cyber-card flex items-center gap-3 text-cyber-accent border-cyber-accent/30">
+          <CheckCircle size={20} />
+          <p className="text-sm">{message}</p>
+        </div>
+      )}
+
+      <section className="cyber-card space-y-4">
+        <div className="flex items-center gap-3">
+          <Tv className="text-purple-400" size={24} />
+          <div>
+            <h2 className="font-semibold text-white">Twitch</h2>
+            <p className="text-xs text-cyber-muted">
+              Conecta tu canal para EventSub y detección en vivo
+            </p>
+          </div>
+        </div>
+
+        {!twitchStatus?.configured && (
+          <p className="text-sm text-cyber-warning flex items-center gap-2">
+            <AlertCircle size={16} />
+            Configura TWITCH_CLIENT_ID y TWITCH_CLIENT_SECRET en el servidor
+          </p>
+        )}
+
+        {twitchStatus?.connected ? (
+          <div className="space-y-2">
+            {twitchStatus.channels.map((ch) => (
+              <div
+                key={ch.id}
+                className="flex items-center justify-between p-3 bg-cyber-bg rounded border border-cyber-border"
+              >
+                <span className="text-white font-medium">{ch.channel_name}</span>
+                <span
+                  className={
+                    ch.is_live ? "text-cyber-accent text-xs" : "text-cyber-muted text-xs"
+                  }
+                >
+                  {ch.is_live ? "EN VIVO" : "Offline"}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <button
+            onClick={() => connectTwitch.mutate()}
+            disabled={!twitchStatus?.configured || connectTwitch.isPending}
+            className="cyber-btn-primary"
+          >
+            {connectTwitch.isPending ? "Redirigiendo..." : "Conectar con Twitch"}
+          </button>
+        )}
+
+        <p className="text-xs text-cyber-muted">
+          Redirect URI en Twitch Developer Console:{" "}
+          <code className="text-cyber-info">https://api.tudominio.com/api/v1/integrations/twitch/callback</code>
+        </p>
+      </section>
+
+      {isAdmin && (
+        <section className="cyber-card space-y-4">
+          <div className="flex items-center gap-3">
+            <Shield className="text-cyber-accent" size={24} />
+            <div>
+              <h2 className="font-semibold text-white">Autenticación MFA</h2>
+              <p className="text-xs text-cyber-muted">
+                Recomendado para admin/analyst — Google Authenticator, Authy
+              </p>
+            </div>
+          </div>
+
+          <p className="text-sm text-cyber-muted">
+            Estado:{" "}
+            <span className={mfaStatus?.enabled ? "text-cyber-accent" : "text-cyber-warning"}>
+              {mfaStatus?.enabled ? "Activado" : "Desactivado"}
+            </span>
+          </p>
+
+          {!mfaStatus?.enabled && !setupData && (
+            <button
+              onClick={() => setupMfa.mutate()}
+              className="cyber-btn-primary"
+              disabled={setupMfa.isPending}
+            >
+              Configurar MFA
+            </button>
+          )}
+
+          {setupData && (
+            <div className="space-y-4">
+              <img
+                src={`data:image/png;base64,${setupData.qr_code_base64}`}
+                alt="MFA QR"
+                className="mx-auto w-48 h-48 rounded border border-cyber-border"
+              />
+              <input
+                type="text"
+                placeholder="Código de 6 dígitos"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                className="w-full px-4 py-3 bg-cyber-bg border border-cyber-border rounded-md text-white text-center font-mono text-xl tracking-widest"
+              />
+              <button
+                onClick={() => enableMfa.mutate()}
+                disabled={mfaCode.length !== 6 || enableMfa.isPending}
+                className="w-full cyber-btn-primary"
+              >
+                Activar MFA
+              </button>
+            </div>
+          )}
+
+          {mfaStatus?.enabled && (
+            <div className="space-y-3">
+              <input
+                type="text"
+                placeholder="Código para desactivar"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                className="w-full px-4 py-3 bg-cyber-bg border border-cyber-border rounded-md text-white text-center font-mono"
+              />
+              <button
+                onClick={() => disableMfa.mutate()}
+                disabled={mfaCode.length !== 6}
+                className="cyber-btn-danger w-full"
+              >
+                Desactivar MFA
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<p className="text-cyber-muted">Cargando...</p>}>
+      <SettingsContent />
+    </Suspense>
+  );
+}

@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --cyber-bg: #060a12;
+  --cyber-surface: #0f1419;
+  --cyber-surface-elevated: #151b24;
+  --cyber-accent: #00ff88;
+  --cyber-accent-dim: #00cc6a;
+  --cyber-danger: #ff3366;
+  --cyber-info: #00aaff;
+}
+
+body {
+  background-color: var(--cyber-bg);
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+@layer components {
+  .cyber-card {
+    @apply bg-cyber-surface/80 backdrop-blur-sm border border-cyber-border rounded-xl p-5
+           shadow-lg shadow-black/20 transition-shadow duration-300;
+  }
+  .cyber-card:hover {
+    @apply border-cyber-border/80 shadow-cyber-accent/5;
+  }
+  .cyber-card-glow {
+    @apply cyber-card relative overflow-hidden;
+  }
+  .cyber-card-glow::before {
+    content: '';
+    @apply absolute inset-0 opacity-0 transition-opacity duration-500 pointer-events-none;
+    background: radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(0, 255, 136, 0.06), transparent 40%);
+  }
+  .cyber-card-glow:hover::before {
+    @apply opacity-100;
+  }
+  .cyber-btn {
+    @apply px-4 py-2 rounded-lg font-semibold transition-all duration-200 active:scale-[0.98];
+  }
+  .cyber-btn-primary {
+    @apply cyber-btn bg-cyber-accent text-cyber-bg hover:bg-green-400
+           shadow-[0_0_20px_rgba(0,255,136,0.25)] hover:shadow-[0_0_30px_rgba(0,255,136,0.35)];
+  }
+  .cyber-btn-danger {
+    @apply cyber-btn bg-cyber-danger/90 text-white hover:bg-red-500
+           shadow-[0_0_15px_rgba(255,51,102,0.2)];
+  }
+  .cyber-input {
+    @apply w-full px-4 py-3 bg-cyber-bg/80 border border-cyber-border rounded-lg text-white
+           placeholder:text-slate-500 focus:border-cyber-accent/50 focus:ring-1 focus:ring-cyber-accent/30
+           focus:outline-none transition-all;
+  }
+  .severity-critical { @apply text-red-400 border-red-500/40 bg-red-500/10; }
+  .severity-high { @apply text-orange-400 border-orange-400/40 bg-orange-400/10; }
+  .severity-medium { @apply text-yellow-400 border-yellow-400/40 bg-yellow-400/10; }
+  .severity-low { @apply text-blue-400 border-blue-400/40 bg-blue-400/10; }
+  .stat-glow-green { box-shadow: 0 0 40px rgba(0, 255, 136, 0.08); }
+  .stat-glow-red { box-shadow: 0 0 40px rgba(255, 51, 102, 0.08); }
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0f1419; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+.grid-pattern {
+  background-color: var(--cyber-bg);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0, 255, 136, 0.12), transparent),
+    radial-gradient(circle at 80% 80%, rgba(0, 170, 255, 0.06), transparent),
+    radial-gradient(circle, #1e293b 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 24px 24px;
+}
+
+.scan-line {
+  background: linear-gradient(
+    transparent 0%,
+    rgba(0, 255, 136, 0.03) 50%,
+    transparent 100%
+  );
+  animation: scan 8s linear infinite;
+}
+
+@keyframes scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 136, 0.2); }
+  50% { box-shadow: 0 0 35px rgba(0, 255, 136, 0.35); }
+}
+
+.logo-pulse {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
