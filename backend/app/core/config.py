@@ -1,14 +1,19 @@
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import List
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_RENDER_SECRET_ENV = Path("/etc/secrets/.env")
+
 
 def _env_files() -> tuple[str, ...] | None:
-    """En Render no cargar .env del disco (solo variables del dashboard)."""
+    """Render: dashboard env vars, o Secret File en /etc/secrets/.env"""
     if os.getenv("RENDER"):
+        if _RENDER_SECRET_ENV.is_file():
+            return (str(_RENDER_SECRET_ENV),)
         return None
     return (".env",)
 
