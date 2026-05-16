@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Shield, Tv, CheckCircle, AlertCircle } from "lucide-react";
@@ -170,9 +171,12 @@ function SettingsContent() {
 
           {setupData && (
             <div className="space-y-4">
-              <img
+              <Image
                 src={`data:image/png;base64,${setupData.qr_code_base64}`}
                 alt="MFA QR"
+                width={192}
+                height={192}
+                unoptimized
                 className="mx-auto w-48 h-48 rounded border border-cyber-border"
               />
               <input
