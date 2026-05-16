@@ -5,9 +5,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
-from sklearn.ensemble import IsolationForest
-
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -54,12 +51,18 @@ class BotDetectionEngine:
     }
 
     def __init__(self):
-        self._isolation_forest = IsolationForest(
-            contamination=0.1,
-            random_state=42,
-            n_estimators=100,
-        )
+        self._isolation_forest = None
         self._model_trained = False
+        try:
+            from sklearn.ensemble import IsolationForest
+
+            self._isolation_forest = IsolationForest(
+                contamination=0.1,
+                random_state=42,
+                n_estimators=100,
+            )
+        except ImportError:
+            logger.info("sklearn_not_installed_using_statistical_anomaly_detection")
 
     def analyze_fingerprint(self, fp_data: Dict[str, Any]) -> DetectionResult:
         score = 0.0
@@ -316,13 +319,35 @@ class BotDetectionEngine:
         if len(feature_vectors) < 10:
             return [False] * len(feature_vectors)
 
-        X = np.array(feature_vectors)
-        if not self._model_trained:
-            self._isolation_forest.fit(X)
-            self._model_trained = True
+        if self._isolation_forest is not None:
+            import numpy as np
 
-        predictions = self._isolation_forest.predict(X)
-        return [p == -1 for p in predictions]
+            X = np.array(feature_vectors)
+            if not self._model_trained:
+                self._isolation_forest.fit(X)
+                self._model_trained = True
+            predictions = self._isolation_forest.predict(X)
+            return [p == -1 for p in predictions]
+
+        return self._statistical_anomaly_detect(feature_vectors)
+
+    def _statistical_anomaly_detect(self, feature_vectors: List[List[float]]) -> List[bool]:
+        n_features = len(feature_vectors[0])
+        means: List[float] = []
+        stds: List[float] = []
+        for col in range(n_features):
+            column = [row[col] for row in feature_vectors]
+            means.append(statistics.mean(column))
+            stds.append(statistics.stdev(column) if len(column) > 1 else 1.0)
+
+        flags: List[bool] = []
+        for row in feature_vectors:
+            z_scores = [
+                abs((row[i] - means[i]) / stds[i]) if stds[i] > 0 else 0.0
+                for i in range(n_features)
+            ]
+            flags.append(max(z_scores) > 2.5)
+        return flags
 
     def aggregate_risk(
         self,
