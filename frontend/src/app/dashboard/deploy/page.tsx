@@ -54,7 +54,7 @@ export default function DeployPage() {
   const total = CHECKLIST.length;
   const progress = Math.round((done / total) * 100);
 
-  const phases = [...new Set(CHECKLIST.map((c) => c.phase))];
+  const phases = Array.from(new Set(CHECKLIST.map((c) => c.phase)));
 
   return (
     <div className="space-y-6 max-w-3xl">

@@ -7,7 +7,7 @@ import {
 import { StatCard } from "@/components/StatCard";
 import { AttackTimelineChart, RiskHeatmapChart } from "@/components/AttackChart";
 import { LiveAlerts } from "@/components/LiveAlerts";
-import { api } from "@/lib/api";
+import { api, type Alert } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useState } from "react";
@@ -25,11 +25,11 @@ const mockHeatmap = Array.from({ length: 24 }, (_, i) => ({
 
 export default function DashboardPage() {
   const { accessToken } = useAuthStore();
-  const [liveAlerts, setLiveAlerts] = useState<import("@/lib/api").Alert[]>([]);
+  const [liveAlerts, setLiveAlerts] = useState<Alert[]>([]);
 
   useWebSocket((msg) => {
     if (msg.type === "alert" && msg.data) {
-      setLiveAlerts((prev) => [msg.data as import("@/lib/api").Alert, ...prev].slice(0, 20));
+      setLiveAlerts((prev) => [msg.data as unknown as Alert, ...prev].slice(0, 20));
     }
   });
 
