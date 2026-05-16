@@ -8,7 +8,7 @@ from app.infrastructure.database.base import Base
 logger = get_logger(__name__)
 
 
-async def init_database(engine: AsyncEngine, *, max_attempts: int = 5) -> None:
+async def init_database(engine: AsyncEngine, *, max_attempts: int = 10) -> None:
     """Conecta a Neon con reintentos (cold start en Render free tier)."""
     last_error: Exception | None = None
     for attempt in range(1, max_attempts + 1):
@@ -27,6 +27,6 @@ async def init_database(engine: AsyncEngine, *, max_attempts: int = 5) -> None:
                 error=str(exc),
             )
             if attempt < max_attempts:
-                await asyncio.sleep(min(2 * attempt, 10))
+                await asyncio.sleep(min(3 * attempt, 15))
     assert last_error is not None
     raise last_error

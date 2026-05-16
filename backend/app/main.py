@@ -8,7 +8,7 @@ from starlette.responses import Response
 
 from app.api.v1 import auth, attacks, detection, mfa, streams, twitch_integration, users, webhooks
 from app.api.websocket import routes as ws_routes
-from app.core.config import get_settings
+from app.core.config import get_settings, invalidate_settings_cache
 from app.core.exceptions import StreamShieldError
 from app.core.logging import setup_logging, get_logger
 from app.core.startup import run_startup_checks
@@ -34,8 +34,9 @@ REQUEST_LATENCY = Histogram("http_request_duration_seconds", "HTTP request laten
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    invalidate_settings_cache()
     run_startup_checks()
-    logger.info("starting_application", env=settings.app_env)
+    logger.info("starting_application", env=get_settings().app_env)
     try:
         await init_database(engine)
     except Exception as exc:

@@ -1,4 +1,4 @@
-# Genera deploy/render.import.env para pegar en Render -> Add from .env
+# Genera deploy/render.import.env (sin comentarios ni comillas innecesarias)
 $src = Join-Path $PSScriptRoot "render.env"
 $dst = Join-Path $PSScriptRoot "render.import.env"
 
@@ -14,17 +14,11 @@ Get-Content $src -Encoding UTF8 | ForEach-Object {
     if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') {
         $key = $Matches[1]
         $val = $Matches[2].Trim()
-        if ($key -eq 'DATABASE_URL') {
-            $lines += "$key=$val"
-        } elseif ($val -match '^".*"$') {
-            $lines += "$key=$val"
-        } elseif ($val -match '[\s+#=]' -or $val -match '\+') {
-            $escaped = $val -replace '"', '\"'
-            $lines += "$key=`"$escaped`""
-        } else {
-            $lines += "$key=$val"
+        if ($val.StartsWith('"') -and $val.EndsWith('"')) {
+            $val = $val.Substring(1, $val.Length - 2)
         }
+        $lines += "$key=$val"
     }
 }
 $lines | Set-Content $dst -Encoding UTF8
-Write-Host "Created $dst ($($lines.Count) variables)"
+Write-Host "Created $dst ($($lines.Count) variables, sin comillas)"

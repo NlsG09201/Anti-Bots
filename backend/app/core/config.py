@@ -10,12 +10,34 @@ _RENDER_SECRET_ENV = Path("/etc/secrets/.env")
 
 
 def render_secret_env_path() -> Path | None:
-    """Ruta al Secret File de Render, si existe."""
     return _RENDER_SECRET_ENV if _RENDER_SECRET_ENV.is_file() else None
 
 
+def invalidate_settings_cache() -> None:
+    get_settings.cache_clear()
+
+
+def _bootstrap_render_environ() -> None:
+    """Carga Secret File de Render en os.environ antes de leer Settings."""
+    if not os.getenv("RENDER"):
+        return
+    secret = render_secret_env_path()
+    if not secret:
+        return
+    for line in secret.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] == '"':
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def _resolve_env_file() -> str | None:
-    """Render: dashboard env vars, o Secret File en /etc/secrets/.env"""
     if os.getenv("RENDER"):
         secret = render_secret_env_path()
         return str(secret) if secret else None
@@ -97,19 +119,24 @@ class Settings(BaseSettings):
     fail2ban_max_attempts: int = 5
     fail2ban_window_seconds: int = 300
 
-    # Cookies (production: secure=true, samesite=strict)
     cookie_secure: bool = False
     cookie_samesite: str = "lax"
     trusted_hosts: str = "localhost,127.0.0.1"
 
-    # Auto-block IPs at Cloudflare edge when risk >= threshold
     cloudflare_auto_block: bool = False
     cloudflare_block_risk_threshold: float = 85.0
 
     otel_exporter_otlp_endpoint: str = "http://otel-collector:4317"
     prometheus_enabled: bool = True
 
-    @field_validator("database_url", "app_secret_key", "jwt_secret_key", mode="before")
+    @field_validator(
+        "database_url",
+        "app_secret_key",
+        "jwt_secret_key",
+        "aes_encryption_key",
+        "twitch_webhook_secret",
+        mode="before",
+    )
     @classmethod
     def strip_env_quotes(cls, v: object) -> object:
         return _strip_wrapping_quotes(v)
@@ -157,6 +184,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    _bootstrap_render_environ()
     env_file = _resolve_env_file()
     if env_file:
         return Settings(_env_file=env_file)
