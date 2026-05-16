@@ -9,6 +9,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.core.config import get_settings, invalidate_settings_cache, render_secret_env_path
 from app.core.startup import INSECURE_DEFAULTS, validate_production_settings
 
+REQUIRED_ENV_KEYS = (
+    "DATABASE_URL",
+    "APP_SECRET_KEY",
+    "JWT_SECRET_KEY",
+    "AES_ENCRYPTION_KEY",
+)
+
+
+def _missing_required_env_keys() -> list[str]:
+    missing: list[str] = []
+    for key in REQUIRED_ENV_KEYS:
+        raw = os.environ.get(key, "").strip()
+        if not raw:
+            missing.append(key)
+    return missing
+
 
 def main() -> None:
     invalidate_settings_cache()
@@ -23,29 +39,47 @@ def main() -> None:
         flush=True,
     )
 
+    missing_keys = _missing_required_env_keys()
+    if missing_keys:
+        print(
+            "\n=== RENDER STARTUP BLOCKED ===",
+            flush=True,
+        )
+        print(
+            "Variables NO definidas en Render Environment:",
+            ", ".join(missing_keys),
+            flush=True,
+        )
+        print(
+            "\nSolucion: Render -> anti-bots-api -> Environment\n"
+            "  Add from .env -> pega deploy/render.import.env -> Save -> Manual Deploy\n"
+            "  (Dashboard Start Command debe coincidir con render.yaml o dejarse vacio)",
+            flush=True,
+        )
+        sys.exit(1)
+
     errors = validate_production_settings()
     if settings.is_production and errors:
-        print("\n=== RENDER STARTUP BLOCKED ===", file=sys.stderr, flush=True)
+        print("\n=== RENDER STARTUP BLOCKED ===", flush=True)
         for err in errors:
-            print(f"  - {err}", file=sys.stderr, flush=True)
+            print(f"  - {err}", flush=True)
         print(
             "\nSolucion: Render -> anti-bots-api -> Environment\n"
             "  Add from .env -> pega deploy/render.import.env -> Save -> Manual Deploy\n",
-            file=sys.stderr,
             flush=True,
         )
         sys.exit(1)
 
     if "localhost" in settings.database_url or "127.0.0.1" in settings.database_url:
-        print("ERROR: DATABASE_URL falta. Importa deploy/render.import.env en Render.", file=sys.stderr, flush=True)
+        print("ERROR: DATABASE_URL falta. Importa deploy/render.import.env en Render.", flush=True)
         sys.exit(1)
 
     if not settings.database_url.startswith("postgresql"):
-        print("ERROR: DATABASE_URL debe ser postgresql+asyncpg://...", file=sys.stderr, flush=True)
+        print("ERROR: DATABASE_URL debe ser postgresql+asyncpg://...", flush=True)
         sys.exit(1)
 
     if settings.app_secret_key in INSECURE_DEFAULTS:
-        print("ERROR: APP_SECRET_KEY no configurada.", file=sys.stderr, flush=True)
+        print("ERROR: APP_SECRET_KEY no configurada.", flush=True)
         sys.exit(1)
 
     print("Preflight OK — starting uvicorn", flush=True)
