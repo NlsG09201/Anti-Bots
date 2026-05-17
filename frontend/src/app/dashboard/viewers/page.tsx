@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, MessageSquare, RefreshCw, Scan, Shield, Users, AlertTriangle } from "lucide-react";
+import { Ban, Brain, MessageSquare, RefreshCw, Scan, Shield, Users, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { api, type Stream, type Viewer } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
@@ -75,6 +75,18 @@ function ViewersContent() {
   useEffect(() => {
     lastQuickSyncStream.current = null;
   }, [streamId]);
+
+  const aiScreenMutation = useMutation({
+    mutationFn: () => api.streams.screenViewers(token, streamId),
+    onSuccess: (res) => {
+      setMessage(
+        `IA: ${res.screened} usuarios analizados · ${res.flagged} marcados como maliciosos`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["viewers"] });
+      queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
+    },
+    onError: (e: Error) => setMessage(e.message),
+  });
 
   const scanMutation = useMutation({
     mutationFn: () => api.streams.monitor(token, streamId),
@@ -225,6 +237,15 @@ function ViewersContent() {
           <Scan size={16} />
           {scanMutation.isPending ? "Escaneando (~55s)..." : "Escanear chat (hablantes + bots)"}
         </button>
+        <button
+          type="button"
+          disabled={!streamId || aiScreenMutation.isPending || viewers.length === 0}
+          onClick={() => aiScreenMutation.mutate()}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-cyber-border text-sm text-cyber-muted hover:text-white disabled:opacity-50"
+        >
+          <Brain size={16} className={aiScreenMutation.isPending ? "animate-pulse" : ""} />
+          {aiScreenMutation.isPending ? "Analizando IA..." : "Verificar bots (IA)"}
+        </button>
         {activeAttacks > 0 && (
           <button
             type="button"
@@ -303,9 +324,23 @@ function ViewersContent() {
                     "0"
                   )}
                 </td>
-                <td className="py-3 px-2 text-center text-xs">
+                <td className="py-3 px-2 text-center text-xs max-w-[220px]">
                   {v.is_suspected_bot ? (
-                    <span className="text-cyber-danger">Sospechoso / bot</span>
+                    <div>
+                      <span className="text-cyber-danger block">Bot / malicioso</span>
+                      <span
+                        className="text-cyber-muted text-[10px] line-clamp-2"
+                        title={String(
+                          (v.behavior_metrics?.ai_verdict as { risk_description?: string })
+                            ?.risk_description ?? "",
+                        )}
+                      >
+                        {(
+                          v.behavior_metrics?.ai_verdict as { risk_description?: string }
+                        )?.risk_description ||
+                          "Patron sospechoso detectado"}
+                      </span>
+                    </div>
                   ) : (v.chat_messages ?? 0) > 0 ? (
                     <span className="text-cyber-accent">Hablando</span>
                   ) : (

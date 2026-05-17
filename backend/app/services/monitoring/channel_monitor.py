@@ -23,6 +23,7 @@ from app.services.monitoring.proxy_intel import (
     collect_proxy_threats,
     merge_attack_proxy_evidence,
 )
+from app.services.detection.viewer_bot_screening import ViewerBotScreeningService
 from app.services.viewers.session import ViewerSessionService
 from app.services.mitigation.service import MitigationService
 
@@ -54,6 +55,24 @@ class ChannelMonitorService:
         self.db = db
         self.viewers = ViewerSessionService(db)
         self.helix = TwitchHelixClient()
+        self.bot_screening = ViewerBotScreeningService()
+
+    async def _screen_viewers_ai(
+        self,
+        stream: Stream,
+        chatters_data: List[Dict[str, Any]],
+        summary: Dict[str, Any],
+    ) -> None:
+        stats = await self.bot_screening.screen_and_update_sessions(
+            self.db,
+            stream.id,
+            stream.channel_name,
+            chatters_data,
+        )
+        summary["ai_screened"] = stats["screened"]
+        summary["ai_flagged"] = stats["flagged"]
+        counts = await self.viewers.count_active(stream.id)
+        summary["suspected_count"] = counts["suspected"]
 
     async def _fetch_chatters(
         self,
@@ -162,9 +181,9 @@ class ChannelMonitorService:
             chatters_data,
             full_resync=True,
         )
+        await self._screen_viewers_ai(stream, chatters_data, summary)
         counts = await self.viewers.count_active(stream.id)
         summary["chatters_synced"] = sync_stats["total_synced"]
-        summary["suspected_count"] = sync_stats["suspected_count"]
         summary["talking_count"] = counts["talking"]
         summary["source"] = source
 
@@ -229,6 +248,7 @@ class ChannelMonitorService:
             chatters_data,
             full_resync=True,
         )
+        await self._screen_viewers_ai(stream, chatters_data, summary)
         suspected_usernames = [
             c["username"]
             for c in chatters_data
@@ -241,7 +261,7 @@ class ChannelMonitorService:
 
         counts = await self.viewers.count_active(stream.id)
         summary["chatters_synced"] = sync_stats["total_synced"]
-        summary["suspected_count"] = sync_stats["suspected_count"]
+        summary["suspected_count"] = counts["suspected"]
         summary["talking_count"] = counts["talking"]
         summary["source"] = source
         summary["sync_mode"] = "full"

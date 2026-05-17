@@ -21,8 +21,10 @@ PRIVMSG_RE = re.compile(
     r":([^!\s]+)!.* PRIVMSG #(\w+)",
     re.IGNORECASE,
 )
+# Solo RPL_NAMREPLY (353), nunca 366 "End of /NAMES list"
 NAMES_REPLY_RE = re.compile(
-    r"^:[^ ]+ \d+ [^ ]+ #(\w+) :(.*)$",
+    r"^:[^ ]+ 353 [^ ]+ #(\w+) :(.*)$",
+    re.IGNORECASE,
 )
 
 
@@ -110,7 +112,7 @@ async def collect_chat_presence(
                     joined = True
                 continue
 
-            if "366" in line or line.startswith(":") and " 353 " in f" {line} ":
+            if " 353 " in f" {line} ":
                 names_m = NAMES_REPLY_RE.match(line)
                 if names_m and names_m.group(1).lower() == channel:
                     snapshot.record_names(names_m.group(2))
@@ -118,7 +120,9 @@ async def collect_chat_presence(
 
             join_m = JOIN_RE.search(line)
             if join_m and join_m.group(2).lower() == channel:
-                snapshot.record_join(join_m.group(1))
+                joiner = join_m.group(1)
+                if joiner.lower() != nick.lower():
+                    snapshot.record_join(joiner)
                 continue
 
             part_m = PART_RE.search(line)

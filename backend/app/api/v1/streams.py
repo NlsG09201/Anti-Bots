@@ -329,6 +329,30 @@ async def ingest_event(
     return result
 
 
+@router.post("/{stream_id}/viewers/screen")
+async def screen_viewers_with_ai(
+    stream_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Cruza usuarios en chat con base local + IA y actualiza riesgo/descripcion."""
+    from app.services.detection.viewer_bot_screening import ViewerBotScreeningService
+
+    stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    svc = ViewerSessionService(db)
+    sessions = await svc.list_active(stream.id, chat_only=True, limit=500)
+    chatters = [
+        {"username": s.platform_username}
+        for s in sessions
+        if s.platform_username
+    ]
+    stats = await ViewerBotScreeningService().screen_and_update_sessions(
+        db, stream.id, stream.channel_name, chatters
+    )
+    await db.commit()
+    return {"status": "ok", **stats}
+
+
 @router.get("/{stream_id}/viewers", response_model=List[ViewerSessionResponse])
 async def list_viewers(
     stream_id: UUID,

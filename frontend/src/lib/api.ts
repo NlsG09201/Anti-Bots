@@ -234,6 +234,12 @@ export const api = {
       ),
     viewers: (token: string, streamId: string, filter: "all" | "talking" | "suspected" = "all") =>
       request<Viewer[]>(`/api/v1/streams/${streamId}/viewers?filter=${filter}`, {}, token),
+    screenViewers: (token: string, streamId: string) =>
+      request<{ status: string; screened: number; flagged: number }>(
+        `/api/v1/streams/${streamId}/viewers/screen`,
+        { method: "POST" },
+        token,
+      ),
     syncQuick: (token: string, streamId: string) =>
       request<{
         status: string;
