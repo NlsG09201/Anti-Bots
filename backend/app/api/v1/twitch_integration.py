@@ -1,9 +1,7 @@
 import secrets
 from typing import List, Optional
-from uuid import UUID
-
-from typing import Optional
 from urllib.parse import quote
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import RedirectResponse
