@@ -9,6 +9,31 @@ export class ApiError extends Error {
   }
 }
 
+function parseApiErrorMessage(error: unknown, status: number): string {
+  if (!error || typeof error !== "object") {
+    return `HTTP ${status}`;
+  }
+  const body = error as Record<string, unknown>;
+  if (typeof body.message === "string" && body.message) {
+    return body.message;
+  }
+  if (Array.isArray(body.detail)) {
+    const parts = body.detail
+      .map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          return String((item as { msg: string }).msg);
+        }
+        return null;
+      })
+      .filter(Boolean);
+    if (parts.length) return parts.join("; ");
+  }
+  if (typeof body.detail === "string") {
+    return body.detail;
+  }
+  return `HTTP ${status}`;
+}
+
 function getCsrfToken(): string | null {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(/(?:^|;\s*)ss_csrf_token=([^;]*)/);
@@ -37,7 +62,12 @@ async function request<T>(
     credentials: "include",
   });
 
-  if (response.status === 401 && path !== "/api/v1/auth/refresh") {
+  const isAuthAttempt =
+    path === "/api/v1/auth/login" ||
+    path === "/api/v1/auth/register" ||
+    path === "/api/v1/auth/mfa/verify";
+
+  if (response.status === 401 && !isAuthAttempt && path !== "/api/v1/auth/refresh") {
     const refreshed = await tryRefreshToken();
     if (refreshed) {
       return request<T>(path, options, refreshed);
@@ -46,7 +76,8 @@ async function request<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: "Request failed" }));
-    throw new ApiError(response.status, error.message || `HTTP ${response.status}`);
+    const message = parseApiErrorMessage(error, response.status);
+    throw new ApiError(response.status, message);
   }
 
   return response.json();

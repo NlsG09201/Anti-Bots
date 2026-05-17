@@ -155,12 +155,12 @@ export default function LoginPage() {
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
-                  placeholder="Contraseña (mín. 12 caracteres)"
+                  placeholder={isRegister ? "Contraseña (mín. 12 caracteres)" : "Contraseña"}
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   className="cyber-input pr-12"
                   required
-                  minLength={12}
+                  minLength={isRegister ? 12 : 8}
                 />
                 <button
                   type="button"
