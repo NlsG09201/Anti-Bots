@@ -217,6 +217,10 @@ async def twitch_callback(
 
     if stored.get("invite") or stored.get("upgrade_stream_id"):
         await cache.delete(f"invite:{stored['invite']}") if stored.get("invite") else None
+        if upgrade_id:
+            return _frontend_redirect(
+                f"/dashboard/viewers?stream={upgrade_id}&twitch=connected"
+            )
         return _frontend_redirect("/dashboard/channels?twitch=connected")
     return _frontend_redirect("/dashboard/settings?twitch=connected")
 

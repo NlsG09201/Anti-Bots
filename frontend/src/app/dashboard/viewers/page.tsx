@@ -3,7 +3,17 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, Brain, MessageSquare, RefreshCw, Scan, Shield, Users, AlertTriangle } from "lucide-react";
+import {
+  Ban,
+  Brain,
+  Link2,
+  MessageSquare,
+  RefreshCw,
+  Scan,
+  Shield,
+  Users,
+  AlertTriangle,
+} from "lucide-react";
 import Link from "next/link";
 import { api, type Stream, type Viewer } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
@@ -19,6 +29,7 @@ function ViewersContent() {
   const [selectedStream, setSelectedStream] = useState(searchParams.get("stream") ?? "");
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
   const [message, setMessage] = useState("");
+  const [inviteUrl, setInviteUrl] = useState("");
   const lastFullLoadStream = useRef<string | null>(null);
 
   const { data: streams = [] } = useQuery({
@@ -34,7 +45,13 @@ function ViewersContent() {
   useEffect(() => {
     const q = searchParams.get("stream");
     if (q) setSelectedStream(q);
-  }, [searchParams]);
+    if (searchParams.get("twitch") === "connected") {
+      setMessage("Streamer conectado. Cargando listado Helix completo...");
+      lastFullLoadStream.current = null;
+      queryClient.invalidateQueries({ queryKey: ["streams"] });
+      queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
+    }
+  }, [searchParams, queryClient]);
 
   const { data: monitorStatus } = useQuery({
     queryKey: ["monitor-status", streamId],
@@ -48,6 +65,18 @@ function ViewersContent() {
     queryFn: () => api.streams.viewers(token, streamId, viewFilter),
     enabled: !!token && !!streamId,
     refetchInterval: 15000,
+  });
+
+  const inviteMutation = useMutation({
+    mutationFn: () => api.streams.channelInvite(token, streamId),
+    onSuccess: (data) => {
+      setInviteUrl(data.invite_url);
+      setMessage(
+        `Enlace para @${data.channel_login} copiado. El streamer debe abrirlo e iniciar sesion en Twitch.`,
+      );
+      navigator.clipboard?.writeText(data.invite_url);
+    },
+    onError: (e: Error) => setMessage(e.message),
   });
 
   const fullLoadMutation = useMutation({
@@ -167,7 +196,7 @@ function ViewersContent() {
           Usuarios del stream
         </h1>
         <p className="text-cyber-muted text-sm mt-1 max-w-3xl">
-          Listado completo del chat del canal (Helix + IRC ~65s). Twitch no expone viewers
+          Listado completo del chat del canal (Helix + IRC ~50s). Twitch no expone viewers
           silenciosos por API — solo quien esta en la sala de chat. Viewers totales:{" "}
           <strong className="text-white">{twitchViewers || "—"}</strong>
           {monitorStatus?.active_viewers_tracked != null && twitchViewers > 0 && (
@@ -211,13 +240,38 @@ function ViewersContent() {
         </div>
       )}
 
-      {!monitorStatus?.has_broadcaster_oauth && currentStream?.monitor_mode && (
-        <p className="text-xs text-cyber-muted border border-cyber-border rounded-lg px-3 py-2">
-          Sin OAuth del streamer la sync rapida es limitada. Usa{" "}
-          <Link href="/dashboard/channels" className="text-cyber-accent hover:underline">
-            Invitar streamer
-          </Link>{" "}
-          para listar todo el chat al cargar, o escaneo IRC completo.
+      {inviteUrl && (
+        <p className="text-xs text-cyber-muted break-all border border-cyber-border rounded-lg p-3">
+          Enlace invitacion: {inviteUrl}
+        </p>
+      )}
+
+      {currentStream?.monitor_mode && !monitorStatus?.has_broadcaster_oauth && (
+        <div className="cyber-card p-4 border border-cyber-info/30 bg-cyber-info/5">
+          <p className="text-sm text-white font-medium mb-2">
+            Canal ajeno — listado Helix completo
+          </p>
+          <p className="text-xs text-cyber-muted mb-3">
+            Sin OAuth del streamer solo veras parte del chat (IRC). Genera un enlace para que el
+            streamer autorice StreamShield y cargues <strong className="text-white">todos</strong>{" "}
+            los usuarios en chat al instante.
+          </p>
+          <button
+            type="button"
+            disabled={!streamId || inviteMutation.isPending}
+            onClick={() => inviteMutation.mutate()}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyber-info/20 text-cyber-info border border-cyber-info/40 text-sm"
+          >
+            <Link2 size={16} />
+            {inviteMutation.isPending ? "Generando..." : "Generar enlace Invitar streamer"}
+          </button>
+        </div>
+      )}
+
+      {monitorStatus?.has_broadcaster_oauth && currentStream?.monitor_mode && (
+        <p className="text-xs text-cyber-accent border border-cyber-accent/30 rounded-lg px-3 py-2">
+          Helix conectado — &quot;Cargar listado completo&quot; usa la API oficial de chatters de
+          Twitch.
         </p>
       )}
 
