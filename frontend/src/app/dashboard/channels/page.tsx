@@ -159,14 +159,12 @@ function ChannelsContent() {
       />
 
       <p className="text-xs text-cyber-muted">
-        Flujo: canal LIVE → <strong className="text-white">Escanear chat</strong> →{" "}
+        Canal ajeno LIVE → <strong className="text-white">Invitar streamer</strong> (listado Helix
+        completo) o{" "}
         <Link href="/dashboard/viewers" className="text-cyber-accent hover:underline">
-          Viewers
+          Viewers → Cargar listado completo
         </Link>{" "}
-        (sospechosos) → <strong className="text-white">Bloquear</strong> →{" "}
-        <Link href="/dashboard/attacks" className="text-cyber-accent hover:underline">
-          Ataques
-        </Link>
+        (IRC ~50s). Twitch no muestra viewers silenciosos, solo quien esta en chat.
       </p>
     </div>
   );
@@ -254,7 +252,7 @@ function ChannelSection({
                 href={`/dashboard/viewers?stream=${stream.id}`}
                 className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-cyber-border text-cyber-muted hover:text-white"
               >
-                <Users size={12} /> Viewers
+                <Users size={12} /> Listado viewers
               </Link>
               <Link
                 href={`/dashboard/attacks?stream=${stream.id}`}

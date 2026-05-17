@@ -329,6 +329,33 @@ async def ingest_event(
     return result
 
 
+@router.post("/{stream_id}/viewers/load-full")
+async def load_full_viewer_list(
+    stream_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Carga el listado mas completo posible del canal (Helix chatters + IRC).
+    Funciona en tu canal y en canales en modo observacion.
+    """
+    stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    if not stream.is_live:
+        stream = await sync_stream_live_status(db, stream)
+    if not stream.is_live:
+        return {
+            "status": "offline",
+            "message": "El canal no esta en vivo",
+            "viewer_count": stream.viewer_count,
+        }
+    summary = await ChannelMonitorService(db).run_full_viewer_load(
+        stream,
+        current_user.tenant_id,
+    )
+    await db.commit()
+    return summary
+
+
 @router.post("/{stream_id}/viewers/screen")
 async def screen_viewers_with_ai(
     stream_id: UUID,

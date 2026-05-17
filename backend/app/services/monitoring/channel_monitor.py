@@ -136,6 +136,114 @@ class ChannelMonitorService:
         )
         return list(by_login.values()), source
 
+    async def run_full_viewer_load(
+        self,
+        stream: Stream,
+        tenant_id: UUID,
+    ) -> Dict[str, Any]:
+        """
+        Carga maxima del listado en chat: Helix (paginado) + IRC (~65s).
+        Es lo mas completo que permite Twitch (no hay API de viewers silenciosos).
+        """
+        stream = await sync_stream_live_status(self.db, stream)
+        meta = dict(stream.settings or {})
+        login = meta.get("login") or stream.channel_name.lower()
+        has_oauth = bool(stream.oauth_token_encrypted)
+
+        summary: Dict[str, Any] = {
+            "stream_id": str(stream.id),
+            "channel": stream.channel_name,
+            "is_live": stream.is_live,
+            "viewer_count": stream.viewer_count,
+            "chatters_synced": 0,
+            "suspected_count": 0,
+            "talking_count": 0,
+            "sync_mode": "full_viewers",
+            "has_broadcaster_oauth": has_oauth,
+            "attack_created": False,
+        }
+
+        if not stream.is_live:
+            summary["status"] = "offline"
+            summary["message"] = "El canal no esta en vivo"
+            return summary
+
+        helix_count = 0
+        if has_oauth:
+            try:
+                token = decrypt_value(stream.oauth_token_encrypted)
+                names = await self.helix.get_chatters(
+                    stream.external_id,
+                    stream.external_id,
+                    token,
+                )
+                helix_count = len(names)
+            except Exception as exc:
+                logger.warning("full_load_helix_failed", error=str(exc))
+                summary["helix_error"] = str(exc)[:200]
+
+        chatters_data, source = await self._fetch_chatters(
+            stream,
+            login,
+            irc_duration=50.0 if login else 0,
+        )
+        summary["helix_chatters"] = helix_count
+        summary["merged_chatters"] = len(chatters_data)
+        summary["source"] = source
+
+        if not chatters_data:
+            summary["status"] = "empty"
+            summary["message"] = (
+                "No se detectaron usuarios en chat. Si es canal ajeno, pide al streamer "
+                "que conecte Twitch (Invitar streamer en Channels) para listado Helix completo."
+            )
+            return summary
+
+        sync_stats = await self.viewers.sync_chat_presence(
+            stream.id,
+            chatters_data,
+            full_resync=True,
+        )
+        await self._screen_viewers_ai(stream, chatters_data, summary)
+        counts = await self.viewers.count_active(stream.id)
+        summary["chatters_synced"] = counts["total"]
+        summary["talking_count"] = counts["talking"]
+        summary["suspected_count"] = counts["suspected"]
+
+        silent = max(0, (stream.viewer_count or 0) - counts["total"])
+        summary["silent_viewers_estimate"] = silent
+        if stream.viewer_count and counts["total"]:
+            summary["chat_coverage_percent"] = round(
+                (counts["total"] / stream.viewer_count) * 100, 1
+            )
+
+        meta["last_full_viewer_load"] = datetime.now(timezone.utc).isoformat()
+        meta["last_monitor"] = meta["last_full_viewer_load"]
+        stream.settings = meta
+        await self.db.flush()
+
+        summary["status"] = "ok"
+        if has_oauth:
+            summary["message"] = (
+                f"Listado en chat: {counts['total']} usuarios "
+                f"(Twitch reporta {stream.viewer_count} viewers totales)."
+            )
+        else:
+            summary["message"] = (
+                f"Listado IRC: {counts['total']} en chat. Para listado Helix completo en canal ajeno, "
+                f"usa Invitar streamer en Channels."
+            )
+        if silent > 50:
+            summary["message"] += (
+                f" ~{silent} viewers no aparecen en chat (viewbots silenciosos o lurkers)."
+            )
+
+        from app.services.dashboard.metrics import get_tenant_stream_ids
+
+        stream_ids = await get_tenant_stream_ids(self.db, tenant_id)
+        await push_dashboard_realtime(self.db, tenant_id, stream_ids)
+        return summary
+
     async def run_quick_sync(
         self,
         stream: Stream,

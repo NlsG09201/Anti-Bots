@@ -19,7 +19,7 @@ function ViewersContent() {
   const [selectedStream, setSelectedStream] = useState(searchParams.get("stream") ?? "");
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
   const [message, setMessage] = useState("");
-  const lastQuickSyncStream = useRef<string | null>(null);
+  const lastFullLoadStream = useRef<string | null>(null);
 
   const { data: streams = [] } = useQuery({
     queryKey: ["streams"],
@@ -50,30 +50,34 @@ function ViewersContent() {
     refetchInterval: 15000,
   });
 
-  const quickSyncMutation = useMutation({
-    mutationFn: () => api.streams.syncQuick(token, streamId),
+  const fullLoadMutation = useMutation({
+    mutationFn: () => api.streams.loadFullViewers(token, streamId),
     onSuccess: (res) => {
-      if (res.status === "offline") return;
+      if (res.status === "offline") {
+        setMessage(res.message || "Canal offline");
+        return;
+      }
+      setViewFilter("all");
       setMessage(
-        res.note
-          ? res.note
-          : `Sincronizado: ${res.chatters_synced ?? 0} en chat · ${res.talking_count ?? 0} hablando · ${res.suspected_count ?? 0} sospechosos`,
+        res.message ||
+          `Listado: ${res.chatters_synced ?? 0} en chat / ${res.viewer_count ?? 0} viewers Twitch`,
       );
       queryClient.invalidateQueries({ queryKey: ["viewers"] });
       queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
     },
+    onError: (e: Error) => setMessage(e.message),
   });
 
   useEffect(() => {
-    if (!streamId || !currentStream?.is_live || quickSyncMutation.isPending) return;
-    if (lastQuickSyncStream.current === streamId) return;
-    lastQuickSyncStream.current = streamId;
-    quickSyncMutation.mutate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-sync once per stream when live
+    if (!streamId || !currentStream?.is_live || fullLoadMutation.isPending) return;
+    if (lastFullLoadStream.current === streamId) return;
+    lastFullLoadStream.current = streamId;
+    fullLoadMutation.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto load full list once per live stream
   }, [streamId, currentStream?.is_live]);
 
   useEffect(() => {
-    lastQuickSyncStream.current = null;
+    lastFullLoadStream.current = null;
   }, [streamId]);
 
   const aiScreenMutation = useMutation({
@@ -153,7 +157,7 @@ function ViewersContent() {
   const silentBots = monitorStatus?.silent_viewbots_estimate ?? 0;
   const proxyIps = monitorStatus?.proxy_ips_detected ?? 0;
   const activeAttacks = monitorStatus?.active_attacks ?? 0;
-  const syncing = quickSyncMutation.isPending;
+  const syncing = fullLoadMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -163,14 +167,29 @@ function ViewersContent() {
           Usuarios del stream
         </h1>
         <p className="text-cyber-muted text-sm mt-1 max-w-3xl">
-          Solo usuarios reales en el chat del stream (IRC/Helix). No se listan pings del widget ni
-          bots de Twitch (Nightbot, StreamElements, etc.). Viewers totales en Twitch:{" "}
+          Listado completo del chat del canal (Helix + IRC ~65s). Twitch no expone viewers
+          silenciosos por API — solo quien esta en la sala de chat. Viewers totales:{" "}
           <strong className="text-white">{twitchViewers || "—"}</strong>
+          {monitorStatus?.active_viewers_tracked != null && twitchViewers > 0 && (
+            <>
+              {" "}
+              · en chat: <strong className="text-cyber-accent">{totalInChat}</strong>
+            </>
+          )}
           {silentBots > 0 && (
             <>
               {" "}
-              · posibles viewbots silenciosos:{" "}
+              · no visibles en chat:{" "}
               <strong className="text-cyber-danger">~{silentBots}</strong>
+            </>
+          )}
+          {currentStream?.monitor_mode && !monitorStatus?.has_broadcaster_oauth && (
+            <>
+              {" "}
+              · <Link href="/dashboard/channels" className="text-cyber-accent hover:underline">
+                Invita al streamer
+              </Link>{" "}
+              para listado Helix completo en canal ajeno
             </>
           )}
         </p>
@@ -221,21 +240,21 @@ function ViewersContent() {
         </div>
         <button
           type="button"
-          disabled={!streamId || !currentStream?.is_live || quickSyncMutation.isPending}
-          onClick={() => quickSyncMutation.mutate()}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-cyber-border text-cyber-muted text-sm hover:text-white disabled:opacity-50"
+          disabled={!streamId || !currentStream?.is_live || fullLoadMutation.isPending}
+          onClick={() => fullLoadMutation.mutate()}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyber-accent/20 text-cyber-accent border border-cyber-accent/40 text-sm disabled:opacity-50"
         >
-          <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
-          {syncing ? "Sincronizando..." : "Resincronizar"}
+          <Users size={16} className={syncing ? "animate-spin" : ""} />
+          {syncing ? "Cargando listado (~50s)..." : "Cargar listado completo"}
         </button>
         <button
           type="button"
           disabled={!streamId || scanMutation.isPending}
           onClick={() => scanMutation.mutate()}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyber-accent/20 text-cyber-accent border border-cyber-accent/40 text-sm disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-cyber-border text-cyber-muted text-sm hover:text-white disabled:opacity-50"
         >
           <Scan size={16} />
-          {scanMutation.isPending ? "Escaneando (~55s)..." : "Escanear chat (hablantes + bots)"}
+          {scanMutation.isPending ? "Analizando..." : "Escanear + detectar ataques"}
         </button>
         <button
           type="button"
@@ -374,8 +393,8 @@ function ViewersContent() {
         {streamId && currentStream?.is_live && !isLoading && viewers.length === 0 && (
           <p className="text-center py-12 text-cyber-muted">
             {syncing
-              ? "Sincronizando usuarios del chat..."
-              : "Sin usuarios aun — pulsa Resincronizar o Escanear chat"}
+              ? "Cargando listado completo del stream..."
+              : "Sin usuarios — pulsa Cargar listado completo (canal en vivo)"}
           </p>
         )}
         {isLoading && (

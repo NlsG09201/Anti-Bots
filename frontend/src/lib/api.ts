@@ -240,6 +240,20 @@ export const api = {
         { method: "POST" },
         token,
       ),
+    loadFullViewers: (token: string, streamId: string) =>
+      request<{
+        status: string;
+        message?: string;
+        viewer_count?: number;
+        chatters_synced?: number;
+        talking_count?: number;
+        suspected_count?: number;
+        silent_viewers_estimate?: number;
+        chat_coverage_percent?: number;
+        has_broadcaster_oauth?: boolean;
+        source?: string;
+        helix_chatters?: number;
+      }>(`/api/v1/streams/${streamId}/viewers/load-full`, { method: "POST" }, token),
     syncQuick: (token: string, streamId: string) =>
       request<{
         status: string;
