@@ -21,12 +21,16 @@ WebSockets van **directo** al backend (Vercel no hace proxy de WS).
 
 ## Opcion B: API en Render
 
-1. Render → **Environment** → importar `deploy/render.import.env` → Save → Manual Deploy.
-2. Start Command (vacío o):  
-   `python scripts/render_check_env.py && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-3. Logs: `Preflight OK — starting uvicorn`.
-4. `curl https://anti-bots-api.onrender.com/health`
-5. Configura Vercel con esa URL.
+Guia completa: **[RENDER_VERCEL.md](RENDER_VERCEL.md)**
+
+```powershell
+cd deploy
+.\deploy-render.ps1
+```
+
+1. Pegar env en Render → Save → Manual Deploy  
+2. `curl https://anti-bots-api.onrender.com/health`  
+3. `.\vercel-conectar.ps1 -ApiUrl "https://anti-bots-api.onrender.com"` → Redeploy Vercel
 
 ---
 
