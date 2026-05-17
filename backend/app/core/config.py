@@ -114,6 +114,10 @@ class Settings(BaseSettings):
     maxmind_license_key: str = ""
     geoip_database_path: str = "/app/data/GeoLite2-City.mmdb"
 
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    ai_enabled: bool = True
+
     rate_limit_per_minute: int = 100
     rate_limit_burst: int = 20
     fail2ban_max_attempts: int = 5

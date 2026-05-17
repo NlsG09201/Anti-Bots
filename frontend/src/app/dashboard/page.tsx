@@ -1,42 +1,67 @@
-"use client";
+﻿"use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle, Shield, Ban, Bot, Users, Activity, Target,
 } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { AttackTimelineChart, RiskHeatmapChart } from "@/components/AttackChart";
+import type { HeatmapPoint, TimelinePoint } from "@/components/AttackChart";
 import { LiveAlerts } from "@/components/LiveAlerts";
-import { api, type Alert } from "@/lib/api";
+import { api, type Alert, type DashboardCharts, type DashboardStats } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { useState } from "react";
-
-const mockTimeline = Array.from({ length: 24 }, (_, i) => ({
-  time: `${i}:00`,
-  attacks: Math.floor(Math.random() * 15),
-  mitigated: Math.floor(Math.random() * 10),
-}));
-
-const mockHeatmap = Array.from({ length: 24 }, (_, i) => ({
-  hour: `${i}h`,
-  risk: Math.floor(Math.random() * 100),
-}));
 
 export default function DashboardPage() {
   const { accessToken } = useAuthStore();
+  const queryClient = useQueryClient();
   const [liveAlerts, setLiveAlerts] = useState<Alert[]>([]);
+  const [liveStats, setLiveStats] = useState<DashboardStats | null>(null);
+  const [liveCharts, setLiveCharts] = useState<DashboardCharts | null>(null);
+  const [chartHint, setChartHint] = useState<string | null>(null);
 
-  useWebSocket((msg) => {
-    if (msg.type === "alert" && msg.data) {
-      setLiveAlerts((prev) => [msg.data as unknown as Alert, ...prev].slice(0, 20));
-    }
-  });
+  const onWsMessage = useCallback(
+    (msg: { type: string; data?: Record<string, unknown> }) => {
+      if (msg.type === "alert" && msg.data) {
+        setLiveAlerts((prev) => [msg.data as unknown as Alert, ...prev].slice(0, 20));
+        queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      }
+      if (msg.type === "attack_detected") {
+        queryClient.invalidateQueries({ queryKey: ["attacks"] });
+      }
+      if (msg.type === "stats_update" && msg.data) {
+        const d = msg.data;
+        const chartsPayload = d.charts as DashboardCharts | undefined;
+        setLiveStats({
+          active_attacks: Number(d.active_attacks ?? 0),
+          total_alerts: Number(d.total_alerts ?? 0),
+          blocked_ips: Number(d.blocked_ips ?? 0),
+          suspected_bots: Number(d.suspected_bots ?? 0),
+          live_viewers: Number(d.live_viewers ?? 0),
+          risk_score_avg: Number(d.risk_score_avg ?? 0),
+          attacks_last_24h: Number(d.attacks_last_24h ?? 0),
+          mitigations_applied: Number(d.mitigations_applied ?? 0),
+        });
+        if (chartsPayload?.timeline) setLiveCharts(chartsPayload);
+      }
+    },
+    [queryClient],
+  );
+
+  useWebSocket(onWsMessage);
 
   const { data: stats } = useQuery({
     queryKey: ["dashboard-stats"],
     queryFn: () => api.dashboard.stats(accessToken!),
     enabled: !!accessToken,
+  });
+
+  const { data: charts } = useQuery({
+    queryKey: ["dashboard-charts"],
+    queryFn: () => api.dashboard.charts(accessToken!),
+    enabled: !!accessToken,
+    refetchInterval: 15000,
   });
 
   const { data: alerts = [] } = useQuery({
@@ -51,67 +76,63 @@ export default function DashboardPage() {
     enabled: !!accessToken,
   });
 
+  const displayStats = liveStats ?? stats;
+  const timeline: TimelinePoint[] = liveCharts?.timeline ?? charts?.timeline ?? [];
+  const heatmap: HeatmapPoint[] = liveCharts?.heatmap ?? charts?.heatmap ?? [];
   const displayAlerts = liveAlerts.length > 0 ? liveAlerts : alerts;
+
+  useEffect(() => {
+    if (charts && !liveCharts) setLiveCharts(charts);
+  }, [charts, liveCharts]);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Security Overview</h1>
-        <p className="text-cyber-muted text-sm mt-1">Real-time threat monitoring and bot detection</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Security Overview</h1>
+          <p className="text-cyber-muted text-sm mt-1">
+            GrÃ¡ficas en tiempo real Â· WebSocket + actualizaciÃ³n cada 15s
+          </p>
+        </div>
+        {charts?.updated_at && (
+          <p className="text-xs text-cyber-muted font-mono">
+            Datos: {new Date(charts.updated_at).toLocaleTimeString()}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Active Attacks"
-          value={stats?.active_attacks ?? 0}
-          icon={AlertTriangle}
-          variant="danger"
-        />
-        <StatCard
-          title="Open Alerts"
-          value={stats?.total_alerts ?? 0}
-          icon={Shield}
-          variant="warning"
-        />
-        <StatCard
-          title="Suspected Bots"
-          value={stats?.suspected_bots ?? 0}
-          icon={Bot}
-          variant="danger"
-        />
-        <StatCard
-          title="Live Viewers"
-          value={stats?.live_viewers ?? 0}
-          icon={Users}
-          variant="success"
-        />
-        <StatCard
-          title="Blocked IPs"
-          value={stats?.blocked_ips ?? 0}
-          icon={Ban}
-        />
-        <StatCard
-          title="Avg Risk Score"
-          value={`${(stats?.risk_score_avg ?? 0).toFixed(1)}`}
-          icon={Target}
-        />
-        <StatCard
-          title="Attacks (24h)"
-          value={stats?.attacks_last_24h ?? 0}
-          icon={Activity}
-        />
-        <StatCard
-          title="Mitigations"
-          value={stats?.mitigations_applied ?? 0}
-          icon={Shield}
-          variant="success"
-        />
+        <StatCard title="Active Attacks" value={displayStats?.active_attacks ?? 0} icon={AlertTriangle} variant="danger" />
+        <StatCard title="Open Alerts" value={displayStats?.total_alerts ?? 0} icon={Shield} variant="warning" />
+        <StatCard title="Suspected Bots" value={displayStats?.suspected_bots ?? 0} icon={Bot} variant="danger" />
+        <StatCard title="Live Viewers" value={displayStats?.live_viewers ?? 0} icon={Users} variant="success" />
+        <StatCard title="Blocked IPs" value={displayStats?.blocked_ips ?? 0} icon={Ban} />
+        <StatCard title="Avg Risk Score" value={`${(displayStats?.risk_score_avg ?? 0).toFixed(1)}`} icon={Target} />
+        <StatCard title="Attacks (24h)" value={displayStats?.attacks_last_24h ?? 0} icon={Activity} />
+        <StatCard title="Mitigations" value={displayStats?.mitigations_applied ?? 0} icon={Shield} variant="success" />
       </div>
+
+      {chartHint && (
+        <p className="text-xs text-cyber-accent border border-cyber-accent/30 rounded-lg px-3 py-2">{chartHint}</p>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 cyber-card">
-          <h3 className="text-sm font-medium text-cyber-muted mb-4">Attack Timeline (24h)</h3>
-          <AttackTimelineChart data={mockTimeline} />
+          <h3 className="text-sm font-medium text-cyber-muted mb-4">
+            Attack Timeline (24h) â€” clic y brush para explorar
+          </h3>
+          {timeline.length ? (
+            <AttackTimelineChart
+              data={timeline}
+              onTimeSelect={(p) =>
+                setChartHint(`${p.time}: ${p.attacks} ataques, ${p.mitigated} mitigados`)
+              }
+            />
+          ) : (
+            <p className="text-cyber-muted text-sm py-16 text-center">
+              Sin datos aÃºn â€” ingesta eventos o monitorea un canal
+            </p>
+          )}
         </div>
         <div className="cyber-card">
           <h3 className="text-sm font-medium text-cyber-muted mb-4">Live Alerts</h3>
@@ -121,8 +142,17 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="cyber-card">
-          <h3 className="text-sm font-medium text-cyber-muted mb-4">Risk Heatmap by Hour</h3>
-          <RiskHeatmapChart data={mockHeatmap} />
+          <h3 className="text-sm font-medium text-cyber-muted mb-4">Risk Heatmap by Hour â€” clic en barra</h3>
+          {heatmap.length ? (
+            <RiskHeatmapChart
+              data={heatmap}
+              onHourSelect={(p) =>
+                setChartHint(`${p.hour}: riesgo ${p.risk} Â· ${p.events ?? 0} eventos`)
+              }
+            />
+          ) : (
+            <p className="text-cyber-muted text-sm py-12 text-center">Sin eventos en las Ãºltimas 24h</p>
+          )}
         </div>
         <div className="cyber-card">
           <h3 className="text-sm font-medium text-cyber-muted mb-4">Active Attacks</h3>

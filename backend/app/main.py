@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, ORJSONResponse
 from prometheus_client import Counter, Histogram, generate_latest
 from starlette.responses import Response
 
-from app.api.v1 import auth, attacks, detection, mfa, streams, twitch_integration, users, webhooks
+from app.api.v1 import auth, attacks, ai_insights, detection, mfa, streams, twitch_integration, users, webhooks
 from app.api.websocket import routes as ws_routes
 from app.core.config import get_settings, invalidate_settings_cache
 from app.core.exceptions import StreamShieldError
@@ -92,6 +92,7 @@ app.include_router(users.router, prefix=API_PREFIX)
 app.include_router(streams.router, prefix=API_PREFIX)
 app.include_router(attacks.router, prefix=API_PREFIX)
 app.include_router(detection.router, prefix=API_PREFIX)
+app.include_router(ai_insights.router, prefix=API_PREFIX)
 app.include_router(webhooks.router, prefix=API_PREFIX)
 app.include_router(ws_routes.router)
 

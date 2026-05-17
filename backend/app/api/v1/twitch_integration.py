@@ -127,6 +127,9 @@ async def twitch_callback(
         stream.oauth_token_encrypted = encrypt_value(access_token)
         meta = stream.settings or {}
         meta["refresh_token_encrypted"] = encrypt_value(refresh_token) if refresh_token else None
+        meta["monitor_mode"] = False
+        meta["is_owned"] = True
+        meta["auto_mitigate"] = True
         stream.settings = meta
     else:
         stream = Stream(
@@ -139,6 +142,9 @@ async def twitch_callback(
             settings={
                 "refresh_token_encrypted": encrypt_value(refresh_token) if refresh_token else None,
                 "login": login,
+                "monitor_mode": False,
+                "is_owned": True,
+                "auto_mitigate": True,
             },
         )
         db.add(stream)

@@ -20,6 +20,7 @@ router = APIRouter(tags=["Attacks & Security"])
 async def list_attacks(
     current_user: CurrentUser,
     status: Optional[str] = Query(None),
+    stream_id: Optional[UUID] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     query = (
@@ -31,6 +32,8 @@ async def list_attacks(
     )
     if status:
         query = query.where(Attack.status == status)
+    if stream_id:
+        query = query.where(Attack.stream_id == stream_id)
     result = await db.execute(query)
     return result.scalars().all()
 

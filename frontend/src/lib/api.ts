@@ -164,21 +164,27 @@ export const api = {
       ),
   },
   dashboard: {
-    stats: (token: string) =>
-      request<{
-        active_attacks: number;
-        total_alerts: number;
-        blocked_ips: number;
-        suspected_bots: number;
-        live_viewers: number;
-        risk_score_avg: number;
-        attacks_last_24h: number;
-        mitigations_applied: number;
-      }>("/api/v1/streams/dashboard/stats", {}, token),
+    stats: (token: string, streamId?: string) =>
+      request<DashboardStats>(
+        `/api/v1/streams/dashboard/stats${streamId ? `?stream_id=${streamId}` : ""}`,
+        {},
+        token,
+      ),
+    charts: (token: string, streamId?: string) =>
+      request<DashboardCharts>(
+        `/api/v1/streams/dashboard/charts${streamId ? `?stream_id=${streamId}` : ""}`,
+        {},
+        token,
+      ),
   },
   attacks: {
-    list: (token: string, status?: string) =>
-      request<Attack[]>(`/api/v1/attacks${status ? `?status=${status}` : ""}`, {}, token),
+    list: (token: string, status?: string, streamId?: string) => {
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (streamId) params.set("stream_id", streamId);
+      const q = params.toString();
+      return request<Attack[]>(`/api/v1/attacks${q ? `?${q}` : ""}`, {}, token);
+    },
     mitigate: (token: string, attackId: string, data: object) =>
       request(`/api/v1/attacks/${attackId}/mitigate`, {
         method: "POST",
@@ -200,9 +206,29 @@ export const api = {
     list: (token: string) => request<SuspiciousIP[]>("/api/v1/ips", {}, token),
   },
   streams: {
-    list: (token: string) => request<Stream[]>("/api/v1/streams", {}, token),
+    list: (token: string, sync = false) =>
+      request<Stream[]>(`/api/v1/streams${sync ? "?sync=true" : ""}`, {}, token),
+    watch: (token: string, login: string) =>
+      request<Stream>("/api/v1/streams/watch", {
+        method: "POST",
+        body: JSON.stringify({ login, platform: "twitch" }),
+      }, token),
+    unwatch: (token: string, streamId: string) =>
+      request<{ status: string }>(`/api/v1/streams/watch/${streamId}`, { method: "DELETE" }, token),
+    sync: (token: string, streamId: string) =>
+      request<Stream>(`/api/v1/streams/${streamId}/sync`, { method: "POST" }, token),
+    ingestEvent: (token: string, streamId: string, body: object) =>
+      request<{ event_id: string; risk_score: number; attack_created: boolean }>(
+        `/api/v1/streams/${streamId}/events`,
+        { method: "POST", body: JSON.stringify(body) },
+        token,
+      ),
     viewers: (token: string, streamId: string) =>
       request<Viewer[]>(`/api/v1/streams/${streamId}/viewers`, {}, token),
+  },
+  ai: {
+    attackInsight: (token: string, attackId: string) =>
+      request<AIInsight>(`/api/v1/ai/attacks/${attackId}/insight`, {}, token),
   },
   mfa: {
     status: (token: string) =>
@@ -309,12 +335,42 @@ export interface SuspiciousIP {
   country_code: string;
 }
 
+export interface DashboardStats {
+  active_attacks: number;
+  total_alerts: number;
+  blocked_ips: number;
+  suspected_bots: number;
+  live_viewers: number;
+  risk_score_avg: number;
+  attacks_last_24h: number;
+  mitigations_applied: number;
+}
+
+export interface DashboardCharts {
+  timeline: { time: string; attacks: number; mitigated: number }[];
+  heatmap: { hour: string; risk: number; events: number }[];
+  updated_at: string;
+}
+
+export interface AIInsight {
+  summary: string;
+  severity_assessment: string;
+  recommended_action: string;
+  recommendation: string;
+  confidence: number;
+  source: string;
+}
+
 export interface Stream {
   id: string;
   platform: string;
+  external_id?: string;
   channel_name: string;
   is_live: boolean;
   viewer_count: number;
+  monitor_mode?: boolean;
+  is_owned?: boolean;
+  login?: string;
 }
 
 export interface TenantUser {

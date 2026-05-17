@@ -4,13 +4,13 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { useAuthStore } from "@/stores/authStore";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { Wifi, WifiOff } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
-  const { connected } = useWebSocket();
+  const { connected } = useWebSocketContext();
 
   useEffect(() => {
     if (!isAuthenticated()) {

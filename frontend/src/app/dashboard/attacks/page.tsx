@@ -1,17 +1,21 @@
 "use client";
 
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Attack } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 import clsx from "clsx";
 
-export default function AttacksPage() {
+function AttacksContent() {
   const { accessToken } = useAuthStore();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const streamId = searchParams.get("stream") ?? undefined;
 
   const { data: attacks = [], isLoading } = useQuery({
-    queryKey: ["attacks-all"],
-    queryFn: () => api.attacks.list(accessToken!),
+    queryKey: ["attacks-all", streamId],
+    queryFn: () => api.attacks.list(accessToken!, undefined, streamId),
     enabled: !!accessToken,
   });
 
@@ -26,6 +30,14 @@ export default function AttacksPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-white">Attack Monitor</h1>
+      {streamId && (
+        <p className="text-sm text-cyber-muted">
+          Filtrado por canal ·{" "}
+          <a href="/dashboard/attacks" className="text-cyber-accent hover:underline">
+            ver todos
+          </a>
+        </p>
+      )}
 
       <div className="cyber-card overflow-x-auto">
         <table className="w-full text-sm">
@@ -36,6 +48,7 @@ export default function AttacksPage() {
               <th className="text-left py-3 px-2">Status</th>
               <th className="text-right py-3 px-2">Risk</th>
               <th className="text-right py-3 px-2">Confidence</th>
+              <th className="text-left py-3 px-2">IA</th>
               <th className="text-left py-3 px-2">Correlation ID</th>
               <th className="text-right py-3 px-2">Actions</th>
             </tr>
@@ -52,6 +65,11 @@ export default function AttacksPage() {
                 <td className="py-3 px-2 text-cyber-muted">{attack.status}</td>
                 <td className="py-3 px-2 text-right font-mono text-cyber-danger">{attack.risk_score.toFixed(1)}</td>
                 <td className="py-3 px-2 text-right font-mono">{(attack.confidence * 100).toFixed(0)}%</td>
+                <td className="py-3 px-2 text-xs text-cyber-muted max-w-[200px] truncate" title={
+                  String((attack.evidence?.ai_insight as { summary?: string })?.summary ?? "")
+                }>
+                  {(attack.evidence?.ai_insight as { summary?: string })?.summary?.slice(0, 60) ?? "—"}
+                </td>
                 <td className="py-3 px-2 font-mono text-xs text-cyber-muted">{attack.correlation_id.slice(0, 12)}...</td>
                 <td className="py-3 px-2 text-right">
                   {attack.status === "active" && (
@@ -74,5 +92,13 @@ export default function AttacksPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AttacksPage() {
+  return (
+    <Suspense fallback={<p className="text-cyber-muted p-6">Cargando ataques...</p>}>
+      <AttacksContent />
+    </Suspense>
   );
 }

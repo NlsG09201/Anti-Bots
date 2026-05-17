@@ -76,8 +76,43 @@ class StreamResponse(BaseModel):
     is_live: bool
     viewer_count: int
     created_at: datetime
+    monitor_mode: bool = False
+    is_owned: bool = True
+    login: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class StreamWatchRequest(BaseModel):
+    login: str = Field(..., min_length=2, max_length=50)
+    platform: Platform = Platform.TWITCH
+
+
+class TimelinePoint(BaseModel):
+    time: str
+    attacks: int
+    mitigated: int
+
+
+class HeatmapPoint(BaseModel):
+    hour: str
+    risk: int
+    events: int = 0
+
+
+class DashboardCharts(BaseModel):
+    timeline: List[TimelinePoint]
+    heatmap: List[HeatmapPoint]
+    updated_at: str
+
+
+class AIInsightResponse(BaseModel):
+    summary: str
+    severity_assessment: str
+    recommended_action: str
+    recommendation: str
+    confidence: float
+    source: str
 
 
 class FingerprintSubmit(BaseModel):
