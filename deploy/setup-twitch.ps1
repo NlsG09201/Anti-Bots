@@ -13,15 +13,15 @@ if (-not (Test-Path $renderEnv)) {
     Write-Error "Falta deploy/render.env"
 }
 
-if (-not $ClientId) {
+if (-not $ClientSecret) {
     Write-Host ""
     Write-Host "=== Twitch Developer Console ===" -ForegroundColor Cyan
-    Write-Host "1. https://dev.twitch.tv/console/apps -> Register App"
-    Write-Host "2. OAuth Redirect URL:"
+    Write-Host "1. https://dev.twitch.tv/console/apps"
+    Write-Host "2. OAuth Redirect URL (exacta):"
     Write-Host "   https://anti-bots.onrender.com/api/v1/integrations/twitch/callback" -ForegroundColor Green
-    Write-Host "3. Client ID y Client Secret deben ser DIFERENTES" -ForegroundColor Yellow
+    Write-Host "3. Client Secret != Client ID (New Secret si hace falta)" -ForegroundColor Yellow
     Write-Host ""
-    $ClientId = (Read-Host "Client ID").Trim()
+    if (-not $ClientId) { $ClientId = (Read-Host "Client ID").Trim() }
     $ClientSecret = (Read-Host "Client Secret").Trim()
 }
 
