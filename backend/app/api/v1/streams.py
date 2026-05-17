@@ -42,6 +42,7 @@ from app.services.detection.engine import BotDetectionEngine, EventBatch
 from app.services.mitigation.service import MitigationService
 from app.services.realtime.notify import push_dashboard_realtime
 from app.services.reputation.service import ReputationService
+from app.services.ingest.event_ingest import process_stream_event
 from app.services.monitoring.channel_monitor import ChannelMonitorService
 from app.services.streams.helpers import (
     stream_auto_mitigate,
@@ -318,159 +319,14 @@ async def ingest_event(
     db: AsyncSession = Depends(get_db),
 ):
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
-    correlation = CorrelationService(db)
-    reputation_svc = ReputationService(db)
-
-    ip_data = {}
-    if event.ip_address:
-        ip_data = await reputation_svc.enrich_ip(event.ip_address)
-
-    fp_risk = 0.0
-    if event.fingerprint_hash:
-        fp_risk = event.metadata.get("fingerprint_risk", 0.0)
-
-    ip_result = detection_engine.analyze_ip(ip_data) if ip_data else None
-    pattern_score = 0.0
-    if event.event_type == "viewer_join":
-        vb = detection_engine.analyze_viewbot_pattern(
-            EventBatch(
-                stream_id=str(stream.id),
-                events=[{
-                    "ip_address": event.ip_address,
-                    "fingerprint_hash": event.fingerprint_hash,
-                    "timestamp": event.metadata.get("timestamp"),
-                }],
-            )
-        )
-        if vb.is_threat:
-            pattern_score = vb.risk_score
-    risk_score = max(
-        ip_result.risk_score if ip_result else 0.0,
-        fp_risk,
-        pattern_score,
-    )
-
-    stream_event = StreamEvent(
-        stream_id=stream.id,
-        event_type=event.event_type,
-        platform_user_id=event.platform_user_id,
-        platform_username=event.platform_username,
-        ip_address=event.ip_address,
-        fingerprint_hash=event.fingerprint_hash,
-        asn=ip_data.get("asn") if ip_data else None,
-        country_code=ip_data.get("country_code") if ip_data else None,
-        is_proxy=ip_data.get("is_proxy", False),
-        is_vpn=ip_data.get("is_vpn", False),
-        is_tor=ip_data.get("is_tor", False),
-        is_datacenter=ip_data.get("is_datacenter", False),
-        risk_score=risk_score,
-        event_metadata=event.metadata,
-        correlation_id=correlation.generate_correlation_id(),
-    )
-    db.add(stream_event)
-    await db.flush()
-
-    viewer_svc = ViewerSessionService(db)
-    await viewer_svc.upsert_from_event(
-        stream.id,
-        event.platform_username,
-        event.platform_user_id,
-        event.ip_address,
-        event.fingerprint_hash,
-        risk_score,
-        event.event_type,
-    )
-
-    attack_payload = None
-    alert_payload = None
-
-    if risk_score >= 50.0:
-        attack_type_map = {
-            "viewer_join": AttackType.VIEWBOT,
-            "follow": AttackType.FOLLOWBOT,
-            "chat_message": AttackType.SPAM,
-        }
-        attack_type = attack_type_map.get(event.event_type, AttackType.COORDINATED)
-        evidence = {"event_id": str(stream_event.id), **(ip_result.evidence if ip_result else {})}
-
-        ai_insight = await ai_service.analyze_threat(
-            attack_type.value,
-            risk_score,
-            stream.channel_name,
-            evidence,
-            monitor_mode=stream_monitor_mode(stream),
-        )
-        evidence["ai_insight"] = ai_insight
-
-        attack = await correlation.create_attack_record(
-            stream_id=stream.id,
-            attack_type=attack_type,
-            risk_score=risk_score,
-            confidence=ip_result.confidence if ip_result else 0.5,
-            evidence=evidence,
-            source_ips=[event.ip_address] if event.ip_address else [],
-            fingerprints=[event.fingerprint_hash] if event.fingerprint_hash else [],
-            correlation_id=stream_event.correlation_id,
-        )
-        alert = await correlation.create_alert(
-            tenant_id=current_user.tenant_id,
-            attack=attack,
-            title=f"Threat detected: {attack_type.value}",
-            message=ai_insight.get("summary", f"Risk {risk_score:.1f} on {stream.channel_name}"),
-        )
-
-        attack_payload = {
-            "id": str(attack.id),
-            "attack_type": attack.attack_type.value,
-            "severity": attack.severity.value,
-            "risk_score": attack.risk_score,
-            "stream_id": str(stream.id),
-            "channel_name": stream.channel_name,
-            "ai_insight": ai_insight,
-        }
-        alert_payload = {
-            "id": str(alert.id),
-            "title": alert.title,
-            "message": alert.message,
-            "severity": alert.severity.value,
-            "status": alert.status,
-            "created_at": alert.created_at.isoformat(),
-        }
-
-        if risk_score >= 70.0 and stream_auto_mitigate(stream):
-            mitigation = MitigationService(db)
-            targets = []
-            if event.platform_user_id:
-                targets.append({"type": "user", "value": event.platform_user_id})
-            if event.ip_address:
-                targets.append({"type": "ip", "value": event.ip_address})
-            if event.fingerprint_hash:
-                targets.append({"type": "fingerprint", "value": event.fingerprint_hash})
-            await mitigation.progressive_mitigation(
-                stream_id=stream.id,
-                tenant_id=current_user.tenant_id,
-                attack_id=attack.id,
-                risk_score=risk_score,
-                threat_type=attack_type.value,
-                targets=targets,
-                evidence=attack.evidence,
-            )
-
-    tenant_streams = await get_tenant_stream_ids(db, current_user.tenant_id)
-    await push_dashboard_realtime(
+    result = await process_stream_event(
         db,
+        stream,
         current_user.tenant_id,
-        tenant_streams,
-        alert=alert_payload,
-        attack=attack_payload,
+        event,
+        source="api",
     )
-
-    return {
-        "event_id": str(stream_event.id),
-        "risk_score": risk_score,
-        "attack_created": attack_payload is not None,
-        "ai_insight": attack_payload.get("ai_insight") if attack_payload else None,
-    }
+    return result
 
 
 @router.get("/{stream_id}/viewers", response_model=List[ViewerSessionResponse])

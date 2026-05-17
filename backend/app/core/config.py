@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     app_port: int = 8000
     app_cors_origins: str = "http://localhost:3000"
     app_frontend_url: str = "http://localhost:3000"
+    app_public_url: str = "http://localhost:8000"
 
     database_url: str = "postgresql+asyncpg://streamshield:streamshield_secure_password@localhost:5432/streamshield"
     redis_url: str = "redis://:redis_secure_password@localhost:6379/0"

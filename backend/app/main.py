@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse, ORJSONResponse
 from prometheus_client import Counter, Histogram, generate_latest
 from starlette.responses import Response
 
-from app.api.v1 import auth, attacks, ai_insights, detection, mfa, streams, twitch_integration, users, webhooks
+from app.api.v1 import auth, attacks, ai_insights, detection, mfa, streams, twitch_integration, users, webhooks, widget
 from app.api.websocket import routes as ws_routes
 from app.core.config import get_settings, invalidate_settings_cache
 from app.core.exceptions import StreamShieldError
@@ -112,9 +112,10 @@ if settings.is_production:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Stream-Key"],
     expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining"],
     max_age=3600,
 )
@@ -130,6 +131,7 @@ app.include_router(mfa.router, prefix=API_PREFIX)
 app.include_router(twitch_integration.router, prefix=API_PREFIX)
 app.include_router(users.router, prefix=API_PREFIX)
 app.include_router(streams.router, prefix=API_PREFIX)
+app.include_router(widget.router, prefix=API_PREFIX)
 app.include_router(attacks.router, prefix=API_PREFIX)
 app.include_router(detection.router, prefix=API_PREFIX)
 app.include_router(ai_insights.router, prefix=API_PREFIX)

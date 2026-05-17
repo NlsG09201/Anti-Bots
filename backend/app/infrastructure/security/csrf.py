@@ -18,6 +18,7 @@ CSRF_EXEMPT_PATHS = {
     "/redoc",
     "/api/v1/webhooks",
     "/api/v1/integrations/twitch/callback",
+    "/api/v1/widget",
 }
 
 

@@ -275,6 +275,22 @@ export const api = {
         channel_login: string;
         oauth_start_url: string;
       }>(`/api/v1/streams/${streamId}/channel-invite`, { method: "POST" }, token),
+    widgetEmbed: (token: string, streamId: string) =>
+      request<{
+        stream: Stream;
+        ingest_key: string;
+        script_url: string;
+        api_url: string;
+        embed_html: string;
+        obs_browser_source_html: string;
+        instructions: string[];
+      }>(`/api/v1/streams/${streamId}/widget/embed`, {}, token),
+    widgetRegenerateKey: (token: string, streamId: string) =>
+      request<{ ingest_key: string; status: string }>(
+        `/api/v1/streams/${streamId}/widget/key`,
+        { method: "POST" },
+        token,
+      ),
     blockViewer: (
       token: string,
       streamId: string,

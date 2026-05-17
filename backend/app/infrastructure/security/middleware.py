@@ -43,6 +43,8 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if request.url.path in ("/health", "/metrics", "/docs", "/openapi.json"):
             return await call_next(request)
+        if request.url.path.startswith("/api/v1/widget"):
+            return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
         identifier = f"{client_ip}:{request.url.path}"
