@@ -123,6 +123,8 @@ NEXT_PUBLIC_WS_URL=wss://${ApiDomain}
 "@
 Set-Clipboard -Value $vercelBlock.Trim()
 
+Write-Host "Ejecuta tambien: deploy\vercel-conectar.ps1 -ApiUrl https://${ApiDomain}" -ForegroundColor DarkGray
+
 Write-Host ""
 Write-Host "=== Listo ===" -ForegroundColor Green
 Write-Host "Vercel (copiado al portapapeles):" -ForegroundColor Cyan
