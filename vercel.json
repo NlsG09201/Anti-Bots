@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "cd frontend && npm install",
-  "buildCommand": "cd frontend && npm run build"
+  "buildCommand": "cd frontend && npm run build",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://anti-bots-api.onrender.com/api/:path*"
+    }
+  ]
 }
