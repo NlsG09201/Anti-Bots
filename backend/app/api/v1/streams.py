@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
 from app.api.v1.schemas import (
+    BlockViewerRequest,
     DashboardCharts,
     DashboardStats,
     EventIngest,
@@ -37,12 +39,14 @@ from app.services.detection.engine import BotDetectionEngine, EventBatch
 from app.services.mitigation.service import MitigationService
 from app.services.realtime.notify import push_dashboard_realtime
 from app.services.reputation.service import ReputationService
+from app.services.monitoring.channel_monitor import ChannelMonitorService
 from app.services.streams.helpers import (
     stream_auto_mitigate,
     stream_monitor_mode,
     stream_to_response_dict,
     sync_stream_live_status,
 )
+from app.services.viewers.session import ViewerSessionService
 
 router = APIRouter(prefix="/streams", tags=["Streams"])
 detection_engine = BotDetectionEngine()
@@ -160,12 +164,65 @@ async def sync_stream(
     stream_id: UUID,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
+    deep: bool = Query(False, description="Escaneo IRC/chatters + deteccion (~30s)"),
 ):
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
-    stream = await sync_stream_live_status(db, stream)
-    tenant_streams = await get_tenant_stream_ids(db, current_user.tenant_id)
-    await push_dashboard_realtime(db, current_user.tenant_id, tenant_streams)
+    if deep and stream.is_live:
+        await ChannelMonitorService(db).run_cycle(stream, current_user.tenant_id)
+    else:
+        stream = await sync_stream_live_status(db, stream)
+        tenant_streams = await get_tenant_stream_ids(db, current_user.tenant_id)
+        await push_dashboard_realtime(db, current_user.tenant_id, tenant_streams)
+    await db.refresh(stream)
     return _as_stream_response(stream)
+
+
+@router.post("/{stream_id}/monitor")
+async def run_channel_monitor(
+    stream_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Escaneo en vivo: chat IRC o Helix chatters + deteccion de ataque."""
+    stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    if not stream.is_live:
+        stream = await sync_stream_live_status(db, stream)
+    if not stream.is_live:
+        return {"status": "offline", "message": "El canal no esta en vivo"}
+    summary = await ChannelMonitorService(db).run_cycle(stream, current_user.tenant_id)
+    return {"status": "ok", **summary}
+
+
+@router.get("/{stream_id}/monitor/status")
+async def monitor_status(
+    stream_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    meta = stream.settings or {}
+    viewer_svc = ViewerSessionService(db)
+    suspected = await viewer_svc.list_active(stream.id, suspected_only=True)
+    active = await viewer_svc.list_active(stream.id, suspected_only=False, limit=500)
+    attacks = await db.execute(
+        select(Attack).where(
+            Attack.stream_id == stream.id,
+            Attack.status == "active",
+        )
+    )
+    return {
+        "is_live": stream.is_live,
+        "viewer_count": stream.viewer_count,
+        "last_monitor": meta.get("last_monitor"),
+        "viewer_history": meta.get("viewer_history", [])[-12:],
+        "active_viewers_tracked": len(active),
+        "suspected_bots": len(suspected),
+        "active_attacks": len(attacks.scalars().all()),
+        "monitor_mode": stream_monitor_mode(stream),
+        "note": (
+            "Lista usuarios en chat (IRC/Helix). Los viewbots silenciosos se detectan por picos de viewers."
+        ),
+    }
 
 
 @router.get("", response_model=List[StreamResponse])
@@ -254,6 +311,17 @@ async def ingest_event(
     )
     db.add(stream_event)
     await db.flush()
+
+    viewer_svc = ViewerSessionService(db)
+    await viewer_svc.upsert_from_event(
+        stream.id,
+        event.platform_username,
+        event.platform_user_id,
+        event.ip_address,
+        event.fingerprint_hash,
+        risk_score,
+        event.event_type,
+    )
 
     attack_payload = None
     alert_payload = None
@@ -351,16 +419,121 @@ async def ingest_event(
 async def list_viewers(
     stream_id: UUID,
     current_user: CurrentUser,
+    suspected_only: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ):
     await _get_stream(db, stream_id, current_user.tenant_id)
+    svc = ViewerSessionService(db)
+    return await svc.list_active(stream_id, suspected_only=suspected_only)
+
+
+@router.post("/{stream_id}/viewers/{viewer_id}/block")
+async def block_viewer(
+    stream_id: UUID,
+    viewer_id: UUID,
+    body: BlockViewerRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.security import decrypt_value
+    from app.integrations.twitch.moderation import ban_user_on_twitch
+    from app.infrastructure.database.models import MitigationAction
+
+    stream = await _get_stream(db, stream_id, current_user.tenant_id)
     result = await db.execute(
         select(ViewerSession).where(
-            ViewerSession.stream_id == stream_id,
-            ViewerSession.is_active == True,
-        ).order_by(ViewerSession.risk_score.desc())
+            ViewerSession.id == viewer_id,
+            ViewerSession.stream_id == stream.id,
+        )
     )
-    return result.scalars().all()
+    session = result.scalar_one_or_none()
+    if not session:
+        raise NotFoundError("Viewer session")
+
+    user_target = session.platform_user_id or session.platform_username or ""
+    targets = [{"type": "user", "value": user_target}]
+    if session.ip_address and session.ip_address != "twitch:chat":
+        targets.append({"type": "ip", "value": session.ip_address})
+
+    mitigation = MitigationService(db)
+    attack_result = await db.execute(
+        select(Attack).where(
+            Attack.stream_id == stream.id,
+            Attack.status == "active",
+        ).order_by(Attack.created_at.desc()).limit(1)
+    )
+    attack = attack_result.scalar_one_or_none()
+    attack_id = attack.id if attack else None
+
+    if attack_id:
+        await mitigation.apply_mitigation(
+            stream_id=stream.id,
+            tenant_id=current_user.tenant_id,
+            attack_id=attack_id,
+            action=MitigationAction.TIMEOUT if stream_monitor_mode(stream) else MitigationAction.BAN,
+            targets=targets,
+            evidence={
+                "blocked_viewer": session.platform_username,
+                "risk_score": session.risk_score,
+                "reason": body.reason,
+            },
+            duration_hours=body.duration_hours,
+        )
+        if attack:
+            attack.status = "mitigated"
+    else:
+        from app.infrastructure.database.models import Ban
+        for t in targets:
+            db.add(Ban(
+                stream_id=stream.id,
+                tenant_id=current_user.tenant_id,
+                target_type=t["type"],
+                target_value=t["value"],
+                reason=body.reason,
+                ban_type="timeout" if stream_monitor_mode(stream) else "ban",
+                is_automated=False,
+                created_by=current_user.id,
+            ))
+
+    twitch_result = None
+    can_twitch = (
+        body.apply_twitch_ban
+        and stream.oauth_token_encrypted
+        and not stream_monitor_mode(stream)
+        and session.platform_user_id
+        and session.platform_user_id.isdigit()
+    )
+    if can_twitch:
+        token = decrypt_value(stream.oauth_token_encrypted)
+        twitch_result = await ban_user_on_twitch(
+            stream.external_id,
+            token,
+            session.platform_user_id,
+            reason=body.reason,
+            duration_seconds=(body.duration_hours or 24) * 3600,
+        )
+
+    session.is_active = False
+    session.left_at = datetime.now(timezone.utc)
+    await db.flush()
+
+    tenant_streams = await get_tenant_stream_ids(db, current_user.tenant_id)
+    await push_dashboard_realtime(db, current_user.tenant_id, tenant_streams)
+
+    return {
+        "blocked": True,
+        "username": session.platform_username,
+        "twitch_ban": twitch_result,
+        "local_only": stream_monitor_mode(stream) or not can_twitch,
+        "message": (
+            "Bloqueo registrado en StreamShield."
+            + (
+                " En canal ajeno no se puede banear en Twitch sin permisos del broadcaster."
+                if stream_monitor_mode(stream)
+                else ""
+            )
+        ),
+    }
 
 
 @router.get("/dashboard/stats", response_model=DashboardStats)

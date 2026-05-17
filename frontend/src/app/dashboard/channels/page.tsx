@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, Plus, RefreshCw, Trash2, Zap, Tv } from "lucide-react";
+import { Eye, Plus, RefreshCw, Trash2, Users, Tv, Radio } from "lucide-react";
 import Link from "next/link";
 import { api, type Stream } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
@@ -13,6 +13,7 @@ export default function ChannelsPage() {
   const queryClient = useQueryClient();
   const [login, setLogin] = useState("");
   const [message, setMessage] = useState("");
+  const [scanningId, setScanningId] = useState<string | null>(null);
 
   const { data: streams = [], isLoading } = useQuery({
     queryKey: ["streams", "sync"],
@@ -24,42 +25,36 @@ export default function ChannelsPage() {
   const watchMutation = useMutation({
     mutationFn: () => api.streams.watch(token, login.trim()),
     onSuccess: () => {
-      setMessage(`Canal @${login} anadido en modo monitoreo`);
+      setMessage(`Canal @${login} en monitoreo. Abre Viewers y pulsa Escanear cuando este en vivo.`);
       setLogin("");
       queryClient.invalidateQueries({ queryKey: ["streams"] });
     },
     onError: (e: Error) => setMessage(e.message),
   });
 
-  const syncMutation = useMutation({
-    mutationFn: (id: string) => api.streams.sync(token, id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["streams"] }),
+  const monitorMutation = useMutation({
+    mutationFn: (id: string) => api.streams.monitor(token, id),
+    onMutate: (id) => setScanningId(id),
+    onSettled: () => setScanningId(null),
+    onSuccess: (res, id) => {
+      const ch = streams.find((s) => s.id === id)?.channel_name ?? "";
+      setMessage(
+        res.status === "offline"
+          ? `${ch} esta offline`
+          : `${ch}: ${res.chatters_synced ?? 0} en chat, ${res.suspected_count ?? 0} sospechosos${
+              res.attack_created ? " — revisa Ataques" : ""
+            }`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["streams"] });
+      queryClient.invalidateQueries({ queryKey: ["viewers"] });
+      queryClient.invalidateQueries({ queryKey: ["attacks"] });
+    },
+    onError: (e: Error) => setMessage(e.message),
   });
 
   const unwatchMutation = useMutation({
     mutationFn: (id: string) => api.streams.unwatch(token, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["streams"] }),
-  });
-
-  const simulateMutation = useMutation({
-    mutationFn: (stream: Stream) =>
-      api.streams.ingestEvent(token, stream.id, {
-        event_type: "viewer_join",
-        platform_username: `test_bot_${Date.now() % 1000}`,
-        ip_address: `203.0.113.${Math.floor(Math.random() * 200) + 1}`,
-        fingerprint_hash: `fp_${Date.now().toString(16)}`,
-        metadata: { fingerprint_risk: 55 + Math.random() * 30, simulated: true },
-      }),
-    onSuccess: (res) => {
-      setMessage(
-        res.attack_created
-          ? "Evento simulado: ataque detectado (revisa el dashboard)"
-          : `Evento simulado: riesgo ${res.risk_score.toFixed(0)}`,
-      );
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-charts"] });
-    },
-    onError: (e: Error) => setMessage(e.message),
   });
 
   const owned = streams.filter((s) => !s.monitor_mode);
@@ -70,7 +65,7 @@ export default function ChannelsPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">Canales</h1>
         <p className="text-cyber-muted text-sm mt-1">
-          Tu canal (OAuth) y otros canales en modo observacion para pruebas reales
+          Observa otros streams en vivo: chat real, sospechosos y deteccion de ataques (sin simulacion)
         </p>
       </div>
 
@@ -83,15 +78,16 @@ export default function ChannelsPage() {
       <div className="cyber-card">
         <h2 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
           <Plus size={16} className="text-cyber-accent" />
-          Monitorear otro canal (Twitch)
+          Monitorear canal de Twitch
         </h2>
         <p className="text-xs text-cyber-muted mb-4">
-          Solo lectura via API publica: viewers en vivo, deteccion y simulacion. No se banea en Twitch ajeno.
+          Cuando el canal este LIVE, el servidor escanea el chat (~30s) y detecta picos de viewers.
+          Bloqueo en canales ajenos = lista negra local; en tu canal OAuth tambien aplica en Twitch.
         </p>
         <div className="flex flex-wrap gap-2">
           <input
             type="text"
-            placeholder="nombre del canal, ej. xqc"
+            placeholder="login del canal, ej. ibai"
             value={login}
             onChange={(e) => setLogin(e.target.value)}
             className="flex-1 min-w-[200px] bg-cyber-bg border border-cyber-border rounded-lg px-3 py-2 text-sm text-white"
@@ -100,9 +96,9 @@ export default function ChannelsPage() {
             type="button"
             disabled={!login.trim() || watchMutation.isPending}
             onClick={() => watchMutation.mutate()}
-            className="px-4 py-2 rounded-lg bg-cyber-accent/20 text-cyber-accent border border-cyber-accent/40 text-sm hover:bg-cyber-accent/30 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-cyber-accent/20 text-cyber-accent border border-cyber-accent/40 text-sm"
           >
-            Anadir observacion
+            Anadir
           </button>
         </div>
       </div>
@@ -113,29 +109,33 @@ export default function ChannelsPage() {
         empty="Conecta Twitch en Settings"
         streams={owned}
         isLoading={isLoading}
-        onSync={(id) => syncMutation.mutate(id)}
-        onSimulate={(s) => simulateMutation.mutate(s)}
+        onMonitor={(id) => monitorMutation.mutate(id)}
+        scanningId={scanningId}
         showUnwatch={false}
+        onUnwatch={() => {}}
       />
 
       <ChannelSection
-        title="Canales en observacion"
+        title="Canales observados"
         icon={Eye}
-        empty="Anade un login de Twitch arriba para probar con streams reales"
+        empty="Anade un canal arriba"
         streams={monitored}
         isLoading={isLoading}
-        onSync={(id) => syncMutation.mutate(id)}
-        onSimulate={(s) => simulateMutation.mutate(s)}
+        onMonitor={(id) => monitorMutation.mutate(id)}
+        scanningId={scanningId}
         onUnwatch={(id) => unwatchMutation.mutate(id)}
         showUnwatch
       />
 
       <p className="text-xs text-cyber-muted">
-        Tip: tras simular eventos, el{" "}
-        <Link href="/dashboard" className="text-cyber-accent hover:underline">
-          dashboard
+        Flujo: canal LIVE → <strong className="text-white">Escanear chat</strong> →{" "}
+        <Link href="/dashboard/viewers" className="text-cyber-accent hover:underline">
+          Viewers
         </Link>{" "}
-        actualiza graficas en tiempo real. Para IA avanzada, configura OPENAI_API_KEY en Render.
+        (sospechosos) → <strong className="text-white">Bloquear</strong> →{" "}
+        <Link href="/dashboard/attacks" className="text-cyber-accent hover:underline">
+          Ataques
+        </Link>
       </p>
     </div>
   );
@@ -147,8 +147,8 @@ function ChannelSection({
   empty,
   streams,
   isLoading,
-  onSync,
-  onSimulate,
+  onMonitor,
+  scanningId,
   onUnwatch,
   showUnwatch,
 }: {
@@ -157,9 +157,9 @@ function ChannelSection({
   empty: string;
   streams: Stream[];
   isLoading: boolean;
-  onSync: (id: string) => void;
-  onSimulate: (s: Stream) => void;
-  onUnwatch?: (id: string) => void;
+  onMonitor: (id: string) => void;
+  scanningId: string | null;
+  onUnwatch: (id: string) => void;
   showUnwatch: boolean;
 }) {
   return (
@@ -169,9 +169,7 @@ function ChannelSection({
         {title}
       </h2>
       {isLoading && <p className="text-cyber-muted text-sm">Cargando...</p>}
-      {!isLoading && !streams.length && (
-        <p className="text-cyber-muted text-sm">{empty}</p>
-      )}
+      {!isLoading && !streams.length && <p className="text-cyber-muted text-sm">{empty}</p>}
       <ul className="space-y-3">
         {streams.map((stream) => (
           <li
@@ -185,36 +183,37 @@ function ChannelSection({
                 {stream.is_live ? (
                   <span className="text-cyber-accent">{stream.viewer_count} viewers LIVE</span>
                 ) : (
-                  "offline"
+                  "offline — escaneo cuando este en vivo"
                 )}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => onSync(stream.id)}
+                disabled={!stream.is_live || scanningId === stream.id}
+                onClick={() => onMonitor(stream.id)}
+                className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-cyber-accent/40 text-cyber-accent disabled:opacity-40"
+              >
+                <Radio size={12} />
+                {scanningId === stream.id ? "Escaneando..." : "Escanear chat"}
+              </button>
+              <Link
+                href={`/dashboard/viewers?stream=${stream.id}`}
                 className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-cyber-border text-cyber-muted hover:text-white"
               >
-                <RefreshCw size={12} /> Sync
-              </button>
-              <button
-                type="button"
-                onClick={() => onSimulate(stream)}
-                className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-cyber-accent/40 text-cyber-accent hover:bg-cyber-accent/10"
-              >
-                <Zap size={12} /> Simular evento
-              </button>
+                <Users size={12} /> Viewers
+              </Link>
               <Link
                 href={`/dashboard/attacks?stream=${stream.id}`}
                 className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-cyber-border text-cyber-muted hover:text-white"
               >
                 Ataques
               </Link>
-              {showUnwatch && onUnwatch && (
+              {showUnwatch && (
                 <button
                   type="button"
                   onClick={() => onUnwatch(stream.id)}
-                  className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-cyber-danger/40 text-cyber-danger hover:bg-cyber-danger/10"
+                  className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-cyber-danger/40 text-cyber-danger"
                 >
                   <Trash2 size={12} /> Quitar
                 </button>

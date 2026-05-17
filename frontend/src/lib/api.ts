@@ -223,8 +223,42 @@ export const api = {
         { method: "POST", body: JSON.stringify(body) },
         token,
       ),
-    viewers: (token: string, streamId: string) =>
-      request<Viewer[]>(`/api/v1/streams/${streamId}/viewers`, {}, token),
+    viewers: (token: string, streamId: string, suspectedOnly = false) =>
+      request<Viewer[]>(
+        `/api/v1/streams/${streamId}/viewers${suspectedOnly ? "?suspected_only=true" : ""}`,
+        {},
+        token,
+      ),
+    monitor: (token: string, streamId: string) =>
+      request<{
+        status: string;
+        chatters_synced?: number;
+        suspected_count?: number;
+        attack_created?: boolean;
+        message?: string;
+      }>(`/api/v1/streams/${streamId}/monitor`, { method: "POST" }, token),
+    monitorStatus: (token: string, streamId: string) =>
+      request<{
+        is_live: boolean;
+        viewer_count: number;
+        active_viewers_tracked: number;
+        suspected_bots: number;
+        active_attacks: number;
+        last_monitor?: string;
+        monitor_mode: boolean;
+        note: string;
+      }>(`/api/v1/streams/${streamId}/monitor/status`, {}, token),
+    blockViewer: (
+      token: string,
+      streamId: string,
+      viewerId: string,
+      body: { reason?: string; duration_hours?: number; apply_twitch_ban?: boolean },
+    ) =>
+      request<{ blocked: boolean; message: string; local_only?: boolean; username?: string }>(
+        `/api/v1/streams/${streamId}/viewers/${viewerId}/block`,
+        { method: "POST", body: JSON.stringify(body) },
+        token,
+      ),
   },
   ai: {
     attackInsight: (token: string, attackId: string) =>
@@ -385,9 +419,13 @@ export interface TenantUser {
 
 export interface Viewer {
   id: string;
+  platform_user_id?: string;
   platform_username: string;
   ip_address: string;
+  fingerprint_hash?: string;
   risk_score: number;
   is_suspected_bot: boolean;
   is_active: boolean;
+  chat_messages?: number;
+  behavior_metrics?: Record<string, unknown>;
 }

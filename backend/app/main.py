@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -32,13 +33,47 @@ REQUEST_COUNT = Counter("http_requests_total", "Total HTTP requests", ["method",
 REQUEST_LATENCY = Histogram("http_request_duration_seconds", "HTTP request latency", ["method", "endpoint"])
 
 
+async def _background_channel_monitor() -> None:
+    """Monitorea canales en vivo (IRC + picos de viewers) de forma rotativa."""
+    from sqlalchemy import select
+
+    from app.infrastructure.database.models import Stream
+    from app.infrastructure.database.session import AsyncSessionLocal
+    from app.services.monitoring.channel_monitor import ChannelMonitorService
+    from app.services.streams.helpers import stream_monitor_mode
+
+    idx = 0
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(Stream))
+                streams = [
+                    s for s in result.scalars().all()
+                    if s.is_live and (stream_monitor_mode(s) or s.oauth_token_encrypted)
+                ]
+                if streams:
+                    stream = streams[idx % len(streams)]
+                    idx += 1
+                    await ChannelMonitorService(db).run_cycle(
+                        stream,
+                        stream.tenant_id,
+                        irc_duration=25.0,
+                    )
+                    await db.commit()
+        except Exception as exc:
+            logger.warning("background_monitor_error", error=str(exc))
+        await asyncio.sleep(55)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     invalidate_settings_cache()
     run_startup_checks()
     logger.info("starting_application", env=get_settings().app_env)
+    monitor_task = None
     try:
         await init_database(engine)
+        monitor_task = asyncio.create_task(_background_channel_monitor())
     except Exception as exc:
         logger.error(
             "database_startup_failed",
@@ -47,6 +82,12 @@ async def lifespan(app: FastAPI):
         )
         raise
     yield
+    if monitor_task:
+        monitor_task.cancel()
+        try:
+            await monitor_task
+        except asyncio.CancelledError:
+            pass
     await close_redis()
     await engine.dispose()
     logger.info("application_shutdown")

@@ -20,10 +20,14 @@ function AttacksContent() {
   });
 
   const mitigate = useMutation({
-    mutationFn: (attack: Attack) =>
-      api.attacks.mitigate(accessToken!, attack.id, {
-        targets: attack.source_ips.slice(0, 5).map((ip) => ({ type: "ip", value: ip })),
-      }),
+    mutationFn: (attack: Attack) => {
+      const suspected = (attack.evidence?.suspected_usernames as string[] | undefined) ?? [];
+      const targets = [
+        ...attack.source_ips.slice(0, 5).map((ip) => ({ type: "ip" as const, value: ip })),
+        ...suspected.slice(0, 10).map((u) => ({ type: "user" as const, value: u })),
+      ];
+      return api.attacks.mitigate(accessToken!, attack.id, { targets });
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["attacks-all"] }),
   });
 

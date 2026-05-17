@@ -213,6 +213,7 @@ class DashboardStats(BaseModel):
 
 class ViewerSessionResponse(BaseModel):
     id: UUID
+    platform_user_id: Optional[str] = None
     platform_username: Optional[str]
     ip_address: str
     fingerprint_hash: Optional[str]
@@ -220,9 +221,17 @@ class ViewerSessionResponse(BaseModel):
     is_suspected_bot: bool
     is_active: bool
     watch_duration_seconds: int
+    chat_messages: int = 0
+    behavior_metrics: Dict[str, Any] = Field(default_factory=dict)
     joined_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class BlockViewerRequest(BaseModel):
+    reason: str = "Actividad sospechosa detectada por StreamShield"
+    duration_hours: Optional[int] = 24
+    apply_twitch_ban: bool = True
 
 
 class MitigationRequest(BaseModel):

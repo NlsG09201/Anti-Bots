@@ -86,3 +86,35 @@ class TwitchHelixClient:
             "title": live.get("title"),
             "game_name": live.get("game_name"),
         }
+
+    async def get_chatters(
+        self,
+        broadcaster_id: str,
+        moderator_id: str,
+        user_access_token: str,
+    ) -> List[Dict[str, Any]]:
+        """Usuarios actualmente en el chat (requiere OAuth del broadcaster/mod)."""
+        all_chatters: List[Dict[str, Any]] = []
+        cursor: Optional[str] = None
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            while True:
+                params: Dict[str, Any] = {
+                    "broadcaster_id": broadcaster_id,
+                    "moderator_id": moderator_id,
+                    "first": 1000,
+                }
+                if cursor:
+                    params["after"] = cursor
+                response = await client.get(
+                    f"{self.API_BASE}/chat/chatters",
+                    params=params,
+                    headers=self._headers(user_access_token),
+                )
+                if response.status_code != 200:
+                    break
+                payload = response.json()
+                all_chatters.extend(payload.get("data", []))
+                cursor = payload.get("pagination", {}).get("cursor")
+                if not cursor:
+                    break
+        return all_chatters
