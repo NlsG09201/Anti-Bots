@@ -29,6 +29,15 @@ function SettingsContent() {
       setMessage("Twitch conectado correctamente. EventSub suscripciones activadas.");
       queryClient.invalidateQueries({ queryKey: ["twitch-status"] });
     }
+    const twitchError = searchParams.get("twitch_error");
+    if (twitchError) {
+      const detail = searchParams.get("twitch_msg") || twitchError;
+      setMessage(
+        twitchError === "redirect_mismatch"
+          ? `Twitch: la Redirect URI no coincide. En dev.twitch.tv añade exactamente: https://anti-bots.onrender.com/api/v1/integrations/twitch/callback (${detail})`
+          : `Error Twitch (${twitchError}): ${detail}`,
+      );
+    }
   }, [searchParams, queryClient]);
 
   const { data: mfaStatus } = useQuery({

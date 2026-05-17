@@ -1,13 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Shield, Eye, EyeOff, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 
-export default function LoginPage() {
+const TWITCH_CALLBACK =
+  "https://anti-bots.onrender.com/api/v1/integrations/twitch/callback";
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { setTokens, setUser } = useAuthStore();
   const [isRegister, setIsRegister] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -22,6 +26,19 @@ export default function LoginPage() {
     username: "",
     tenant_name: "",
   });
+
+  useEffect(() => {
+    if (searchParams.get("error") === "redirect_mismatch") {
+      setError(
+        `Twitch: añade esta Redirect URI en dev.twitch.tv → OAuth Redirect URLs: ${TWITCH_CALLBACK}`,
+      );
+    } else if (searchParams.get("error")) {
+      setError(
+        searchParams.get("error_description") ||
+          `OAuth: ${searchParams.get("error")}`,
+      );
+    }
+  }, [searchParams]);
 
   const finishLogin = async (accessToken: string) => {
     setTokens(accessToken);
@@ -195,5 +212,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<p className="text-cyber-muted p-8">Cargando...</p>}>
+      <LoginForm />
+    </Suspense>
   );
 }

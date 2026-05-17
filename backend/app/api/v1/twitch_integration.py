@@ -2,6 +2,9 @@ import secrets
 from typing import List, Optional
 from uuid import UUID
 
+from typing import Optional
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -43,12 +46,26 @@ async def twitch_authorize(current_user: CurrentUser):
     return {"authorization_url": url}
 
 
+def _frontend_redirect(path: str) -> RedirectResponse:
+    base = settings.app_frontend_url.rstrip("/")
+    return RedirectResponse(f"{base}{path}")
+
+
 @router.get("/callback")
 async def twitch_callback(
-    code: str = Query(...),
-    state: str = Query(...),
+    code: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
+    error_description: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
+    if error:
+        msg = quote((error_description or error)[:200])
+        return _frontend_redirect(f"/dashboard/settings?twitch_error={quote(error)}&twitch_msg={msg}")
+
+    if not code or not state:
+        return _frontend_redirect("/dashboard/settings?twitch_error=missing_params")
+
     cache = RedisCache(prefix="oauth")
     stored = await cache.get(f"state:{state}")
     if not stored:
@@ -108,8 +125,7 @@ async def twitch_callback(
             except Exception:
                 pass
 
-    frontend = settings.app_frontend_url.rstrip("/")
-    return RedirectResponse(f"{frontend}/dashboard/settings?twitch=connected")
+    return _frontend_redirect("/dashboard/settings?twitch=connected")
 
 
 @router.get("/status")
