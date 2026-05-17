@@ -1,7 +1,7 @@
 # Configura credenciales REALES de Twitch en Render
 param(
-    [string]$ClientId = "StreamShield2026!",
-    [string]$ClientSecret = "StreamShield2026!"
+    [string]$ClientId = "afu46q601sn7xfukiskqrgvz2nkjqw",
+    [string]$ClientSecret = "jquhuw2jrdlv585n8vs3t5x8a3gqnz"
 )
 
 $ErrorActionPreference = "Stop"
