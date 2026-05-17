@@ -21,6 +21,7 @@ API_BASE = "https://api.render.com/v1"
 EXTRA_VARS = {
     "PYTHON_VERSION": "3.11.9",
     "RENDER": "true",
+    "REDIS_URL": "",
 }
 
 
