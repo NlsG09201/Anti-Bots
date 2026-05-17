@@ -236,8 +236,19 @@ export const api = {
       request<{
         connected: boolean;
         configured: boolean;
+        credentials_ok: boolean;
+        redirect_uri: string;
         channels: { id: string; channel_name: string; external_id: string; is_live: boolean }[];
       }>("/api/v1/integrations/twitch/status", {}, token),
+    setup: (token: string) =>
+      request<{
+        redirect_uri: string;
+        client_id_prefix: string;
+        credentials_ok: boolean;
+        client_id_equals_secret: boolean;
+        register_at: string;
+        hint: string;
+      }>("/api/v1/integrations/twitch/setup", {}, token),
     authorize: (token: string) =>
       request<{ authorization_url: string }>("/api/v1/integrations/twitch/authorize", {}, token),
   },

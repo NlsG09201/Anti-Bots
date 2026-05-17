@@ -16,7 +16,12 @@ from app.core.security import encrypt_value
 from app.infrastructure.cache.redis_client import RedisCache
 from app.infrastructure.database.models import Platform, Stream
 from app.infrastructure.database.session import get_db
-from app.integrations.twitch.oauth import TwitchOAuth
+from app.integrations.twitch.constants import PRODUCTION_CALLBACK_URL
+from app.integrations.twitch.oauth import (
+    TwitchOAuth,
+    resolve_twitch_redirect_uri,
+    twitch_credentials_valid,
+)
 from app.integrations.twitch.eventsub import TwitchEventSubClient
 
 router = APIRouter(prefix="/integrations/twitch", tags=["Twitch Integration"])
@@ -30,10 +35,35 @@ EVENT_TYPES = [
 ]
 
 
+@router.get("/setup")
+async def twitch_setup(current_user: CurrentUser):
+    """Diagnóstico: qué URI usa el servidor y si las credenciales son válidas."""
+    cid = settings.twitch_client_id or ""
+    return {
+        "redirect_uri": resolve_twitch_redirect_uri(),
+        "client_id_prefix": cid[:12] + "..." if len(cid) > 12 else cid,
+        "credentials_ok": twitch_credentials_valid(),
+        "client_id_equals_secret": bool(
+            cid and cid == (settings.twitch_client_secret or "").strip()
+        ),
+        "register_at": "https://dev.twitch.tv/console/apps",
+        "hint": (
+            "En Twitch → OAuth Redirect URLs debe existir exactamente redirect_uri. "
+            "Client ID y Client Secret deben ser distintos (app real en dev.twitch.tv)."
+        ),
+    }
+
+
 @router.get("/authorize")
 async def twitch_authorize(current_user: CurrentUser):
     if not settings.twitch_client_id:
         raise ValidationError("Twitch integration is not configured")
+    if not twitch_credentials_valid():
+        raise ValidationError(
+            "Credenciales Twitch inválidas en el servidor: Client ID y Client Secret "
+            "no pueden ser iguales. Crea una app en https://dev.twitch.tv/console/apps "
+            "y actualiza TWITCH_CLIENT_ID y TWITCH_CLIENT_SECRET en Render."
+        )
 
     state = secrets.token_urlsafe(32)
     cache = RedisCache(prefix="oauth")
@@ -140,7 +170,9 @@ async def twitch_status(
     streams = result.scalars().all()
     return {
         "connected": len(streams) > 0,
-        "configured": bool(settings.twitch_client_id),
+        "configured": twitch_credentials_valid(),
+        "redirect_uri": resolve_twitch_redirect_uri(),
+        "credentials_ok": twitch_credentials_valid(),
         "channels": [
             {
                 "id": str(s.id),

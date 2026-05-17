@@ -52,6 +52,12 @@ function SettingsContent() {
     enabled: !!token,
   });
 
+  const { data: twitchSetup } = useQuery({
+    queryKey: ["twitch-setup"],
+    queryFn: () => api.twitch.setup(token),
+    enabled: !!token,
+  });
+
   const setupMfa = useMutation({
     mutationFn: () => api.mfa.setup(token),
     onSuccess: (data) => setSetupData(data),
@@ -115,11 +121,36 @@ function SettingsContent() {
           </div>
         </div>
 
-        {!twitchStatus?.configured && (
-          <p className="text-sm text-cyber-warning flex items-center gap-2">
-            <AlertCircle size={16} />
-            Configura TWITCH_CLIENT_ID y TWITCH_CLIENT_SECRET en el servidor
-          </p>
+        {twitchSetup && !twitchSetup.credentials_ok && (
+          <div className="p-4 rounded-lg bg-cyber-danger/10 border border-cyber-danger/40 space-y-3 text-sm text-red-300">
+            <p className="font-semibold text-red-400 flex items-center gap-2">
+              <AlertCircle size={16} />
+              Credenciales Twitch inválidas en Render
+            </p>
+            {twitchSetup.client_id_equals_secret && (
+              <p>
+                El Client ID y el Client Secret son <strong>iguales</strong> (valores de plantilla).
+                Twitch rechaza la conexión con <code>redirect_mismatch</code>.
+              </p>
+            )}
+            <ol className="list-decimal list-inside space-y-1 text-cyber-muted">
+              <li>
+                Crea una app en{" "}
+                <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noreferrer" className="text-cyber-info underline">
+                  dev.twitch.tv
+                </a>
+              </li>
+              <li>
+                OAuth Redirect URL (copiar tal cual):<br />
+                <code className="text-cyber-accent break-all">{twitchSetup.redirect_uri}</code>
+              </li>
+              <li>
+                En Render → Environment: <code>TWITCH_CLIENT_ID</code> y <code>TWITCH_CLIENT_SECRET</code>{" "}
+                (deben ser <strong>diferentes</strong>)
+              </li>
+              <li>Manual Deploy en Render y vuelve a conectar</li>
+            </ol>
+          </div>
         )}
 
         {twitchStatus?.connected ? (
