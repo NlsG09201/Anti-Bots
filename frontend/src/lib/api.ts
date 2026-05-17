@@ -185,8 +185,17 @@ export const api = {
       const q = params.toString();
       return request<Attack[]>(`/api/v1/attacks${q ? `?${q}` : ""}`, {}, token);
     },
-    mitigate: (token: string, attackId: string, data: object) =>
-      request(`/api/v1/attacks/${attackId}/mitigate`, {
+    mitigate: (
+      token: string,
+      attackId: string,
+      data: { targets?: { type: string; value: string }[]; full_mitigation?: boolean },
+    ) =>
+      request<{
+        action: string;
+        bans_created: number;
+        targets: number;
+        full_mitigation?: boolean;
+      }>(`/api/v1/attacks/${attackId}/mitigate`, {
         method: "POST",
         body: JSON.stringify(data),
       }, token),
@@ -223,12 +232,18 @@ export const api = {
         { method: "POST", body: JSON.stringify(body) },
         token,
       ),
-    viewers: (token: string, streamId: string, suspectedOnly = false) =>
-      request<Viewer[]>(
-        `/api/v1/streams/${streamId}/viewers${suspectedOnly ? "?suspected_only=true" : ""}`,
-        {},
-        token,
-      ),
+    viewers: (token: string, streamId: string, filter: "all" | "talking" | "suspected" = "all") =>
+      request<Viewer[]>(`/api/v1/streams/${streamId}/viewers?filter=${filter}`, {}, token),
+    syncQuick: (token: string, streamId: string) =>
+      request<{
+        status: string;
+        chatters_synced?: number;
+        suspected_count?: number;
+        talking_count?: number;
+        sync_mode?: string;
+        note?: string;
+        message?: string;
+      }>(`/api/v1/streams/${streamId}/sync/quick`, { method: "POST" }, token),
     monitor: (token: string, streamId: string) =>
       request<{
         status: string;
@@ -242,9 +257,14 @@ export const api = {
         is_live: boolean;
         viewer_count: number;
         active_viewers_tracked: number;
+        talking_count: number;
         suspected_bots: number;
+        proxy_ips_detected: number;
+        silent_viewbots_estimate: number;
         active_attacks: number;
         last_monitor?: string;
+        last_quick_sync?: string;
+        has_broadcaster_oauth: boolean;
         monitor_mode: boolean;
         note: string;
       }>(`/api/v1/streams/${streamId}/monitor/status`, {}, token),

@@ -180,7 +180,9 @@ class ViewerSessionService:
     async def list_active(
         self,
         stream_id: UUID,
+        *,
         suspected_only: bool = False,
+        talking_only: bool = False,
         limit: int = 2000,
     ) -> List[ViewerSession]:
         query = select(ViewerSession).where(
@@ -189,14 +191,30 @@ class ViewerSessionService:
         )
         if suspected_only:
             query = query.where(ViewerSession.is_suspected_bot == True)
+        if talking_only:
+            query = query.where(ViewerSession.chat_messages > 0)
         result = await self.db.execute(
             query.order_by(
                 ViewerSession.is_suspected_bot.desc(),
+                ViewerSession.chat_messages.desc(),
                 ViewerSession.risk_score.desc(),
                 ViewerSession.platform_username.asc(),
             ).limit(limit)
         )
         return list(result.scalars().all())
+
+    async def count_active(
+        self,
+        stream_id: UUID,
+    ) -> Dict[str, int]:
+        all_sessions = await self.list_active(stream_id, limit=5000)
+        talking = sum(1 for s in all_sessions if (s.chat_messages or 0) > 0)
+        suspected = sum(1 for s in all_sessions if s.is_suspected_bot)
+        return {
+            "total": len(all_sessions),
+            "talking": talking,
+            "suspected": suspected,
+        }
 
     async def deactivate(self, session_id: UUID, stream_id: UUID) -> Optional[ViewerSession]:
         result = await self.db.execute(

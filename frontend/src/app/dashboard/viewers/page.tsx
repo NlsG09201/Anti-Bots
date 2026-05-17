@@ -1,15 +1,15 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, RefreshCw, Scan, Users, AlertTriangle } from "lucide-react";
+import { Ban, MessageSquare, RefreshCw, Scan, Shield, Users, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { api, type Stream, type Viewer } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 import clsx from "clsx";
 
-type ViewFilter = "all" | "suspected";
+type ViewFilter = "all" | "talking" | "suspected";
 
 function ViewersContent() {
   const searchParams = useSearchParams();
@@ -19,6 +19,7 @@ function ViewersContent() {
   const [selectedStream, setSelectedStream] = useState(searchParams.get("stream") ?? "");
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
   const [message, setMessage] = useState("");
+  const lastQuickSyncStream = useRef<string | null>(null);
 
   const { data: streams = [] } = useQuery({
     queryKey: ["streams"],
@@ -29,7 +30,6 @@ function ViewersContent() {
 
   const streamId = selectedStream || streams[0]?.id || "";
   const currentStream = streams.find((s) => s.id === streamId);
-  const suspectedOnly = viewFilter === "suspected";
 
   useEffect(() => {
     const q = searchParams.get("stream");
@@ -44,11 +44,37 @@ function ViewersContent() {
   });
 
   const { data: viewers = [], isLoading } = useQuery({
-    queryKey: ["viewers", streamId, suspectedOnly],
-    queryFn: () => api.streams.viewers(token, streamId, suspectedOnly),
+    queryKey: ["viewers", streamId, viewFilter],
+    queryFn: () => api.streams.viewers(token, streamId, viewFilter),
     enabled: !!token && !!streamId,
     refetchInterval: 15000,
   });
+
+  const quickSyncMutation = useMutation({
+    mutationFn: () => api.streams.syncQuick(token, streamId),
+    onSuccess: (res) => {
+      if (res.status === "offline") return;
+      setMessage(
+        res.note
+          ? res.note
+          : `Sincronizado: ${res.chatters_synced ?? 0} en chat · ${res.talking_count ?? 0} hablando · ${res.suspected_count ?? 0} sospechosos`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["viewers"] });
+      queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
+    },
+  });
+
+  useEffect(() => {
+    if (!streamId || !currentStream?.is_live || quickSyncMutation.isPending) return;
+    if (lastQuickSyncStream.current === streamId) return;
+    lastQuickSyncStream.current = streamId;
+    quickSyncMutation.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-sync once per stream when live
+  }, [streamId, currentStream?.is_live]);
+
+  useEffect(() => {
+    lastQuickSyncStream.current = null;
+  }, [streamId]);
 
   const scanMutation = useMutation({
     mutationFn: () => api.streams.monitor(token, streamId),
@@ -57,8 +83,8 @@ function ViewersContent() {
       setMessage(
         res.status === "offline"
           ? "Canal offline — no hay chat que escanear"
-          : `Listado completo: ${res.chatters_synced ?? 0} usuarios en chat · ${res.suspected_count ?? 0} sospechosos${
-              res.attack_created ? " · posible ataque" : ""
+          : `Escaneo completo: ${res.chatters_synced ?? 0} en chat · ${res.suspected_count ?? 0} sospechosos${
+              res.attack_created ? " · posible ataque detectado" : ""
             }`,
       );
       queryClient.invalidateQueries({ queryKey: ["viewers"] });
@@ -66,6 +92,32 @@ function ViewersContent() {
       queryClient.invalidateQueries({ queryKey: ["attacks"] });
     },
     onError: (e: Error) => setMessage(e.message),
+  });
+
+  const mitigateMutation = useMutation({
+    mutationFn: () => {
+      const attacks = queryClient.getQueryData<{ id: string; status: string }[]>([
+        "attacks-active",
+        streamId,
+      ]);
+      const active = attacks?.find((a) => a.status === "active");
+      if (!active) throw new Error("No hay ataques activos en este canal");
+      return api.attacks.mitigate(token, active.id, { full_mitigation: true });
+    },
+    onSuccess: (res: { bans_created?: number; targets?: number }) => {
+      setMessage(
+        `Ataque mitigado: ${res.targets ?? 0} objetivos bloqueados (${res.bans_created ?? 0} bans)`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["attacks-active"] });
+      queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
+    },
+    onError: (e: Error) => setMessage(e.message),
+  });
+
+  useQuery({
+    queryKey: ["attacks-active", streamId],
+    queryFn: () => api.attacks.list(token, "active", streamId),
+    enabled: !!token && !!streamId,
   });
 
   const blockMutation = useMutation({
@@ -83,25 +135,58 @@ function ViewersContent() {
   });
 
   const totalInChat = monitorStatus?.active_viewers_tracked ?? viewers.length;
+  const talkingCount = monitorStatus?.talking_count ?? viewers.filter((v) => (v.chat_messages ?? 0) > 0).length;
   const suspectedCount = monitorStatus?.suspected_bots ?? viewers.filter((v) => v.is_suspected_bot).length;
+  const twitchViewers = monitorStatus?.viewer_count ?? currentStream?.viewer_count ?? 0;
+  const silentBots = monitorStatus?.silent_viewbots_estimate ?? 0;
+  const proxyIps = monitorStatus?.proxy_ips_detected ?? 0;
+  const activeAttacks = monitorStatus?.active_attacks ?? 0;
+  const syncing = quickSyncMutation.isPending;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Users className="text-cyber-info" />
-          Usuarios en el chat
+          Usuarios del stream
         </h1>
-        <p className="text-cyber-muted text-sm mt-1 max-w-2xl">
-          Tras escanear veras <strong className="text-white">todos</strong> los usuarios detectados en el chat.
-          Usa la pestana &quot;Solo sospechosos&quot; para filtrar. Viewers totales en Twitch:{" "}
-          {monitorStatus?.viewer_count ?? "—"} (incluye quien no escribe en chat).
+        <p className="text-cyber-muted text-sm mt-1 max-w-3xl">
+          Al abrir se sincroniza el chat del canal en vivo. El escaneo completo (~55 s) detecta quien
+          habla y posibles bots. Viewers totales en Twitch:{" "}
+          <strong className="text-white">{twitchViewers || "—"}</strong>
+          {silentBots > 0 && (
+            <>
+              {" "}
+              · posibles viewbots silenciosos:{" "}
+              <strong className="text-cyber-danger">~{silentBots}</strong>
+            </>
+          )}
         </p>
       </div>
 
       {message && (
         <p className="text-sm text-cyber-accent border border-cyber-accent/30 rounded-lg px-4 py-2">
           {message}
+        </p>
+      )}
+
+      {monitorStatus && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <Stat label="Viewers Twitch" value={String(twitchViewers)} />
+          <Stat label="En chat" value={String(totalInChat)} highlight={syncing} />
+          <Stat label="Hablando" value={String(talkingCount)} />
+          <Stat label="Sospechosos" value={String(suspectedCount)} highlight={suspectedCount > 0} danger />
+          <Stat label="IPs proxy" value={String(proxyIps)} highlight={proxyIps > 0} danger />
+        </div>
+      )}
+
+      {!monitorStatus?.has_broadcaster_oauth && currentStream?.monitor_mode && (
+        <p className="text-xs text-cyber-muted border border-cyber-border rounded-lg px-3 py-2">
+          Sin OAuth del streamer la sync rapida es limitada. Usa{" "}
+          <Link href="/dashboard/channels" className="text-cyber-accent hover:underline">
+            Invitar streamer
+          </Link>{" "}
+          para listar todo el chat al cargar, o escaneo IRC completo.
         </p>
       )}
 
@@ -124,34 +209,52 @@ function ViewersContent() {
         </div>
         <button
           type="button"
+          disabled={!streamId || !currentStream?.is_live || quickSyncMutation.isPending}
+          onClick={() => quickSyncMutation.mutate()}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-cyber-border text-cyber-muted text-sm hover:text-white disabled:opacity-50"
+        >
+          <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
+          {syncing ? "Sincronizando..." : "Resincronizar"}
+        </button>
+        <button
+          type="button"
           disabled={!streamId || scanMutation.isPending}
           onClick={() => scanMutation.mutate()}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyber-accent/20 text-cyber-accent border border-cyber-accent/40 text-sm disabled:opacity-50"
         >
           <Scan size={16} />
-          {scanMutation.isPending ? "Escaneando (~55s)..." : "Escanear chat completo"}
+          {scanMutation.isPending ? "Escaneando (~55s)..." : "Escanear chat (hablantes + bots)"}
         </button>
+        {activeAttacks > 0 && (
+          <button
+            type="button"
+            disabled={mitigateMutation.isPending}
+            onClick={() => mitigateMutation.mutate()}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyber-danger/20 text-cyber-danger border border-cyber-danger/40 text-sm"
+          >
+            <Shield size={16} />
+            Mitigar ataque ({activeAttacks})
+          </button>
+        )}
         <div className="flex rounded-lg border border-cyber-border overflow-hidden text-sm">
-          <button
-            type="button"
+          <FilterTab
+            active={viewFilter === "all"}
             onClick={() => setViewFilter("all")}
-            className={clsx(
-              "px-3 py-2",
-              viewFilter === "all" ? "bg-cyber-accent/20 text-cyber-accent" : "text-cyber-muted",
-            )}
-          >
-            Todos ({totalInChat})
-          </button>
-          <button
-            type="button"
+            label={`Todos (${totalInChat})`}
+          />
+          <FilterTab
+            active={viewFilter === "talking"}
+            onClick={() => setViewFilter("talking")}
+            label={`Hablando (${talkingCount})`}
+            border
+          />
+          <FilterTab
+            active={viewFilter === "suspected"}
             onClick={() => setViewFilter("suspected")}
-            className={clsx(
-              "px-3 py-2 border-l border-cyber-border",
-              viewFilter === "suspected" ? "bg-cyber-danger/20 text-cyber-danger" : "text-cyber-muted",
-            )}
-          >
-            Solo sospechosos ({suspectedCount})
-          </button>
+            label={`Sospechosos (${suspectedCount})`}
+            border
+            danger
+          />
         </div>
         <Link
           href={`/dashboard/attacks?stream=${streamId}`}
@@ -191,10 +294,20 @@ function ViewersContent() {
                 <td className="py-3 px-2 text-right font-mono text-cyber-danger">
                   {v.risk_score.toFixed(0)}
                 </td>
-                <td className="py-3 px-2 text-center text-cyber-muted">{v.chat_messages ?? 0}</td>
+                <td className="py-3 px-2 text-center text-cyber-muted">
+                  {(v.chat_messages ?? 0) > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-cyber-accent">
+                      <MessageSquare size={12} /> {v.chat_messages}
+                    </span>
+                  ) : (
+                    "0"
+                  )}
+                </td>
                 <td className="py-3 px-2 text-center text-xs">
                   {v.is_suspected_bot ? (
-                    <span className="text-cyber-danger">Sospechoso</span>
+                    <span className="text-cyber-danger">Sospechoso / bot</span>
+                  ) : (v.chat_messages ?? 0) > 0 ? (
+                    <span className="text-cyber-accent">Hablando</span>
                   ) : (
                     <span className="text-cyber-muted">En chat</span>
                   )}
@@ -220,14 +333,14 @@ function ViewersContent() {
             Anade un canal en <Link href="/dashboard/channels" className="text-cyber-accent">Channels</Link>
           </p>
         )}
-        {streamId && !isLoading && viewers.length === 0 && viewFilter === "all" && (
-          <p className="text-center py-12 text-cyber-muted">
-            Pulsa &quot;Escanear chat completo&quot; con el canal en vivo (~55 s)
-          </p>
+        {streamId && !currentStream?.is_live && (
+          <p className="text-center py-12 text-cyber-muted">Canal offline — entra cuando este en vivo</p>
         )}
-        {streamId && !isLoading && viewers.length === 0 && viewFilter === "suspected" && (
+        {streamId && currentStream?.is_live && !isLoading && viewers.length === 0 && (
           <p className="text-center py-12 text-cyber-muted">
-            Ningun sospechoso en el ultimo escaneo. Prueba la pestana Todos.
+            {syncing
+              ? "Sincronizando usuarios del chat..."
+              : "Sin usuarios aun — pulsa Resincronizar o Escanear chat"}
           </p>
         )}
         {isLoading && (
@@ -237,6 +350,64 @@ function ViewersContent() {
         )}
       </div>
     </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  highlight,
+  danger,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <div className="cyber-card py-3 px-4">
+      <p className="text-xs text-cyber-muted">{label}</p>
+      <p
+        className={clsx(
+          "text-xl font-bold",
+          danger && highlight ? "text-cyber-danger" : highlight ? "text-cyber-accent" : "text-white",
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function FilterTab({
+  active,
+  onClick,
+  label,
+  border,
+  danger,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  border?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        "px-3 py-2",
+        border && "border-l border-cyber-border",
+        active
+          ? danger
+            ? "bg-cyber-danger/20 text-cyber-danger"
+            : "bg-cyber-accent/20 text-cyber-accent"
+          : "text-cyber-muted",
+      )}
+    >
+      {label}
+    </button>
   );
 }
 

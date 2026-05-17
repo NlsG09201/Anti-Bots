@@ -1,6 +1,6 @@
 import secrets
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -210,6 +210,22 @@ async def sync_stream(
     return _as_stream_response(stream)
 
 
+@router.post("/{stream_id}/sync/quick")
+async def quick_sync_stream(
+    stream_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Sincroniza usuarios en chat (Helix rapido) sin escaneo IRC largo."""
+    stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    if not stream.is_live:
+        stream = await sync_stream_live_status(db, stream)
+    if not stream.is_live:
+        return {"status": "offline", "message": "El canal no esta en vivo"}
+    summary = await ChannelMonitorService(db).run_quick_sync(stream, current_user.tenant_id)
+    return {"status": "ok", **summary}
+
+
 @router.post("/{stream_id}/monitor")
 async def run_channel_monitor(
     stream_id: UUID,
@@ -235,25 +251,34 @@ async def monitor_status(
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
     meta = stream.settings or {}
     viewer_svc = ViewerSessionService(db)
-    suspected = await viewer_svc.list_active(stream.id, suspected_only=True)
-    active = await viewer_svc.list_active(stream.id, suspected_only=False, limit=500)
+    counts = await viewer_svc.count_active(stream.id)
     attacks = await db.execute(
         select(Attack).where(
             Attack.stream_id == stream.id,
             Attack.status == "active",
         )
     )
+    from app.services.monitoring.proxy_intel import collect_proxy_threats
+
+    proxy_intel = await collect_proxy_threats(db, stream.id)
+    silent = max(0, (stream.viewer_count or 0) - counts["total"])
     return {
         "is_live": stream.is_live,
         "viewer_count": stream.viewer_count,
         "last_monitor": meta.get("last_monitor"),
+        "last_quick_sync": meta.get("last_quick_sync"),
         "viewer_history": meta.get("viewer_history", [])[-12:],
-        "active_viewers_tracked": len(active),
-        "suspected_bots": len(suspected),
+        "active_viewers_tracked": counts["total"],
+        "talking_count": counts["talking"],
+        "suspected_bots": counts["suspected"],
+        "proxy_ips_detected": len(proxy_intel["proxy_ips"]),
+        "silent_viewbots_estimate": silent if silent > 50 else 0,
         "active_attacks": len(attacks.scalars().all()),
         "monitor_mode": stream_monitor_mode(stream),
+        "has_broadcaster_oauth": bool(stream.oauth_token_encrypted),
         "note": (
-            "Lista usuarios en chat (IRC/Helix). Los viewbots silenciosos se detectan por picos de viewers."
+            "Usuarios en chat (Helix/IRC). Viewers totales en Twitch incluyen quien no escribe. "
+            "Ataques por proxy se mitigan bloqueando IPs detectadas en eventos."
         ),
     }
 
@@ -452,12 +477,22 @@ async def ingest_event(
 async def list_viewers(
     stream_id: UUID,
     current_user: CurrentUser,
-    suspected_only: bool = Query(False),
+    filter: Literal["all", "talking", "suspected"] = Query(
+        "all",
+        description="all=todos en chat, talking=hablando, suspected=sospechosos",
+    ),
+    suspected_only: bool = Query(False, deprecated=True),
     db: AsyncSession = Depends(get_db),
 ):
     await _get_stream(db, stream_id, current_user.tenant_id)
     svc = ViewerSessionService(db)
-    return await svc.list_active(stream_id, suspected_only=suspected_only)
+    if suspected_only:
+        filter = "suspected"
+    return await svc.list_active(
+        stream_id,
+        suspected_only=(filter == "suspected"),
+        talking_only=(filter == "talking"),
+    )
 
 
 @router.post("/{stream_id}/viewers/{viewer_id}/block")

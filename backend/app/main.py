@@ -54,10 +54,9 @@ async def _background_channel_monitor() -> None:
                 if streams:
                     stream = streams[idx % len(streams)]
                     idx += 1
-                    await ChannelMonitorService(db).run_cycle(
+                    await ChannelMonitorService(db).run_quick_sync(
                         stream,
                         stream.tenant_id,
-                        irc_duration=25.0,
                     )
                     await db.commit()
         except Exception as exc:

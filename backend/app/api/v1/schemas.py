@@ -243,3 +243,7 @@ class MitigationRequest(BaseModel):
     action: Optional[MitigationAction] = None
     targets: List[MitigationTarget] = Field(default_factory=list)
     duration_hours: Optional[int] = Field(default=None, ge=1, le=8760)
+    full_mitigation: bool = Field(
+        False,
+        description="Bloquea usuarios sospechosos, IPs proxy y fingerprints del ataque",
+    )

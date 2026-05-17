@@ -13,8 +13,17 @@ from app.integrations.twitch.irc_chat import collect_chat_presence, score_userna
 from app.services.ai.service import AIService
 from app.services.correlation.service import CorrelationService
 from app.services.realtime.notify import push_dashboard_realtime
-from app.services.streams.helpers import stream_monitor_mode, sync_stream_live_status
+from app.services.streams.helpers import (
+    stream_auto_mitigate,
+    stream_monitor_mode,
+    sync_stream_live_status,
+)
+from app.services.monitoring.proxy_intel import (
+    collect_proxy_threats,
+    merge_attack_proxy_evidence,
+)
 from app.services.viewers.session import ViewerSessionService
+from app.services.mitigation.service import MitigationService
 
 logger = get_logger(__name__)
 ai_service = AIService()
@@ -44,6 +53,128 @@ class ChannelMonitorService:
         self.db = db
         self.viewers = ViewerSessionService(db)
         self.helix = TwitchHelixClient()
+
+    async def _fetch_chatters(
+        self,
+        stream: Stream,
+        login: str,
+        *,
+        irc_duration: float = 0,
+    ) -> tuple[List[Dict[str, Any]], str]:
+        by_login: Dict[str, Dict] = {}
+
+        if stream.oauth_token_encrypted and stream.platform == Platform.TWITCH:
+            try:
+                token = decrypt_value(stream.oauth_token_encrypted)
+                names = await self.helix.get_chatters(
+                    stream.external_id,
+                    stream.external_id,
+                    token,
+                )
+                for item in names:
+                    login_name = item.get("user_login") or item.get("user_name", "")
+                    if login_name:
+                        by_login[login_name.lower()] = {
+                            "username": login_name,
+                            "user_id": item.get("user_id"),
+                            "joins": 1,
+                            "messages": 0,
+                            "source": "helix",
+                        }
+            except Exception as exc:
+                logger.warning("helix_chatters_failed", stream=str(stream.id), error=str(exc))
+
+        if login and irc_duration > 0:
+            snapshot = await collect_chat_presence(login, duration_seconds=irc_duration)
+            for _key, data in snapshot.users.items():
+                uname = data["username"]
+                key = uname.lower()
+                if key in by_login:
+                    by_login[key]["joins"] = max(
+                        by_login[key].get("joins", 0),
+                        data.get("joins", 1),
+                    )
+                    by_login[key]["messages"] = max(
+                        by_login[key].get("messages", 0),
+                        data.get("messages", 0),
+                    )
+                    if not by_login[key].get("user_id"):
+                        by_login[key]["source"] = "helix+irc"
+                else:
+                    by_login[key] = {
+                        "username": uname,
+                        "user_id": None,
+                        "joins": data.get("joins", 1),
+                        "messages": data.get("messages", 0),
+                        "source": "irc",
+                    }
+
+        source = "helix+irc" if by_login and stream.oauth_token_encrypted and irc_duration > 0 else (
+            "helix" if stream.oauth_token_encrypted and by_login else "irc"
+        )
+        return list(by_login.values()), source
+
+    async def run_quick_sync(
+        self,
+        stream: Stream,
+        tenant_id: UUID,
+    ) -> Dict[str, Any]:
+        """Sincronizacion rapida: Helix chatters (sin IRC largo)."""
+        stream = await sync_stream_live_status(self.db, stream)
+        meta = dict(stream.settings or {})
+        login = meta.get("login") or stream.channel_name.lower()
+
+        summary: Dict[str, Any] = {
+            "stream_id": str(stream.id),
+            "channel": stream.channel_name,
+            "is_live": stream.is_live,
+            "viewer_count": stream.viewer_count,
+            "chatters_synced": 0,
+            "suspected_count": 0,
+            "talking_count": 0,
+            "sync_mode": "quick",
+            "attack_created": False,
+        }
+
+        if not stream.is_live:
+            meta["last_quick_sync"] = datetime.now(timezone.utc).isoformat()
+            stream.settings = meta
+            await self.db.flush()
+            return summary
+
+        chatters_data, source = await self._fetch_chatters(stream, login, irc_duration=0)
+        if not chatters_data and login:
+            summary["note"] = (
+                "Sin OAuth del streamer: conecta via invitacion para listar chat al cargar. "
+                "Usa escaneo completo (IRC ~55s) mientras tanto."
+            )
+            counts = await self.viewers.count_active(stream.id)
+            summary["chatters_synced"] = counts["total"]
+            summary["suspected_count"] = counts["suspected"]
+            summary["talking_count"] = counts["talking"]
+            return summary
+
+        sync_stats = await self.viewers.sync_chat_presence(
+            stream.id,
+            chatters_data,
+            full_resync=True,
+        )
+        counts = await self.viewers.count_active(stream.id)
+        summary["chatters_synced"] = sync_stats["total_synced"]
+        summary["suspected_count"] = sync_stats["suspected_count"]
+        summary["talking_count"] = counts["talking"]
+        summary["source"] = source
+
+        meta["last_quick_sync"] = datetime.now(timezone.utc).isoformat()
+        meta["last_monitor"] = meta["last_quick_sync"]
+        stream.settings = meta
+        await self.db.flush()
+
+        from app.services.dashboard.metrics import get_tenant_stream_ids
+
+        stream_ids = await get_tenant_stream_ids(self.db, tenant_id)
+        await push_dashboard_realtime(self.db, tenant_id, stream_ids)
+        return summary
 
     async def run_cycle(
         self,
@@ -82,57 +213,14 @@ class ChannelMonitorService:
         stream.settings = meta
 
         spike = _detect_viewer_spike(history, stream.viewer_count)
-        chatters_data: List[Dict[str, Any]] = []
-
-        by_login: Dict[str, Dict] = {}
-
-        if stream.oauth_token_encrypted and stream.platform == Platform.TWITCH:
-            try:
-                token = decrypt_value(stream.oauth_token_encrypted)
-                names = await self.helix.get_chatters(
-                    stream.external_id,
-                    stream.external_id,
-                    token,
-                )
-                for item in names:
-                    login_name = item.get("user_login") or item.get("user_name", "")
-                    if login_name:
-                        by_login[login_name.lower()] = {
-                            "username": login_name,
-                            "user_id": item.get("user_id"),
-                            "joins": 1,
-                            "messages": 0,
-                            "source": "helix",
-                        }
-            except Exception as exc:
-                logger.warning("helix_chatters_failed", stream=str(stream.id), error=str(exc))
-
-        if login:
-            snapshot = await collect_chat_presence(login, duration_seconds=irc_duration)
-            for _key, data in snapshot.users.items():
-                uname = data["username"]
-                key = uname.lower()
-                if key in by_login:
-                    by_login[key]["joins"] = max(
-                        by_login[key].get("joins", 0),
-                        data.get("joins", 1),
-                    )
-                    by_login[key]["messages"] = max(
-                        by_login[key].get("messages", 0),
-                        data.get("messages", 0),
-                    )
-                    if not by_login[key].get("user_id"):
-                        by_login[key]["source"] = "helix+irc"
-                else:
-                    by_login[key] = {
-                        "username": uname,
-                        "user_id": None,
-                        "joins": data.get("joins", 1),
-                        "messages": data.get("messages", 0),
-                        "source": "irc",
-                    }
-
-        chatters_data = list(by_login.values())
+        chatters_data, source = await self._fetch_chatters(
+            stream,
+            login,
+            irc_duration=irc_duration if login else 0,
+        )
+        talking_usernames = [
+            c["username"] for c in chatters_data if c.get("messages", 0) > 0
+        ]
         sync_stats = await self.viewers.sync_chat_presence(
             stream.id,
             chatters_data,
@@ -148,30 +236,54 @@ class ChannelMonitorService:
             ) >= 55.0
         ]
 
+        counts = await self.viewers.count_active(stream.id)
         summary["chatters_synced"] = sync_stats["total_synced"]
         summary["suspected_count"] = sync_stats["suspected_count"]
-        summary["source"] = "helix+irc" if by_login and stream.oauth_token_encrypted else "irc"
+        summary["talking_count"] = counts["talking"]
+        summary["source"] = source
+        summary["sync_mode"] = "full"
+
+        proxy_intel = await collect_proxy_threats(self.db, stream.id)
+        silent_estimate = max(0, (stream.viewer_count or 0) - counts["total"])
+        if silent_estimate > 50:
+            summary["silent_viewbots_estimate"] = silent_estimate
 
         attack_payload = None
         alert_payload = None
         correlation = CorrelationService(self.db)
 
         join_burst = sync_stats["total_synced"] >= 15 and sync_stats["suspected_count"] >= 5
-        if spike or join_burst:
+        proxy_attack = proxy_intel["event_count"] >= 3 or len(proxy_intel["proxy_ips"]) >= 2
+        if spike or join_burst or proxy_attack:
             risk = 72.0 if spike else 65.0
             if len(suspected_usernames) >= 8:
                 risk = min(risk + 10, 95)
+            if proxy_attack:
+                risk = min(risk + 12, 98)
 
-            evidence: Dict[str, Any] = {
-                "monitor_cycle": True,
-                "viewer_count": stream.viewer_count,
-                "chatters_sampled": len(chatters_data),
-                "suspected_usernames": suspected_usernames[:30],
-                "spike": spike,
-                "join_burst": join_burst,
-            }
+            evidence: Dict[str, Any] = merge_attack_proxy_evidence(
+                {
+                    "monitor_cycle": True,
+                    "viewer_count": stream.viewer_count,
+                    "chatters_sampled": len(chatters_data),
+                    "suspected_usernames": suspected_usernames[:30],
+                    "talking_usernames": talking_usernames[:50],
+                    "spike": spike,
+                    "join_burst": join_burst,
+                    "proxy_attack": proxy_attack,
+                    "silent_viewbots_estimate": silent_estimate if silent_estimate > 50 else None,
+                },
+                proxy_intel,
+            )
+            source_ips = list(proxy_intel["proxy_ips"])[:20]
+            fingerprints = list(proxy_intel["fingerprints"])[:10]
 
-            attack_type = AttackType.VIEWBOT if spike else AttackType.COORDINATED
+            if proxy_attack and spike:
+                attack_type = AttackType.VIEWBOT
+            elif proxy_attack:
+                attack_type = AttackType.COORDINATED
+            else:
+                attack_type = AttackType.VIEWBOT if spike else AttackType.COORDINATED
             ai_insight = await ai_service.analyze_threat(
                 attack_type.value,
                 risk,
@@ -193,11 +305,31 @@ class ChannelMonitorService:
                     stream_id=stream.id,
                     attack_type=attack_type,
                     risk_score=risk,
-                    confidence=0.75,
+                    confidence=0.8 if proxy_attack else 0.75,
                     evidence=evidence,
-                    source_ips=[],
-                    fingerprints=[],
+                    source_ips=source_ips,
+                    fingerprints=fingerprints,
                 )
+                if stream_auto_mitigate(stream) and risk >= 70.0:
+                    mitigation = MitigationService(self.db)
+                    targets: List[Dict[str, str]] = []
+                    for ip in source_ips[:15]:
+                        targets.append({"type": "ip", "value": ip})
+                    for name in suspected_usernames[:15]:
+                        targets.append({"type": "user", "value": name})
+                    for fp in fingerprints[:5]:
+                        targets.append({"type": "fingerprint", "value": fp})
+                    if targets:
+                        await mitigation.progressive_mitigation(
+                            stream_id=stream.id,
+                            tenant_id=tenant_id,
+                            attack_id=attack.id,
+                            risk_score=risk,
+                            threat_type=attack_type.value,
+                            targets=targets,
+                            evidence=evidence,
+                        )
+                        summary["auto_mitigated"] = True
                 alert = await correlation.create_alert(
                     tenant_id=tenant_id,
                     attack=attack,
