@@ -1,0 +1,27 @@
+name: Deploy Render env
+
+on:
+  workflow_dispatch:
+
+jobs:
+  push-env:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Write deploy/render.import.env from secret
+        run: |
+          if [ -z "${{ secrets.DEPLOY_RENDER_ENV }}" ]; then
+            echo "Missing GitHub secret DEPLOY_RENDER_ENV (contents of render.import.env)"
+            exit 1
+          fi
+          printf '%s\n' "${{ secrets.DEPLOY_RENDER_ENV }}" > deploy/render.import.env
+
+      - name: Push variables to Render and trigger deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: python deploy/push_render_env.py
