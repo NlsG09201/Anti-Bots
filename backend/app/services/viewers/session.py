@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.database.models import ViewerSession
@@ -29,18 +29,18 @@ class ViewerSessionService:
         risk = max(score_username_risk(username, joins, messages), extra_risk)
         is_bot = risk >= 55.0
 
+        uname = username.strip()
         result = await self.db.execute(
             select(ViewerSession).where(
-                and_(
-                    ViewerSession.stream_id == stream_id,
-                    ViewerSession.platform_username == username,
-                    ViewerSession.is_active == True,
-                )
+                ViewerSession.stream_id == stream_id,
+                func.lower(ViewerSession.platform_username) == uname.lower(),
             )
         )
         session = result.scalar_one_or_none()
 
         if session:
+            session.is_active = True
+            session.left_at = None
             session.chat_messages += messages
             session.risk_score = max(session.risk_score, risk)
             session.is_suspected_bot = session.is_suspected_bot or is_bot
@@ -134,11 +134,54 @@ class ViewerSessionService:
         await self.db.flush()
         return session
 
+    async def sync_chat_presence(
+        self,
+        stream_id: UUID,
+        chatters: List[Dict],
+        *,
+        full_resync: bool = True,
+    ) -> Dict[str, int]:
+        """Importa lista completa del chat; opcionalmente desactiva quien ya no esta."""
+        seen_usernames: List[str] = []
+        suspected = 0
+        for chatter in chatters:
+            session = await self.upsert_chat_viewer(
+                stream_id,
+                chatter["username"],
+                chatter.get("user_id"),
+                joins=chatter.get("joins", 1),
+                messages=chatter.get("messages", 0),
+                source=chatter.get("source", "irc"),
+            )
+            seen_usernames.append((session.platform_username or chatter["username"]).lower())
+            if session.is_suspected_bot:
+                suspected += 1
+
+        if full_resync and seen_usernames:
+            await self.db.execute(
+                update(ViewerSession)
+                .where(
+                    ViewerSession.stream_id == stream_id,
+                    ViewerSession.is_active == True,
+                    func.lower(ViewerSession.platform_username).notin_(seen_usernames),
+                )
+                .values(
+                    is_active=False,
+                    left_at=datetime.now(timezone.utc),
+                )
+            )
+            await self.db.flush()
+
+        return {
+            "total_synced": len(seen_usernames),
+            "suspected_count": suspected,
+        }
+
     async def list_active(
         self,
         stream_id: UUID,
         suspected_only: bool = False,
-        limit: int = 200,
+        limit: int = 2000,
     ) -> List[ViewerSession]:
         query = select(ViewerSession).where(
             ViewerSession.stream_id == stream_id,
@@ -147,7 +190,11 @@ class ViewerSessionService:
         if suspected_only:
             query = query.where(ViewerSession.is_suspected_bot == True)
         result = await self.db.execute(
-            query.order_by(ViewerSession.risk_score.desc()).limit(limit)
+            query.order_by(
+                ViewerSession.is_suspected_bot.desc(),
+                ViewerSession.risk_score.desc(),
+                ViewerSession.platform_username.asc(),
+            ).limit(limit)
         )
         return list(result.scalars().all())
 

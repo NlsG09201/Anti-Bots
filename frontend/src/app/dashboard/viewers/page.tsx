@@ -9,13 +9,15 @@ import { api, type Stream, type Viewer } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 import clsx from "clsx";
 
+type ViewFilter = "all" | "suspected";
+
 function ViewersContent() {
   const searchParams = useSearchParams();
   const { accessToken } = useAuthStore();
   const token = accessToken!;
   const queryClient = useQueryClient();
   const [selectedStream, setSelectedStream] = useState(searchParams.get("stream") ?? "");
-  const [suspectedOnly, setSuspectedOnly] = useState(false);
+  const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
   const [message, setMessage] = useState("");
 
   const { data: streams = [] } = useQuery({
@@ -27,6 +29,7 @@ function ViewersContent() {
 
   const streamId = selectedStream || streams[0]?.id || "";
   const currentStream = streams.find((s) => s.id === streamId);
+  const suspectedOnly = viewFilter === "suspected";
 
   useEffect(() => {
     const q = searchParams.get("stream");
@@ -50,17 +53,17 @@ function ViewersContent() {
   const scanMutation = useMutation({
     mutationFn: () => api.streams.monitor(token, streamId),
     onSuccess: (res) => {
+      setViewFilter("all");
       setMessage(
         res.status === "offline"
           ? "Canal offline — no hay chat que escanear"
-          : `Escaneo: ${res.chatters_synced ?? 0} en chat, ${res.suspected_count ?? 0} sospechosos${
-              res.attack_created ? " — posible ataque detectado" : ""
+          : `Listado completo: ${res.chatters_synced ?? 0} usuarios en chat · ${res.suspected_count ?? 0} sospechosos${
+              res.attack_created ? " · posible ataque" : ""
             }`,
       );
       queryClient.invalidateQueries({ queryKey: ["viewers"] });
       queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
       queryClient.invalidateQueries({ queryKey: ["attacks"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
     },
     onError: (e: Error) => setMessage(e.message),
   });
@@ -79,16 +82,20 @@ function ViewersContent() {
     onError: (e: Error) => setMessage(e.message),
   });
 
+  const totalInChat = monitorStatus?.active_viewers_tracked ?? viewers.length;
+  const suspectedCount = monitorStatus?.suspected_bots ?? viewers.filter((v) => v.is_suspected_bot).length;
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Users className="text-cyber-info" />
-          Viewers y sospechosos
+          Usuarios en el chat
         </h1>
         <p className="text-cyber-muted text-sm mt-1 max-w-2xl">
-          Monitoreo real por chat IRC y API Twitch. La lista muestra quien esta en el chat del canal
-          (no todos los viewers silenciosos). Los picos de viewers detectan viewbots.
+          Tras escanear veras <strong className="text-white">todos</strong> los usuarios detectados en el chat.
+          Usa la pestana &quot;Solo sospechosos&quot; para filtrar. Viewers totales en Twitch:{" "}
+          {monitorStatus?.viewer_count ?? "—"} (incluye quien no escribe en chat).
         </p>
       </div>
 
@@ -109,7 +116,7 @@ function ViewersContent() {
             {streams.map((s: Stream) => (
               <option key={s.id} value={s.id}>
                 {s.channel_name}
-                {s.monitor_mode ? " (observacion)" : ""}
+                {s.monitor_mode ? " (obs)" : ""}
                 {s.is_live ? " LIVE" : ""}
               </option>
             ))}
@@ -119,46 +126,50 @@ function ViewersContent() {
           type="button"
           disabled={!streamId || scanMutation.isPending}
           onClick={() => scanMutation.mutate()}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyber-accent/20 text-cyber-accent border border-cyber-accent/40 text-sm hover:bg-cyber-accent/30 disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyber-accent/20 text-cyber-accent border border-cyber-accent/40 text-sm disabled:opacity-50"
         >
           <Scan size={16} />
-          {scanMutation.isPending ? "Escaneando (~30s)..." : "Escanear chat ahora"}
+          {scanMutation.isPending ? "Escaneando (~55s)..." : "Escanear chat completo"}
         </button>
-        <label className="flex items-center gap-2 text-sm text-cyber-muted cursor-pointer">
-          <input
-            type="checkbox"
-            checked={suspectedOnly}
-            onChange={(e) => setSuspectedOnly(e.target.checked)}
-            className="rounded"
-          />
-          Solo sospechosos
-        </label>
+        <div className="flex rounded-lg border border-cyber-border overflow-hidden text-sm">
+          <button
+            type="button"
+            onClick={() => setViewFilter("all")}
+            className={clsx(
+              "px-3 py-2",
+              viewFilter === "all" ? "bg-cyber-accent/20 text-cyber-accent" : "text-cyber-muted",
+            )}
+          >
+            Todos ({totalInChat})
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewFilter("suspected")}
+            className={clsx(
+              "px-3 py-2 border-l border-cyber-border",
+              viewFilter === "suspected" ? "bg-cyber-danger/20 text-cyber-danger" : "text-cyber-muted",
+            )}
+          >
+            Solo sospechosos ({suspectedCount})
+          </button>
+        </div>
         <Link
           href={`/dashboard/attacks?stream=${streamId}`}
-          className="text-sm text-cyber-accent hover:underline flex items-center gap-1"
+          className="text-sm text-cyber-accent hover:underline flex items-center gap-1 pb-2"
         >
-          <AlertTriangle size={14} /> Ver ataques del canal
+          <AlertTriangle size={14} /> Ataques
         </Link>
       </div>
-
-      {monitorStatus && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat label="Viewers Twitch" value={String(monitorStatus.viewer_count)} />
-          <Stat label="En chat (tracked)" value={String(monitorStatus.active_viewers_tracked)} />
-          <Stat label="Sospechosos" value={String(monitorStatus.suspected_bots)} highlight />
-          <Stat label="Ataques activos" value={String(monitorStatus.active_attacks)} highlight />
-        </div>
-      )}
 
       <div className="cyber-card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-cyber-muted border-b border-cyber-border">
               <th className="text-left py-3 px-2">Usuario</th>
-              <th className="text-left py-3 px-2">Origen</th>
+              <th className="text-left py-3 px-2">Fuente</th>
               <th className="text-right py-3 px-2">Risk</th>
               <th className="text-center py-3 px-2">Msgs</th>
-              <th className="text-center py-3 px-2">Bot?</th>
+              <th className="text-center py-3 px-2">Estado</th>
               <th className="text-right py-3 px-2">Accion</th>
             </tr>
           </thead>
@@ -175,19 +186,17 @@ function ViewersContent() {
                   {v.platform_username || v.platform_user_id || "—"}
                 </td>
                 <td className="py-3 px-2 text-cyber-muted text-xs">
-                  {v.ip_address === "twitch:chat"
-                    ? (v.behavior_metrics?.source as string) || "chat"
-                    : v.ip_address}
+                  {(v.behavior_metrics?.source as string) || "chat"}
                 </td>
                 <td className="py-3 px-2 text-right font-mono text-cyber-danger">
                   {v.risk_score.toFixed(0)}
                 </td>
                 <td className="py-3 px-2 text-center text-cyber-muted">{v.chat_messages ?? 0}</td>
-                <td className="py-3 px-2 text-center">
+                <td className="py-3 px-2 text-center text-xs">
                   {v.is_suspected_bot ? (
-                    <span className="text-cyber-danger text-xs">SOSPECHOSO</span>
+                    <span className="text-cyber-danger">Sospechoso</span>
                   ) : (
-                    "—"
+                    <span className="text-cyber-muted">En chat</span>
                   )}
                 </td>
                 <td className="py-3 px-2 text-right">
@@ -196,7 +205,7 @@ function ViewersContent() {
                       type="button"
                       disabled={blockMutation.isPending}
                       onClick={() => blockMutation.mutate(v)}
-                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-cyber-danger/50 text-cyber-danger hover:bg-cyber-danger/10"
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-cyber-danger/50 text-cyber-danger"
                     >
                       <Ban size={12} /> Bloquear
                     </button>
@@ -208,15 +217,17 @@ function ViewersContent() {
         </table>
         {!streamId && (
           <p className="text-center py-12 text-cyber-muted">
-            Anade un canal en{" "}
-            <Link href="/dashboard/channels" className="text-cyber-accent">
-              Channels
-            </Link>
+            Anade un canal en <Link href="/dashboard/channels" className="text-cyber-accent">Channels</Link>
           </p>
         )}
-        {streamId && !isLoading && viewers.length === 0 && (
+        {streamId && !isLoading && viewers.length === 0 && viewFilter === "all" && (
           <p className="text-center py-12 text-cyber-muted">
-            Sin datos aun — pulsa &quot;Escanear chat ahora&quot; con el canal en vivo
+            Pulsa &quot;Escanear chat completo&quot; con el canal en vivo (~55 s)
+          </p>
+        )}
+        {streamId && !isLoading && viewers.length === 0 && viewFilter === "suspected" && (
+          <p className="text-center py-12 text-cyber-muted">
+            Ningun sospechoso en el ultimo escaneo. Prueba la pestana Todos.
           </p>
         )}
         {isLoading && (
@@ -225,25 +236,6 @@ function ViewersContent() {
           </p>
         )}
       </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div className="cyber-card py-3 px-4">
-      <p className="text-xs text-cyber-muted">{label}</p>
-      <p className={clsx("text-xl font-bold", highlight ? "text-cyber-danger" : "text-white")}>
-        {value}
-      </p>
     </div>
   );
 }
