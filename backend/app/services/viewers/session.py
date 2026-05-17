@@ -6,9 +6,27 @@ from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.database.models import ViewerSession
+from app.integrations.twitch.chat_filters import (
+    CHAT_PRESENCE_SOURCES,
+    is_valid_chatter_username,
+)
 from app.integrations.twitch.irc_chat import score_username_risk
 
 CHAT_IP_PLACEHOLDER = "twitch:chat"
+NON_CHAT_SOURCES = frozenset({"ingest", "widget", "api"})
+
+
+def is_chat_presence_session(session: ViewerSession) -> bool:
+    """Solo usuarios detectados en el chat IRC/Helix, no pings de widget ni IPs sueltas."""
+    if session.ip_address != CHAT_IP_PLACEHOLDER:
+        return False
+    metrics = session.behavior_metrics or {}
+    source = str(metrics.get("source", "")).lower()
+    if source in NON_CHAT_SOURCES:
+        return False
+    if source and source not in CHAT_PRESENCE_SOURCES:
+        return False
+    return is_valid_chatter_username(session.platform_username or "")
 
 
 class ViewerSessionService:
@@ -25,11 +43,14 @@ class ViewerSessionService:
         messages: int = 0,
         extra_risk: float = 0.0,
         source: str = "irc",
-    ) -> ViewerSession:
+    ) -> Optional[ViewerSession]:
         risk = max(score_username_risk(username, joins, messages), extra_risk)
         is_bot = risk >= 55.0
 
         uname = username.strip()
+        if not is_valid_chatter_username(uname):
+            return None
+
         result = await self.db.execute(
             select(ViewerSession).where(
                 ViewerSession.stream_id == stream_id,
@@ -145,17 +166,24 @@ class ViewerSessionService:
         seen_usernames: List[str] = []
         suspected = 0
         for chatter in chatters:
+            username = chatter.get("username", "")
+            if not is_valid_chatter_username(username):
+                continue
             session = await self.upsert_chat_viewer(
                 stream_id,
-                chatter["username"],
+                username,
                 chatter.get("user_id"),
                 joins=chatter.get("joins", 1),
                 messages=chatter.get("messages", 0),
                 source=chatter.get("source", "irc"),
             )
-            seen_usernames.append((session.platform_username or chatter["username"]).lower())
+            if not session:
+                continue
+            seen_usernames.append((session.platform_username or username).lower())
             if session.is_suspected_bot:
                 suspected += 1
+
+        await self.deactivate_non_chat_sessions(stream_id)
 
         if full_resync and seen_usernames:
             await self.db.execute(
@@ -177,17 +205,39 @@ class ViewerSessionService:
             "suspected_count": suspected,
         }
 
+    async def deactivate_non_chat_sessions(self, stream_id: UUID) -> int:
+        """Oculta sesiones de widget/ingest o usuarios que no son del chat."""
+        result = await self.db.execute(
+            select(ViewerSession).where(
+                ViewerSession.stream_id == stream_id,
+                ViewerSession.is_active == True,
+            )
+        )
+        deactivated = 0
+        now = datetime.now(timezone.utc)
+        for session in result.scalars().all():
+            if is_chat_presence_session(session):
+                continue
+            session.is_active = False
+            session.left_at = now
+            deactivated += 1
+        if deactivated:
+            await self.db.flush()
+        return deactivated
+
     async def list_active(
         self,
         stream_id: UUID,
         *,
         suspected_only: bool = False,
         talking_only: bool = False,
+        chat_only: bool = True,
         limit: int = 2000,
     ) -> List[ViewerSession]:
         query = select(ViewerSession).where(
             ViewerSession.stream_id == stream_id,
             ViewerSession.is_active == True,
+            ViewerSession.ip_address == CHAT_IP_PLACEHOLDER,
         )
         if suspected_only:
             query = query.where(ViewerSession.is_suspected_bot == True)
@@ -199,15 +249,18 @@ class ViewerSessionService:
                 ViewerSession.chat_messages.desc(),
                 ViewerSession.risk_score.desc(),
                 ViewerSession.platform_username.asc(),
-            ).limit(limit)
+            ).limit(limit * 2 if chat_only else limit)
         )
-        return list(result.scalars().all())
+        sessions = list(result.scalars().all())
+        if chat_only:
+            sessions = [s for s in sessions if is_chat_presence_session(s)][:limit]
+        return sessions
 
     async def count_active(
         self,
         stream_id: UUID,
     ) -> Dict[str, int]:
-        all_sessions = await self.list_active(stream_id, limit=5000)
+        all_sessions = await self.list_active(stream_id, chat_only=True, limit=5000)
         talking = sum(1 for s in all_sessions if (s.chat_messages or 0) > 0)
         suspected = sum(1 for s in all_sessions if s.is_suspected_bot)
         return {

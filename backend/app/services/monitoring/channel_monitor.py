@@ -9,6 +9,7 @@ from app.core.logging import get_logger
 from app.core.security import decrypt_value
 from app.infrastructure.database.models import Attack, AttackType, Platform, Stream
 from app.integrations.twitch.helix import TwitchHelixClient
+from app.integrations.twitch.chat_filters import is_valid_chatter_username
 from app.integrations.twitch.irc_chat import collect_chat_presence, score_username_risk
 from app.services.ai.service import AIService
 from app.services.correlation.service import CorrelationService
@@ -73,7 +74,7 @@ class ChannelMonitorService:
                 )
                 for item in names:
                     login_name = item.get("user_login") or item.get("user_name", "")
-                    if login_name:
+                    if login_name and is_valid_chatter_username(login_name):
                         by_login[login_name.lower()] = {
                             "username": login_name,
                             "user_id": item.get("user_id"),
@@ -88,6 +89,8 @@ class ChannelMonitorService:
             snapshot = await collect_chat_presence(login, duration_seconds=irc_duration)
             for _key, data in snapshot.users.items():
                 uname = data["username"]
+                if not is_valid_chatter_username(uname):
+                    continue
                 key = uname.lower()
                 if key in by_login:
                     by_login[key]["joins"] = max(

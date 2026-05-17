@@ -85,16 +85,18 @@ async def process_stream_event(
     db.add(stream_event)
     await db.flush()
 
-    viewer_svc = ViewerSessionService(db)
-    await viewer_svc.upsert_from_event(
-        stream.id,
-        event.platform_username,
-        event.platform_user_id,
-        event.ip_address,
-        event.fingerprint_hash,
-        risk_score,
-        event.event_type,
-    )
+    # Widget / pulse: solo registro de IP para proxy; no aparecen en lista de chat
+    if source != "widget" and event.event_type not in ("viewer_pulse",):
+        viewer_svc = ViewerSessionService(db)
+        await viewer_svc.upsert_from_event(
+            stream.id,
+            event.platform_username,
+            event.platform_user_id,
+            event.ip_address,
+            event.fingerprint_hash,
+            risk_score,
+            event.event_type,
+        )
 
     attack_payload = None
     alert_payload = None

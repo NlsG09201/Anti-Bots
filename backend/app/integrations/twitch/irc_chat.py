@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 
 from app.core.logging import get_logger
+from app.integrations.twitch.chat_filters import is_valid_chatter_username
 
 logger = get_logger(__name__)
 
@@ -31,14 +32,14 @@ class ChatPresenceSnapshot:
     users: Dict[str, Dict[str, int]] = field(default_factory=dict)
 
     def record_join(self, username: str) -> None:
-        if not username or username.lower() in ("jtv", "tmi"):
+        if not is_valid_chatter_username(username):
             return
         key = username.lower()
         entry = self.users.setdefault(key, {"joins": 0, "messages": 0, "username": username})
         entry["joins"] += 1
 
     def record_message(self, username: str) -> None:
-        if not username:
+        if not is_valid_chatter_username(username):
             return
         key = username.lower()
         entry = self.users.setdefault(key, {"joins": 0, "messages": 0, "username": username})

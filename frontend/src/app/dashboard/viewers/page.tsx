@@ -151,8 +151,8 @@ function ViewersContent() {
           Usuarios del stream
         </h1>
         <p className="text-cyber-muted text-sm mt-1 max-w-3xl">
-          Al abrir se sincroniza el chat del canal en vivo. El escaneo completo (~55 s) detecta quien
-          habla y posibles bots. Viewers totales en Twitch:{" "}
+          Solo usuarios reales en el chat del stream (IRC/Helix). No se listan pings del widget ni
+          bots de Twitch (Nightbot, StreamElements, etc.). Viewers totales en Twitch:{" "}
           <strong className="text-white">{twitchViewers || "—"}</strong>
           {silentBots > 0 && (
             <>
