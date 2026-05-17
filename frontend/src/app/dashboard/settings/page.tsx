@@ -70,7 +70,14 @@ function SettingsContent() {
   const connectTwitch = useMutation({
     mutationFn: () => api.twitch.authorize(token),
     onSuccess: (data) => {
+      if (!data.authorization_url) {
+        setMessage("No se recibió URL de autorización de Twitch.");
+        return;
+      }
       window.location.href = data.authorization_url;
+    },
+    onError: (err: unknown) => {
+      setMessage(err instanceof Error ? err.message : "Error al conectar con Twitch");
     },
   });
 
@@ -135,8 +142,19 @@ function SettingsContent() {
         )}
 
         <p className="text-xs text-cyber-muted">
-          Redirect URI en Twitch Developer Console:{" "}
-          <code className="text-cyber-info">https://api.tudominio.com/api/v1/integrations/twitch/callback</code>
+          Redirect URI en{" "}
+          <a
+            href="https://dev.twitch.tv/console/apps"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-cyber-info hover:underline"
+          >
+            Twitch Developer Console
+          </a>
+          :{" "}
+          <code className="text-cyber-info break-all">
+            https://anti-bots.onrender.com/api/v1/integrations/twitch/callback
+          </code>
         </p>
       </section>
 
