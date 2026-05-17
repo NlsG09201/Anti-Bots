@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://anti-bots-api.onrender.com/api/:path*"
+      "destination": "https://anti-bots.onrender.com/api/:path*"
     }
   ]
 }

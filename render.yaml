@@ -21,7 +21,7 @@ services:
       - key: APP_FRONTEND_URL
         value: https://anti-bots.vercel.app
       - key: TRUSTED_HOSTS
-        value: anti-bots-api.onrender.com,.onrender.com,localhost,127.0.0.1
+        value: anti-bots.onrender.com,anti-bots-api.onrender.com,.onrender.com,localhost,127.0.0.1
       - key: RENDER
         value: "true"
       # Secrets: Render Dashboard -> Environment -> import deploy/render.import.env

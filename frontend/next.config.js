@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const isVercel = process.env.VERCEL === "1";
 const publicApi = process.env.NEXT_PUBLIC_API_URL || "";
-const renderDefault = "https://anti-bots-api.onrender.com";
+const renderDefault = "https://anti-bots.onrender.com";
 
 const apiTarget = (
   process.env.API_PROXY_TARGET ||

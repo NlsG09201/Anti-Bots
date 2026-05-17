@@ -3,7 +3,7 @@
 param(
     [Parameter(Mandatory = $false)]
     [string]$RenderApiKey = "",
-    [string]$RenderServiceUrl = "https://anti-bots-api.onrender.com"
+    [string]$RenderServiceUrl = "https://anti-bots.onrender.com"
 )
 
 $ErrorActionPreference = "Stop"

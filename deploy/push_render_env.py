@@ -15,7 +15,7 @@ from pathlib import Path
 DEPLOY_DIR = Path(__file__).resolve().parent
 IMPORT_FILE = DEPLOY_DIR / "render.import.env"
 API_KEY_FILE = DEPLOY_DIR / "render.api.key"
-SERVICE_NAME = os.environ.get("RENDER_SERVICE_NAME", "anti-bots-api")
+SERVICE_NAME = os.environ.get("RENDER_SERVICE_NAME", "Anti-Bots")
 API_BASE = "https://api.render.com/v1"
 
 EXTRA_VARS = {

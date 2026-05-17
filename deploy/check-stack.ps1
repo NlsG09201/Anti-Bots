@@ -1,5 +1,5 @@
 # Comprueba Render + proxy Vercel
-param([string]$RenderUrl = "https://anti-bots-api.onrender.com")
+param([string]$RenderUrl = "https://anti-bots.onrender.com")
 
 $ErrorActionPreference = "Continue"
 Write-Host "=== Diagnostico StreamShield ===" -ForegroundColor Cyan
