@@ -54,8 +54,19 @@ async def twitch_setup(current_user: CurrentUser):
     }
 
 
+async def _start_oauth(state_payload: dict) -> str:
+    state = secrets.token_urlsafe(32)
+    cache = RedisCache(prefix="oauth")
+    await cache.set(f"state:{state}", state_payload, ttl=900)
+    oauth = TwitchOAuth()
+    return oauth.get_authorization_url(state)
+
+
 @router.get("/authorize")
-async def twitch_authorize(current_user: CurrentUser):
+async def twitch_authorize(
+    current_user: CurrentUser,
+    upgrade_stream_id: Optional[UUID] = Query(None),
+):
     if not settings.twitch_client_id:
         raise ValidationError("Twitch integration is not configured")
     if not twitch_credentials_valid():
@@ -65,13 +76,34 @@ async def twitch_authorize(current_user: CurrentUser):
             "y actualiza TWITCH_CLIENT_ID y TWITCH_CLIENT_SECRET en Render."
         )
 
-    state = secrets.token_urlsafe(32)
-    cache = RedisCache(prefix="oauth")
-    await cache.set(f"state:{state}", {"user_id": str(current_user.id), "tenant_id": str(current_user.tenant_id)}, ttl=600)
-
-    oauth = TwitchOAuth()
-    url = oauth.get_authorization_url(state)
+    payload = {
+        "user_id": str(current_user.id),
+        "tenant_id": str(current_user.tenant_id),
+    }
+    if upgrade_stream_id:
+        payload["upgrade_stream_id"] = str(upgrade_stream_id)
+    url = await _start_oauth(payload)
     return {"authorization_url": url}
+
+
+@router.get("/invite/{invite_token}/start")
+async def start_invite_oauth(invite_token: str):
+    """Inicio OAuth publico (sin login SOC) usando token de invitacion."""
+    if not twitch_credentials_valid():
+        raise ValidationError("Twitch no configurado en el servidor")
+
+    cache = RedisCache(prefix="oauth")
+    stored = await cache.get(f"invite:{invite_token}")
+    if not stored:
+        raise ValidationError("Invitacion invalida o expirada")
+
+    url = await _start_oauth({
+        "tenant_id": stored["tenant_id"],
+        "upgrade_stream_id": stored["stream_id"],
+        "invite": invite_token,
+        "public_invite": True,
+    })
+    return RedirectResponse(url)
 
 
 def _frontend_redirect(path: str) -> RedirectResponse:
@@ -112,15 +144,37 @@ async def twitch_callback(
 
     broadcaster_id = user_info["id"]
     login = user_info["login"]
+    upgrade_id = stored.get("upgrade_stream_id")
 
-    result = await db.execute(
-        select(Stream).where(
-            Stream.tenant_id == UUID(stored["tenant_id"]),
-            Stream.platform == Platform.TWITCH,
-            Stream.external_id == broadcaster_id,
+    stream = None
+    if upgrade_id:
+        result = await db.execute(
+            select(Stream).where(
+                Stream.id == UUID(upgrade_id),
+                Stream.tenant_id == UUID(stored["tenant_id"]),
+            )
         )
-    )
-    stream = result.scalar_one_or_none()
+        stream = result.scalar_one_or_none()
+        if stream and stream.external_id != broadcaster_id:
+            expected = (stream.settings or {}).get("login", stream.channel_name)
+            return _frontend_redirect(
+                f"/dashboard/channels?twitch_error=wrong_account"
+                f"&twitch_msg={quote(f'Debes conectar la cuenta @{expected}')}"
+            )
+
+    if not stream:
+        result = await db.execute(
+            select(Stream).where(
+                Stream.tenant_id == UUID(stored["tenant_id"]),
+                Stream.platform == Platform.TWITCH,
+                Stream.external_id == broadcaster_id,
+            )
+        )
+        stream = result.scalar_one_or_none()
+
+    owner_id = stored.get("user_id")
+    if not owner_id and stream:
+        owner_id = str(stream.owner_id)
 
     if stream:
         stream.channel_name = user_info.get("display_name", login)
@@ -132,9 +186,11 @@ async def twitch_callback(
         meta["auto_mitigate"] = True
         stream.settings = meta
     else:
+        if not owner_id:
+            return _frontend_redirect("/dashboard/channels?twitch_error=missing_owner")
         stream = Stream(
             tenant_id=UUID(stored["tenant_id"]),
-            owner_id=UUID(stored["user_id"]),
+            owner_id=UUID(owner_id),
             platform=Platform.TWITCH,
             external_id=broadcaster_id,
             channel_name=user_info.get("display_name", login),
@@ -159,6 +215,9 @@ async def twitch_callback(
             except Exception:
                 pass
 
+    if stored.get("invite") or stored.get("upgrade_stream_id"):
+        await cache.delete(f"invite:{stored['invite']}") if stored.get("invite") else None
+        return _frontend_redirect("/dashboard/channels?twitch=connected")
     return _frontend_redirect("/dashboard/settings?twitch=connected")
 
 

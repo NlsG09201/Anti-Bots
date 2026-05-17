@@ -71,18 +71,42 @@ async def mitigate_attack(
     if not attack:
         raise NotFoundError("Attack")
 
+    targets = [{"type": t.type, "value": t.value.strip()} for t in data.targets if t.value.strip()]
+    if not targets:
+        evidence = attack.evidence or {}
+        for ip in (attack.source_ips or [])[:10]:
+            if ip:
+                targets.append({"type": "ip", "value": ip})
+        for name in (evidence.get("suspected_usernames") or [])[:15]:
+            if name:
+                targets.append({"type": "user", "value": str(name)})
+        for fp in (attack.fingerprints or [])[:5]:
+            if fp:
+                targets.append({"type": "fingerprint", "value": fp})
+
+    if not targets:
+        from app.core.exceptions import ValidationError
+        raise ValidationError(
+            "No hay objetivos para mitigar. Escanea el chat del canal o espera eventos con IPs/usuarios."
+        )
+
     mitigation = MitigationService(db)
     action = data.action or mitigation.determine_action(attack.risk_score, attack.attack_type.value)
+    evidence_payload = dict(attack.evidence or {})
+    evidence_payload["risk_score"] = attack.risk_score
+
     bans = await mitigation.apply_mitigation(
         stream_id=attack.stream_id,
         tenant_id=current_user.tenant_id,
         attack_id=attack.id,
         action=action,
-        targets=data.targets,
-        evidence=attack.evidence,
+        targets=targets,
+        evidence=evidence_payload,
         duration_hours=data.duration_hours,
     )
-    return {"action": action.value, "bans_created": len(bans)}
+    attack.status = "mitigated"
+    await db.flush()
+    return {"action": action.value, "bans_created": len(bans), "targets": len(targets)}
 
 
 @router.get("/alerts", response_model=List[AlertResponse])

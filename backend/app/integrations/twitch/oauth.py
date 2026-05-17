@@ -50,6 +50,7 @@ class TwitchOAuth:
     SCOPES = [
         "channel:read:subscriptions",
         "moderator:read:followers",
+        "moderator:read:chatters",
         "channel:read:stream_key",
         "user:read:email",
         "channel:manage:moderators",

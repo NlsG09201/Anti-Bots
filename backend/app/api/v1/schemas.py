@@ -234,8 +234,12 @@ class BlockViewerRequest(BaseModel):
     apply_twitch_ban: bool = True
 
 
+class MitigationTarget(BaseModel):
+    type: str = Field(..., pattern="^(user|ip|fingerprint|asn)$")
+    value: str = Field(..., min_length=1, max_length=255)
+
+
 class MitigationRequest(BaseModel):
-    attack_id: UUID
     action: Optional[MitigationAction] = None
-    targets: List[Dict[str, str]]
-    duration_hours: Optional[int] = None
+    targets: List[MitigationTarget] = Field(default_factory=list)
+    duration_hours: Optional[int] = Field(default=None, ge=1, le=8760)

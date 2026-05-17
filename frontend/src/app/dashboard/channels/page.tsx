@@ -1,19 +1,33 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, Plus, RefreshCw, Trash2, Users, Tv, Radio } from "lucide-react";
+import { Eye, Link2, Plus, RefreshCw, Trash2, Users, Tv, Radio } from "lucide-react";
 import Link from "next/link";
 import { api, type Stream } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 
-export default function ChannelsPage() {
+function ChannelsContent() {
+  const searchParams = useSearchParams();
   const { accessToken } = useAuthStore();
   const token = accessToken!;
   const queryClient = useQueryClient();
   const [login, setLogin] = useState("");
   const [message, setMessage] = useState("");
   const [scanningId, setScanningId] = useState<string | null>(null);
+  const [inviteUrl, setInviteUrl] = useState("");
+
+  useEffect(() => {
+    if (searchParams.get("twitch") === "connected") {
+      setMessage("Twitch del canal conectado. Ya puedes usar Helix chatters y ban en Twitch.");
+      queryClient.invalidateQueries({ queryKey: ["streams"] });
+    }
+    const err = searchParams.get("twitch_error");
+    if (err) {
+      setMessage(searchParams.get("twitch_msg") || err);
+    }
+  }, [searchParams, queryClient]);
 
   const { data: streams = [], isLoading } = useQuery({
     queryKey: ["streams", "sync"],
@@ -57,6 +71,16 @@ export default function ChannelsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["streams"] }),
   });
 
+  const inviteMutation = useMutation({
+    mutationFn: (id: string) => api.streams.channelInvite(token, id),
+    onSuccess: (data) => {
+      setInviteUrl(data.invite_url);
+      setMessage(`Enlace listo para @${data.channel_login}. El streamer debe abrirlo e iniciar sesion con su cuenta.`);
+      navigator.clipboard?.writeText(data.invite_url);
+    },
+    onError: (e: Error) => setMessage(e.message),
+  });
+
   const owned = streams.filter((s) => !s.monitor_mode);
   const monitored = streams.filter((s) => s.monitor_mode);
 
@@ -72,6 +96,11 @@ export default function ChannelsPage() {
       {message && (
         <p className="text-sm text-cyber-accent border border-cyber-accent/30 rounded-lg px-4 py-2">
           {message}
+        </p>
+      )}
+      {inviteUrl && (
+        <p className="text-xs text-cyber-muted break-all border border-cyber-border rounded-lg p-3">
+          {inviteUrl}
         </p>
       )}
 
@@ -124,7 +153,9 @@ export default function ChannelsPage() {
         onMonitor={(id) => monitorMutation.mutate(id)}
         scanningId={scanningId}
         onUnwatch={(id) => unwatchMutation.mutate(id)}
+        onInvite={(id) => inviteMutation.mutate(id)}
         showUnwatch
+        showInvite
       />
 
       <p className="text-xs text-cyber-muted">
@@ -141,6 +172,14 @@ export default function ChannelsPage() {
   );
 }
 
+export default function ChannelsPage() {
+  return (
+    <Suspense fallback={<p className="text-cyber-muted p-6">Cargando...</p>}>
+      <ChannelsContent />
+    </Suspense>
+  );
+}
+
 function ChannelSection({
   title,
   icon: Icon,
@@ -150,7 +189,9 @@ function ChannelSection({
   onMonitor,
   scanningId,
   onUnwatch,
+  onInvite,
   showUnwatch,
+  showInvite,
 }: {
   title: string;
   icon: typeof Tv;
@@ -160,7 +201,9 @@ function ChannelSection({
   onMonitor: (id: string) => void;
   scanningId: string | null;
   onUnwatch: (id: string) => void;
+  onInvite?: (id: string) => void;
   showUnwatch: boolean;
+  showInvite?: boolean;
 }) {
   return (
     <div className="cyber-card">
@@ -197,6 +240,16 @@ function ChannelSection({
                 <Radio size={12} />
                 {scanningId === stream.id ? "Escaneando..." : "Escanear chat"}
               </button>
+              {showInvite && onInvite && stream.monitor_mode && !stream.is_owned && (
+                <button
+                  type="button"
+                  onClick={() => onInvite(stream.id)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-cyber-info/40 text-cyber-info hover:bg-cyber-info/10"
+                  title="El streamer abre el enlace y conecta su cuenta Twitch"
+                >
+                  <Link2 size={12} /> Invitar streamer
+                </button>
+              )}
               <Link
                 href={`/dashboard/viewers?stream=${stream.id}`}
                 className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-cyber-border text-cyber-muted hover:text-white"

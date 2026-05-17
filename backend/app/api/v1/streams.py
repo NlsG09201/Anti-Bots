@@ -1,8 +1,10 @@
+import secrets
 from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from app.core.config import get_settings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +29,7 @@ from app.infrastructure.database.models import (
     ViewerSession,
 )
 from app.infrastructure.database.session import get_db
+from app.infrastructure.cache.redis_client import RedisCache
 from app.integrations.twitch.helix import TwitchHelixClient
 from app.services.ai.service import AIService
 from app.services.correlation.service import CorrelationService
@@ -49,6 +52,7 @@ from app.services.streams.helpers import (
 from app.services.viewers.session import ViewerSessionService
 
 router = APIRouter(prefix="/streams", tags=["Streams"])
+settings = get_settings()
 detection_engine = BotDetectionEngine()
 ai_service = AIService()
 
@@ -136,6 +140,35 @@ async def watch_channel(
     await db.flush()
     stream = await sync_stream_live_status(db, stream)
     return _as_stream_response(stream)
+
+
+@router.post("/{stream_id}/channel-invite")
+async def create_channel_invite(
+    stream_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Genera enlace para que el streamer conecte OAuth y habilite chatters + ban en Twitch."""
+    stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    invite = secrets.token_urlsafe(24)
+    cache = RedisCache(prefix="oauth")
+    login = (stream.settings or {}).get("login", stream.channel_name)
+    await cache.set(
+        f"invite:{invite}",
+        {
+            "stream_id": str(stream.id),
+            "tenant_id": str(current_user.tenant_id),
+            "channel_login": login,
+        },
+        ttl=7 * 86400,
+    )
+    frontend = settings.app_frontend_url.rstrip("/")
+    return {
+        "invite_token": invite,
+        "invite_url": f"{frontend}/connect-twitch?invite={invite}",
+        "oauth_start_url": f"/api/v1/integrations/twitch/invite/{invite}/start",
+        "channel_login": login,
+    }
 
 
 @router.delete("/watch/{stream_id}")

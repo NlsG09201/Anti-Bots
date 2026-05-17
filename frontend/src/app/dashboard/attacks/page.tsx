@@ -23,8 +23,14 @@ function AttacksContent() {
     mutationFn: (attack: Attack) => {
       const suspected = (attack.evidence?.suspected_usernames as string[] | undefined) ?? [];
       const targets = [
-        ...attack.source_ips.slice(0, 5).map((ip) => ({ type: "ip" as const, value: ip })),
-        ...suspected.slice(0, 10).map((u) => ({ type: "user" as const, value: u })),
+        ...attack.source_ips
+          .filter((ip) => ip && ip.trim())
+          .slice(0, 5)
+          .map((ip) => ({ type: "ip" as const, value: ip.trim() })),
+        ...suspected
+          .filter((u) => u && String(u).trim())
+          .slice(0, 10)
+          .map((u) => ({ type: "user" as const, value: String(u).trim() })),
       ];
       return api.attacks.mitigate(accessToken!, attack.id, { targets });
     },

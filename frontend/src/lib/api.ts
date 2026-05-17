@@ -248,6 +248,13 @@ export const api = {
         monitor_mode: boolean;
         note: string;
       }>(`/api/v1/streams/${streamId}/monitor/status`, {}, token),
+    channelInvite: (token: string, streamId: string) =>
+      request<{
+        invite_url: string;
+        invite_token: string;
+        channel_login: string;
+        oauth_start_url: string;
+      }>(`/api/v1/streams/${streamId}/channel-invite`, { method: "POST" }, token),
     blockViewer: (
       token: string,
       streamId: string,
