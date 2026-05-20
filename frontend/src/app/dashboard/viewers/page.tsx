@@ -31,6 +31,13 @@ function ViewersContent() {
   const [inviteUrl, setInviteUrl] = useState("");
   const lastFullLoadStream = useRef<string | null>(null);
 
+  const handleStreamSelect = (id: string) => {
+    lastFullLoadStream.current = null;
+    setSelectedStream(id);
+    setViewFilter("all");
+    setMessage("");
+  };
+
   const { data: streams = [] } = useQuery({
     queryKey: ["streams"],
     queryFn: () => api.streams.list(token, true),
@@ -45,7 +52,6 @@ function ViewersContent() {
     const q = searchParams.get("stream");
     if (q) setSelectedStream(q);
     if (searchParams.get("twitch") === "connected") {
-      setMessage("Streamer conectado. Cargando listado Helix completo...");
       lastFullLoadStream.current = null;
       queryClient.invalidateQueries({ queryKey: ["streams"] });
       queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
@@ -79,10 +85,11 @@ function ViewersContent() {
   });
 
   const fullLoadMutation = useMutation({
-    mutationFn: () => api.streams.loadFullViewers(token, streamId),
+    mutationFn: (id: string) => api.streams.loadFullViewers(token, id),
     onSuccess: (res) => {
       if (res.status === "offline") {
         setMessage(res.message || "Canal offline");
+        queryClient.invalidateQueries({ queryKey: ["viewers"] });
         return;
       }
       setViewFilter("all");
@@ -96,17 +103,20 @@ function ViewersContent() {
     onError: (e: Error) => setMessage(e.message),
   });
 
-  useEffect(() => {
-    if (!streamId || !currentStream?.is_live || fullLoadMutation.isPending) return;
-    if (lastFullLoadStream.current === streamId) return;
-    lastFullLoadStream.current = streamId;
-    fullLoadMutation.mutate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto load full list once per live stream
-  }, [streamId, currentStream?.is_live]);
+  const triggerFullLoad = (id: string, force = false) => {
+    if (!id || !token) return;
+    if (!force && lastFullLoadStream.current === id) return;
+    lastFullLoadStream.current = id;
+    setViewFilter("all");
+    setMessage("Cargando listado completo del canal…");
+    fullLoadMutation.mutate(id);
+  };
 
   useEffect(() => {
-    lastFullLoadStream.current = null;
-  }, [streamId]);
+    if (!streamId || !token) return;
+    triggerFullLoad(streamId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load full viewer list when channel changes
+  }, [streamId, token]);
 
   const aiScreenMutation = useMutation({
     mutationFn: () => api.streams.screenViewers(token, streamId),
@@ -213,7 +223,7 @@ function ViewersContent() {
           Usuarios del stream
         </h1>
         <p className="text-cyber-muted text-sm mt-1 max-w-3xl">
-          Listado completo del chat del canal (Helix + IRC ~50s). Twitch no expone viewers
+          Al elegir un canal se carga el listado completo del chat (Helix + IRC ~30s). Twitch no expone viewers
           silenciosos por API — solo quien esta en la sala de chat. Viewers totales:{" "}
           <strong className="text-white">{twitchViewers || "—"}</strong>
           {monitorStatus?.active_viewers_tracked != null && twitchViewers > 0 && (
@@ -297,7 +307,7 @@ function ViewersContent() {
           <label className="text-xs text-cyber-muted block mb-1">Canal</label>
           <select
             value={streamId}
-            onChange={(e) => setSelectedStream(e.target.value)}
+            onChange={(e) => handleStreamSelect(e.target.value)}
             className="bg-cyber-bg border border-cyber-border rounded-lg px-3 py-2 text-sm text-white min-w-[200px]"
           >
             {streams.map((s: Stream) => (
@@ -311,12 +321,12 @@ function ViewersContent() {
         </div>
         <button
           type="button"
-          disabled={!streamId || !currentStream?.is_live || fullLoadMutation.isPending}
-          onClick={() => fullLoadMutation.mutate()}
+          disabled={!streamId || fullLoadMutation.isPending}
+          onClick={() => triggerFullLoad(streamId, true)}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyber-accent/20 text-cyber-accent border border-cyber-accent/40 text-sm disabled:opacity-50"
         >
           <Users size={16} className={syncing ? "animate-spin" : ""} />
-          {syncing ? "Cargando listado (~50s)..." : "Cargar listado completo"}
+          {syncing ? "Cargando listado (~30s)…" : "Recargar listado"}
         </button>
         <button
           type="button"
@@ -476,14 +486,17 @@ function ViewersContent() {
             Anade un canal en <Link href="/dashboard/channels" className="text-cyber-accent">Channels</Link>
           </p>
         )}
-        {streamId && !currentStream?.is_live && (
-          <p className="text-center py-12 text-cyber-muted">Canal offline — entra cuando este en vivo</p>
-        )}
-        {streamId && currentStream?.is_live && !isLoading && viewers.length === 0 && (
+        {streamId && !syncing && !isLoading && viewers.length === 0 && (
           <p className="text-center py-12 text-cyber-muted">
-            {syncing
-              ? "Cargando listado completo del stream..."
-              : "Sin usuarios — pulsa Cargar listado completo (canal en vivo)"}
+            {!currentStream?.is_live
+              ? "Canal offline o sin usuarios en chat. Si está en vivo, pulsa Recargar listado."
+              : "Sin usuarios en chat — el listado se actualizará al terminar la carga."}
+          </p>
+        )}
+        {streamId && syncing && viewers.length === 0 && (
+          <p className="text-center py-12 text-cyber-muted flex items-center justify-center gap-2">
+            <RefreshCw size={14} className="animate-spin" />
+            Cargando listado completo de @{currentStream?.channel_name ?? "canal"}…
           </p>
         )}
         {isLoading && (
