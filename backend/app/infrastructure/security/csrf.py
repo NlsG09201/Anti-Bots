@@ -41,6 +41,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(p) for p in CSRF_EXEMPT_PATHS):
             return await call_next(request)
 
+        # JWT Bearer (sessionStorage) no depende de double-submit cookie
+        auth = request.headers.get("authorization") or ""
+        if auth.lower().startswith("bearer "):
+            return await call_next(request)
+
         from app.core.cookies import REFRESH_COOKIE
         if REFRESH_COOKIE not in request.cookies:
             return await call_next(request)

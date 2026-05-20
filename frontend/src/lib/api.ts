@@ -45,6 +45,19 @@ function getCsrfToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+/** POST/PUT/PATCH al mismo origen (proxy Vercel o API relativa) requieren CSRF si hay cookie de sesión. */
+function shouldAttachCsrf(baseUrl?: string): boolean {
+  if (typeof window === "undefined") return false;
+  const raw = (baseUrl ?? API_URL).trim();
+  if (!raw) return true;
+  try {
+    const target = new URL(raw, window.location.origin);
+    return target.origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -60,7 +73,12 @@ async function request<T>(
 
   const csrf = getCsrfToken();
   const apiBase = baseUrl ?? API_URL;
-  if (csrf && options.method && options.method !== "GET" && apiBase === API_URL) {
+  if (
+    csrf &&
+    options.method &&
+    options.method !== "GET" &&
+    shouldAttachCsrf(apiBase)
+  ) {
     headers["X-CSRF-Token"] = csrf;
   }
 
