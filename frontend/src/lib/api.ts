@@ -83,6 +83,13 @@ async function request<T>(
     throw new ApiError(429, "Demasiadas peticiones. Espera unos segundos e inténtalo de nuevo.");
   }
 
+  if (response.status === 502 || response.status === 504) {
+    throw new ApiError(
+      response.status,
+      "El servidor tardó demasiado (timeout del proxy). La petición larga debe ir directo al API; recarga la página e inténtalo de nuevo.",
+    );
+  }
+
   if (response.status === 401 && !isAuthAttempt && path !== "/api/v1/auth/refresh") {
     const refreshed = await tryRefreshToken();
     if (refreshed) {
@@ -406,6 +413,7 @@ export const api = {
         `/api/v1/streams/${streamId}/viewers/load-full`,
         { method: "POST" },
         token,
+        resolveDirectApiBaseUrl(),
       ),
     syncQuick: (token: string, streamId: string) =>
       request<{
@@ -425,7 +433,12 @@ export const api = {
         suspected_count?: number;
         attack_created?: boolean;
         message?: string;
-      }>(`/api/v1/streams/${streamId}/monitor`, { method: "POST" }, token),
+      }>(
+        `/api/v1/streams/${streamId}/monitor`,
+        { method: "POST" },
+        token,
+        resolveDirectApiBaseUrl(),
+      ),
     monitorStatus: (token: string, streamId: string) =>
       request<{
         is_live: boolean;

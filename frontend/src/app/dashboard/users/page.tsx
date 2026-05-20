@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Users, Shield, ShieldOff } from "lucide-react";
 import clsx from "clsx";
 import { api, TenantUser } from "@/lib/api";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken, useAuthStore } from "@/stores/authStore";
 
 const ROLES = [
   { value: "viewer", label: "Viewer", color: "text-cyber-muted" },
@@ -15,7 +15,8 @@ const ROLES = [
 ];
 
 export default function UsersPage() {
-  const { accessToken, user: currentUser } = useAuthStore();
+  const accessToken = useApiToken();
+  const currentUser = useAuthStore((s) => s.user);
   const token = accessToken!;
   const queryClient = useQueryClient();
 

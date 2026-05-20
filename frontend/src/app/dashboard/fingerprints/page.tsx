@@ -2,10 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken } from "@/stores/authStore";
 
 export default function FingerprintsPage() {
-  const { accessToken } = useAuthStore();
+  const accessToken = useApiToken();
   const { data: fingerprints = [] } = useQuery({
     queryKey: ["fingerprints"],
     queryFn: () => api.fingerprints.list(accessToken!),

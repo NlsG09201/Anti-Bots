@@ -4,11 +4,11 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Code, Copy, RefreshCw, Radio } from "lucide-react";
 import { api, type Stream } from "@/lib/api";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken } from "@/stores/authStore";
 import { resolveApiBaseUrl } from "@/lib/runtime-urls";
 
 export default function WidgetPage() {
-  const { accessToken } = useAuthStore();
+  const accessToken = useApiToken();
   const token = accessToken!;
   const queryClient = useQueryClient();
   const [streamId, setStreamId] = useState("");

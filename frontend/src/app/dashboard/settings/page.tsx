@@ -6,11 +6,12 @@ import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Shield, Tv, CheckCircle, AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken, useAuthStore } from "@/stores/authStore";
 
 function SettingsContent() {
   const searchParams = useSearchParams();
-  const { accessToken, user } = useAuthStore();
+  const accessToken = useApiToken();
+  const user = useAuthStore((s) => s.user);
   const token = accessToken!;
   const queryClient = useQueryClient();
 

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.config import get_settings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +20,7 @@ from app.api.v1.schemas import (
     ViewerSessionResponse,
 )
 from app.core.exceptions import NotFoundError, ValidationError
+from app.core.logging import get_logger
 from app.infrastructure.database.models import (
     Attack,
     AttackType,
@@ -55,6 +56,7 @@ from app.services.viewers.session import ViewerSessionService
 
 router = APIRouter(prefix="/streams", tags=["Streams"])
 settings = get_settings()
+logger = get_logger(__name__)
 detection_engine = BotDetectionEngine()
 ai_service = AIService()
 
@@ -248,8 +250,25 @@ async def run_channel_monitor(
         stream = await sync_stream_live_status(db, stream)
     if not stream.is_live:
         return {"status": "offline", "message": "El canal no esta en vivo"}
-    summary = await ChannelMonitorService(db).run_cycle(stream, current_user.tenant_id)
-    return {"status": "ok", **summary}
+    try:
+        irc_seconds = min(45.0, float(settings.viewer_load_irc_seconds))
+        summary = await ChannelMonitorService(db).run_cycle(
+            stream,
+            current_user.tenant_id,
+            irc_duration=irc_seconds,
+        )
+        await db.commit()
+        return {"status": "ok", **summary}
+    except Exception as exc:
+        logger.exception("channel_monitor_failed", stream_id=str(stream_id))
+        await db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "El escaneo del canal falló. Reintenta en unos segundos.",
+                "error": str(exc)[:300],
+            },
+        ) from exc
 
 
 @router.get("/{stream_id}/monitor/status")
@@ -380,12 +399,23 @@ async def load_full_viewer_list(
             "message": "El canal no esta en vivo",
             "viewer_count": stream.viewer_count,
         }
-    summary = await ChannelMonitorService(db).run_full_viewer_load(
-        stream,
-        current_user.tenant_id,
-    )
-    await db.commit()
-    return summary
+    try:
+        summary = await ChannelMonitorService(db).run_full_viewer_load(
+            stream,
+            current_user.tenant_id,
+        )
+        await db.commit()
+        return summary
+    except Exception as exc:
+        logger.exception("load_full_viewers_failed", stream_id=str(stream_id))
+        await db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "La carga completa de viewers falló (IRC/Helix). Reintenta.",
+                "error": str(exc)[:300],
+            },
+        ) from exc
 
 
 @router.post("/{stream_id}/viewers/screen")

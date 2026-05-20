@@ -17,6 +17,9 @@ export function useApiToken(): string | null {
   return getAccessToken() || accessToken;
 }
 
+/** @deprecated Prefer useApiToken() — reads sessionStorage + Zustand. */
+export const useAccessToken = useApiToken;
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({

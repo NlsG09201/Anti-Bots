@@ -7,11 +7,11 @@ import { Eye, Link2, Plus, RefreshCw, Trash2, Users, Tv, Radio } from "lucide-re
 import Link from "next/link";
 import { api, type Stream } from "@/lib/api";
 import { PlatformBadge } from "@/components/PlatformBadge";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken } from "@/stores/authStore";
 
 function ChannelsContent() {
   const searchParams = useSearchParams();
-  const { accessToken } = useAuthStore();
+  const accessToken = useApiToken();
   const token = accessToken!;
   const queryClient = useQueryClient();
   const [login, setLogin] = useState("");

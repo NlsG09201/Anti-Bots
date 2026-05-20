@@ -11,7 +11,7 @@ import {
   type SecurityDashboard,
   type SuspiciousIP,
 } from "@/lib/api";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken } from "@/stores/authStore";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { COUNTRY_COORDS } from "@/lib/country-coords";
@@ -36,7 +36,7 @@ export interface MapThreat {
 }
 
 export function useSocData() {
-  const { accessToken } = useAuthStore();
+  const accessToken = useApiToken();
   const queryClient = useQueryClient();
   const [liveStats, setLiveStats] = useState<DashboardStats | null>(null);
   const [liveCharts, setLiveCharts] = useState<DashboardCharts | null>(null);

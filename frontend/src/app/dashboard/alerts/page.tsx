@@ -2,11 +2,11 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken } from "@/stores/authStore";
 import { LiveAlerts } from "@/components/LiveAlerts";
 
 export default function AlertsPage() {
-  const { accessToken } = useAuthStore();
+  const accessToken = useApiToken();
   const queryClient = useQueryClient();
 
   const { data: alerts = [] } = useQuery({

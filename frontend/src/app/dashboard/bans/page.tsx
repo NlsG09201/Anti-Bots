@@ -2,11 +2,11 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken } from "@/stores/authStore";
 import { formatDistanceToNow } from "date-fns";
 
 export default function BansPage() {
-  const { accessToken } = useAuthStore();
+  const accessToken = useApiToken();
   const { data: bans = [] } = useQuery({
     queryKey: ["bans"],
     queryFn: () => api.bans.list(accessToken!),

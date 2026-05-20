@@ -15,7 +15,7 @@ import {
 import { StatCard } from "@/components/StatCard";
 import { ThreatIntelPanel } from "@/components/ThreatIntelPanel";
 import { api, type SuspiciousIP, type ThreatIntelReport } from "@/lib/api";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken, useAuthStore } from "@/stores/authStore";
 
 function riskClass(score: number): string {
   if (score >= 75) return "text-cyber-danger";
@@ -33,7 +33,7 @@ function ThreatCell({ active }: { active: boolean }) {
 }
 
 export default function IPsPage() {
-  const { accessToken } = useAuthStore();
+  const accessToken = useApiToken();
   const queryClient = useQueryClient();
   const [selectedIp, setSelectedIp] = useState<string | null>(null);
   const [lookupIp, setLookupIp] = useState("");

@@ -251,7 +251,10 @@ class ChannelMonitorService:
         from app.services.dashboard.metrics import get_tenant_stream_ids
 
         stream_ids = await get_tenant_stream_ids(self.db, tenant_id)
-        await push_dashboard_realtime(self.db, tenant_id, stream_ids)
+        try:
+            await push_dashboard_realtime(self.db, tenant_id, stream_ids)
+        except Exception as exc:
+            logger.warning("push_dashboard_skip", phase="full_load", error=str(exc))
         return summary
 
     async def run_quick_sync(
@@ -313,7 +316,10 @@ class ChannelMonitorService:
         from app.services.dashboard.metrics import get_tenant_stream_ids
 
         stream_ids = await get_tenant_stream_ids(self.db, tenant_id)
-        await push_dashboard_realtime(self.db, tenant_id, stream_ids)
+        try:
+            await push_dashboard_realtime(self.db, tenant_id, stream_ids)
+        except Exception as exc:
+            logger.warning("push_dashboard_skip", phase="quick_sync", error=str(exc))
         return summary
 
     async def run_cycle(
@@ -519,12 +525,15 @@ class ChannelMonitorService:
         from app.services.dashboard.metrics import get_tenant_stream_ids
 
         stream_ids = await get_tenant_stream_ids(self.db, tenant_id)
-        await push_dashboard_realtime(
-            self.db,
-            tenant_id,
-            stream_ids,
-            alert=alert_payload,
-            attack=attack_payload,
-        )
+        try:
+            await push_dashboard_realtime(
+                self.db,
+                tenant_id,
+                stream_ids,
+                alert=alert_payload,
+                attack=attack_payload,
+            )
+        except Exception as exc:
+            logger.warning("push_dashboard_skip", phase="monitor_cycle", error=str(exc))
 
         return summary

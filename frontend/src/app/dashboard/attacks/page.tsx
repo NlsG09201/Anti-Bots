@@ -4,12 +4,12 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Attack } from "@/lib/api";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken } from "@/stores/authStore";
 import clsx from "clsx";
 import { Shield } from "lucide-react";
 
 function AttacksContent() {
-  const { accessToken } = useAuthStore();
+  const accessToken = useApiToken();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const streamId = searchParams.get("stream") ?? undefined;

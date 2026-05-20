@@ -14,7 +14,7 @@ import {
 import { StatCard } from "@/components/StatCard";
 import { SecurityBlocksChart, SecurityEventsChart } from "@/components/SecurityChart";
 import { api, type Stream } from "@/lib/api";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken } from "@/stores/authStore";
 
 const HOUR_OPTIONS = [6, 12, 24, 48, 72];
 
@@ -34,7 +34,7 @@ function reasonLabel(reason: string): string {
 }
 
 export default function SecurityDashboardPage() {
-  const { accessToken } = useAuthStore();
+  const accessToken = useApiToken();
   const [hours, setHours] = useState(24);
   const [streamId, setStreamId] = useState("");
 
