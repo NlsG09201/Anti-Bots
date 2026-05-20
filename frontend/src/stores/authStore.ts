@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { getAccessToken, refreshAccessToken, setAccessToken } from "@/lib/api";
+import { bootstrapAuthSession, getAccessToken, setAccessToken } from "@/lib/api";
 
 interface AuthState {
   accessToken: string | null;
@@ -39,11 +39,8 @@ export const useAuthStore = create<AuthState>()(
       onRehydrateStorage: () => (state) => {
         if (!state?.user) return;
         const stored = getAccessToken();
-        if (stored) {
-          state?.setTokens(stored);
-          return;
-        }
-        void refreshAccessToken().then((token) => {
+        if (stored) state?.setTokens(stored);
+        void bootstrapAuthSession().then((token) => {
           if (token) state?.setTokens(token);
         });
       },

@@ -168,6 +168,30 @@ export async function fetchCsrfToken(): Promise<void> {
   await fetch(`${API_URL}/api/v1/auth/csrf`, { credentials: "include" });
 }
 
+/**
+ * Restore a valid access token before dashboard queries run.
+ * Prefers refresh cookie; falls back to validating the current bearer token.
+ */
+export async function bootstrapAuthSession(): Promise<string | null> {
+  await fetchCsrfToken().catch(() => undefined);
+
+  const refreshed = await refreshAccessToken();
+  if (refreshed) return refreshed;
+
+  const existing = getAccessToken();
+  if (!existing) return null;
+
+  try {
+    await api.auth.me(existing);
+    return existing;
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) {
+      return null;
+    }
+    throw e;
+  }
+}
+
 export const api = {
   auth: {
     login: async (email: string, password: string) => {

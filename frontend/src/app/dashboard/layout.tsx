@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { useAuthStore } from "@/stores/authStore";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
-import { getAccessToken, refreshAccessToken } from "@/lib/api";
+import { bootstrapAuthSession, getAccessToken } from "@/lib/api";
 import { Wifi, WifiOff } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -22,15 +22,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       const stored = getAccessToken();
       if (stored && !accessToken) {
         setTokens(stored);
-        if (!cancelled) setAuthReady(true);
-        return;
       }
-      if (accessToken || stored) {
-        if (!cancelled) setAuthReady(true);
-        return;
-      }
-      if (user) {
-        const token = await refreshAccessToken();
+
+      const hasSessionHint = !!user || !!getAccessToken() || !!accessToken;
+      if (hasSessionHint) {
+        const token = await bootstrapAuthSession();
         if (cancelled) return;
         if (token) {
           setTokens(token);
@@ -38,9 +34,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           return;
         }
         logout();
-        router.replace("/login");
+        router.replace("/login?session=expired");
         return;
       }
+
       if (!isAuthenticated()) {
         router.replace("/login");
         return;
