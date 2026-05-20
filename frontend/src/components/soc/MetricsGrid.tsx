@@ -9,6 +9,7 @@ import {
   Target,
   Users,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
 import type { DashboardStats, SecurityDashboard } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ function MetricCard({
 }: {
   label: string;
   value: string | number;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   accent?: "default" | "danger" | "warning" | "success" | "info";
 }) {
   const accents = {
