@@ -12,7 +12,12 @@ import numpy as np
 from sklearn.tree import DecisionTreeClassifier
 
 from app.core.logging import get_logger
-from app.ml.weka_j48.features import ATTRIBUTE_NAMES, NOMINAL_CLASS, ViewerMLRow
+from app.ml.weka_j48.features import (
+    ATTRIBUTE_NAMES,
+    NOMINAL_CLASS,
+    ViewerMLRow,
+    sanitize_rows,
+)
 from app.ml.weka_j48.runtime import (
     is_jvm_started,
     warm_weka_jvm,
@@ -64,10 +69,14 @@ class J48ModelBundle:
 
 class J48Engine:
     def __init__(self, model_dir: Path, java_home: str = "", max_heap: str = "512m"):
-        self.model_dir = model_dir
+        self.model_dir = model_dir.resolve()
         self.java_home = java_home
         self.max_heap = max_heap
-        self.model_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.model_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.warning("weka_model_dir_mkdir_failed", path=str(self.model_dir), error=str(exc))
+            raise
         self._bundle: Optional[J48ModelBundle] = None
 
     @property
@@ -105,7 +114,7 @@ class J48Engine:
         confidence: float = 0.25,
         min_instances: int = 2,
     ) -> Dict[str, Any]:
-        labeled = [r for r in rows if r.label in ("yes", "no")]
+        labeled = sanitize_rows([r for r in rows if r.label in ("yes", "no")])
         if len(labeled) < 10:
             raise ValueError(f"Need at least 10 labeled rows, got {len(labeled)}")
 
@@ -120,7 +129,16 @@ class J48Engine:
             and _ensure_jvm(self.java_home, self.max_heap)
         )
         if use_weka:
-            return self._train_weka(labeled, confidence=confidence, min_instances=min_instances)
+            try:
+                return self._train_weka(
+                    labeled, confidence=confidence, min_instances=min_instances
+                )
+            except Exception as exc:
+                logger.warning(
+                    "weka_j48_native_train_failed_using_sklearn",
+                    error=str(exc),
+                    samples=len(labeled),
+                )
         return self._train_sklearn(labeled)
 
     def _train_weka(
@@ -143,7 +161,6 @@ class J48Engine:
         ]
         classifier.build_classifier(data)
 
-        weka_write(str(self.weka_model_path), classifier)
         meta = {
             "backend": "weka",
             "samples": len(labeled),
@@ -152,10 +169,16 @@ class J48Engine:
             "options": {"confidence": confidence, "min_instances": min_instances},
             "trained_at": datetime.now(timezone.utc).isoformat(),
         }
-        joblib.dump(
-            {"backend": "weka", "sklearn_model": None, "meta": meta},
-            self.model_path,
-        )
+        try:
+            weka_write(str(self.weka_model_path), classifier)
+            joblib.dump(
+                {"backend": "weka", "sklearn_model": None, "meta": meta},
+                self.model_path,
+            )
+        except OSError as exc:
+            raise OSError(
+                f"No se pudo guardar el modelo en {self.model_dir}: {exc}"
+            ) from exc
         self._bundle = J48ModelBundle("weka", classifier, meta)
         logger.info("weka_j48_trained", samples=len(labeled))
         return meta
@@ -189,6 +212,9 @@ class J48Engine:
         return meta
 
     def predict(self, features: List[float]) -> Dict[str, Any]:
+        from app.ml.weka_j48.features import sanitize_feature_vector
+
+        features = sanitize_feature_vector(features)
         if not self._bundle:
             if not self.load():
                 return {

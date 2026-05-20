@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.ml.weka_j48.engine import J48Engine
-from app.ml.weka_j48.features import ViewerMLRow
+from app.ml.weka_j48.features import ViewerMLRow, sanitize_feature_vector
 
 
 def _synthetic_rows(n: int = 60) -> list[ViewerMLRow]:
@@ -39,6 +39,28 @@ def test_sklearn_j48_train_and_predict():
         assert pred["is_bot"] is True
         assert pred["probability"] is not None
         assert 0.0 <= pred["probability"] <= 1.0
+
+
+def test_sanitize_feature_vector_replaces_nan():
+    out = sanitize_feature_vector([1.0, float("nan"), float("inf")])
+    assert out == [1.0, 0.0, 0.0]
+
+
+def test_weka_failure_falls_back_to_sklearn(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmp:
+        engine = J48Engine(Path(tmp))
+
+        def boom(*_a, **_k):
+            raise RuntimeError("simulated weka failure")
+
+        monkeypatch.setattr(engine, "_train_weka", boom)
+        monkeypatch.setattr(
+            "app.ml.weka_j48.engine.weka_runtime_available", lambda *_a, **_k: True
+        )
+        monkeypatch.setattr("app.ml.weka_j48.engine._ensure_jvm", lambda *_a, **_k: True)
+
+        meta = engine.train(_synthetic_rows(), prefer_weka=True)
+        assert meta["backend"] == "sklearn_j48_compat"
 
 
 def test_insufficient_samples_raises():

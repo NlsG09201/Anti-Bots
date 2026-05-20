@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
+import asyncio
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -25,6 +26,8 @@ class WekaJ48BotService:
     def __init__(self) -> None:
         settings = get_settings()
         model_dir = Path(settings.weka_j48_model_path)
+        if not model_dir.is_absolute():
+            model_dir = (Path.cwd() / model_dir).resolve()
         self.engine = J48Engine(
             model_dir,
             java_home=settings.weka_java_home or "",
@@ -75,7 +78,48 @@ class WekaJ48BotService:
                 "hint": "Necesitas al menos 2 bots y 2 humanos. Prueba source=mixed o channel_flow tras escanear canales.",
             }
         cfg = get_settings()
-        meta = self.engine.train(rows, prefer_weka=cfg.weka_j48_prefer_weka)
+        try:
+            loop = asyncio.get_running_loop()
+            meta = await loop.run_in_executor(
+                None,
+                partial(
+                    self.engine.train,
+                    rows,
+                    prefer_weka=cfg.weka_j48_prefer_weka,
+                ),
+            )
+        except ValueError as exc:
+            return {
+                "ok": False,
+                "error": "train_validation_failed",
+                "hint": str(exc),
+                "samples": len(rows),
+                "bots": yes,
+                "humans": no,
+                "dataset": dataset_stats,
+            }
+        except OSError as exc:
+            logger.exception("weka_j48_model_write_failed", path=str(self.engine.model_dir))
+            return {
+                "ok": False,
+                "error": "model_write_failed",
+                "hint": str(exc),
+                "samples": len(rows),
+                "bots": yes,
+                "humans": no,
+                "dataset": dataset_stats,
+            }
+        except Exception as exc:
+            logger.exception("weka_j48_train_failed")
+            return {
+                "ok": False,
+                "error": "train_failed",
+                "hint": str(exc)[:500],
+                "samples": len(rows),
+                "bots": yes,
+                "humans": no,
+                "dataset": dataset_stats,
+            }
         return {
             "ok": True,
             "training": meta,

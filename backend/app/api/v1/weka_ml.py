@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,8 @@ router = APIRouter(prefix="/ml/weka-j48", tags=["ml-weka-j48"])
 
 
 class TrainResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     ok: bool
     samples: int | None = None
     training: Dict[str, Any] | None = None
@@ -95,14 +97,24 @@ async def train_j48(
     include_twitch_insights: bool = Query(True),
 ):
     svc = get_weka_j48_service()
-    result = await svc.train_for_tenant(
-        db,
-        current_user.tenant_id,
-        limit=limit,
-        source=source,
-        include_twitch_insights=include_twitch_insights,
-    )
-    return TrainResponse(**result)
+    try:
+        result = await svc.train_for_tenant(
+            db,
+            current_user.tenant_id,
+            limit=limit,
+            source=source,
+            include_twitch_insights=include_twitch_insights,
+        )
+        return TrainResponse(**result)
+    except Exception as exc:
+        from app.core.logging import get_logger
+
+        get_logger(__name__).exception("weka_j48_train_endpoint_failed")
+        return TrainResponse(
+            ok=False,
+            error="train_failed",
+            hint=str(exc)[:500],
+        )
 
 
 @router.get("/predict/session/{session_id}", response_model=PredictResponse)

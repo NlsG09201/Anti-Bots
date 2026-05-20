@@ -244,6 +244,12 @@ class Settings(BaseSettings):
     def model_post_init(self, __context) -> None:
         if self.is_production and not self.cookie_secure:
             object.__setattr__(self, "cookie_secure", True)
+        # Render: ruta escribible para modelos Weka (disco efímero en /tmp)
+        if os.getenv("RENDER") and self.weka_j48_model_path.strip() in (
+            "data/weka_models",
+            "./data/weka_models",
+        ):
+            object.__setattr__(self, "weka_j48_model_path", "/tmp/streamshield/weka_models")
 
     @property
     def trusted_hosts_list(self) -> List[str]:

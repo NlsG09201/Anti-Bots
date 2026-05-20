@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -22,6 +23,32 @@ ATTRIBUTE_NAMES: List[str] = [
 ]
 
 NOMINAL_CLASS = "is_bot"
+
+
+def sanitize_feature_vector(features: List[float]) -> List[float]:
+    """Weka/sklearn fallan con NaN/Inf; normaliza a floats finitos."""
+    out: List[float] = []
+    for v in features:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            f = 0.0
+        if not math.isfinite(f):
+            f = 0.0
+        out.append(f)
+    return out
+
+
+def sanitize_rows(rows: List["ViewerMLRow"]) -> List["ViewerMLRow"]:
+    return [
+        ViewerMLRow(
+            features=sanitize_feature_vector(r.features),
+            label=r.label,
+            session_id=r.session_id,
+            platform_username=r.platform_username,
+        )
+        for r in rows
+    ]
 
 
 @dataclass
