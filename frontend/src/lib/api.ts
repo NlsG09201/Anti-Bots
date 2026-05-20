@@ -658,6 +658,21 @@ export const api = {
         token,
       ),
   },
+  wekaJ48: {
+    health: (token: string) =>
+      request<{
+        enabled: boolean;
+        model_loaded: boolean;
+        backend: string | null;
+        weka_runtime: boolean;
+      }>("/api/v1/ml/weka-j48/health", {}, token),
+    train: (token: string, limit = 5000) =>
+      request<{ ok: boolean; samples?: number; training?: Record<string, unknown>; error?: string }>(
+        `/api/v1/ml/weka-j48/train?limit=${limit}`,
+        { method: "POST" },
+        token,
+      ),
+  },
 };
 
 export interface Attack {
@@ -924,4 +939,7 @@ export interface Viewer {
   is_active: boolean;
   chat_messages?: number;
   behavior_metrics?: Record<string, unknown>;
+  j48_is_bot?: boolean | null;
+  j48_probability?: number | null;
+  j48_backend?: string | null;
 }

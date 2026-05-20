@@ -177,6 +177,21 @@ function ViewersContent() {
     onError: (e: Error) => setMessage(e.message),
   });
 
+  const wekaTrainMutation = useMutation({
+    mutationFn: () => api.wekaJ48.train(token),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        setMessage(res.error || "No hay suficientes datos para entrenar J48");
+        return;
+      }
+      setMessage(
+        `Modelo J48 entrenado (${res.samples ?? 0} muestras, backend: ${(res.training as { backend?: string })?.backend ?? "?"})`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["viewers"] });
+    },
+    onError: (e: Error) => setMessage(e.message),
+  });
+
   const scanMutation = useMutation({
     mutationFn: () => api.streams.monitor(token, streamId),
     onSuccess: (res) => {
@@ -394,6 +409,16 @@ function ViewersContent() {
           <Brain size={16} className={aiScreenMutation.isPending ? "animate-pulse" : ""} />
           {aiScreenMutation.isPending ? "Analizando..." : "Verificar bots (Insights + IA)"}
         </button>
+        <button
+          type="button"
+          disabled={wekaTrainMutation.isPending}
+          onClick={() => wekaTrainMutation.mutate()}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-cyber-border text-sm text-cyber-muted hover:text-white disabled:opacity-50"
+          title="Entrena arbol J48 con sesiones del tenant (requiere admin)"
+        >
+          <Brain size={16} className={wekaTrainMutation.isPending ? "animate-pulse" : ""} />
+          {wekaTrainMutation.isPending ? "Entrenando J48..." : "Entrenar J48"}
+        </button>
         {suspectedCount > 0 && (
           <button
             type="button"
@@ -453,6 +478,7 @@ function ViewersContent() {
               <th className="text-left py-3 px-2">Usuario</th>
               <th className="text-left py-3 px-2">Fuente</th>
               <th className="text-right py-3 px-2">Risk</th>
+              <th className="text-center py-3 px-2">J48</th>
               <th className="text-center py-3 px-2">Msgs</th>
               <th className="text-center py-3 px-2">Estado</th>
               <th className="text-right py-3 px-2">Accion</th>
@@ -475,6 +501,22 @@ function ViewersContent() {
                 </td>
                 <td className="py-3 px-2 text-right font-mono text-cyber-danger">
                   {v.risk_score.toFixed(0)}
+                </td>
+                <td className="py-3 px-2 text-center text-xs">
+                  {v.j48_probability != null ? (
+                    <span
+                      className={clsx(
+                        "font-mono",
+                        v.j48_is_bot ? "text-cyber-danger" : "text-cyber-accent",
+                      )}
+                      title={v.j48_backend ? `Modelo: ${v.j48_backend}` : undefined}
+                    >
+                      {v.j48_is_bot ? "BOT" : "OK"}{" "}
+                      {(v.j48_probability * 100).toFixed(0)}%
+                    </span>
+                  ) : (
+                    <span className="text-cyber-muted">—</span>
+                  )}
                 </td>
                 <td className="py-3 px-2 text-center text-cyber-muted">
                   {(v.chat_messages ?? 0) > 0 ? (
