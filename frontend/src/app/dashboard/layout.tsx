@@ -11,7 +11,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { setTokens, logout, isAuthenticated } = useAuthStore();
+  const { setTokens, logout } = useAuthStore();
   const { connected } = useWebSocketContext();
   const [authReady, setAuthReady] = useState(false);
 
@@ -25,24 +25,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
 
       const hasSessionHint = !!useAuthStore.getState().user || !!getAccessToken();
-      if (hasSessionHint) {
-        const token = await bootstrapAuthSession();
-        if (cancelled) return;
-        if (token) {
-          setTokens(token);
-          setAuthReady(true);
-          return;
-        }
-        logout();
-        router.replace("/login?session=expired");
-        return;
-      }
-
-      if (!isAuthenticated()) {
+      if (!hasSessionHint) {
         router.replace("/login");
         return;
       }
-      if (!cancelled) setAuthReady(true);
+
+      const token = await bootstrapAuthSession();
+      if (cancelled) return;
+      if (token) {
+        setTokens(token);
+        setAuthReady(true);
+        return;
+      }
+
+      logout();
+      router.replace("/login?session=expired");
     }
 
     const run = () => {
@@ -65,7 +62,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => {
       cancelled = true;
     };
-  }, [setTokens, logout, isAuthenticated, router]);
+  }, [setTokens, logout, router]);
 
   if (!authReady) {
     return (

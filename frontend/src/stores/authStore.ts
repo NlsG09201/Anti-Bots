@@ -11,10 +11,10 @@ interface AuthState {
   isAuthenticated: () => boolean;
 }
 
-/** Bearer token for API calls (Zustand + sessionStorage fallback). */
+/** Bearer token for API calls (sessionStorage is source of truth after refresh). */
 export function useApiToken(): string | null {
   const accessToken = useAuthStore((s) => s.accessToken);
-  return accessToken || getAccessToken();
+  return getAccessToken() || accessToken;
 }
 
 export const useAuthStore = create<AuthState>()(

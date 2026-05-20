@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shield, Eye, EyeOff, Zap } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, resetAuthSessionState } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 
 const TWITCH_CALLBACK =
@@ -43,6 +43,7 @@ function LoginForm() {
   }, [searchParams]);
 
   const finishLogin = async (accessToken: string) => {
+    resetAuthSessionState();
     setTokens(accessToken);
     const user = await api.auth.me(accessToken);
     setUser(user);

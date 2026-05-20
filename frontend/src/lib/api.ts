@@ -4,8 +4,8 @@ import { resolveApiBaseUrl, resolveDirectApiBaseUrl } from "@/lib/runtime-urls";
 const API_URL = resolveApiBaseUrl();
 
 export function resolveAuthToken(explicit?: string | null): string | undefined {
-  const token = explicit ?? getAccessToken();
-  return token ?? undefined;
+  const token = (explicit ?? getAccessToken())?.trim();
+  return token || undefined;
 }
 
 export class ApiError extends Error {
@@ -64,6 +64,10 @@ async function request<T>(
     headers["X-CSRF-Token"] = csrf;
   }
 
+  if (sessionTerminated && path !== "/api/v1/auth/login" && path !== "/api/v1/auth/register") {
+    throw new ApiError(401, "Sesión expirada. Inicia sesión de nuevo.");
+  }
+
   const response = await fetch(`${apiBase}${path}`, {
     ...options,
     headers,
@@ -119,10 +123,30 @@ export function getAccessToken(): string | null {
   return stored;
 }
 
+let authFailureInFlight = false;
+let sessionTerminated = false;
+
+/** Call after successful login so API requests resume. */
+export function resetAuthSessionState(): void {
+  sessionTerminated = false;
+  authFailureInFlight = false;
+}
+
+async function syncAuthTokenToStore(token: string): Promise<void> {
+  setAccessToken(token);
+  const { useAuthStore } = await import("@/stores/authStore");
+  useAuthStore.getState().setTokens(token);
+}
+
 async function handleAuthFailure(): Promise<void> {
+  if (sessionTerminated || authFailureInFlight) return;
+  authFailureInFlight = true;
+  sessionTerminated = true;
+
   setAccessToken(null);
   const { useAuthStore } = await import("@/stores/authStore");
   useAuthStore.getState().logout();
+
   if (typeof window === "undefined") return;
   const path = window.location.pathname;
   if (!path.startsWith("/login") && !path.startsWith("/register")) {
@@ -149,7 +173,8 @@ export async function refreshAccessToken(): Promise<string | null> {
       });
       if (!response.ok) return null;
       const data = (await response.json()) as { access_token: string };
-      setAccessToken(data.access_token);
+      await syncAuthTokenToStore(data.access_token);
+      sessionTerminated = false;
       return data.access_token;
     } catch {
       return null;
@@ -171,34 +196,42 @@ export async function fetchCsrfToken(): Promise<void> {
 
 let bootstrapInFlight: Promise<string | null> | null = null;
 
+/** Validate bearer without triggering login redirect (used during bootstrap). */
+async function probeAccessToken(token: string): Promise<"valid" | "invalid" | "rate_limited"> {
+  const response = await fetch(`${API_URL}/api/v1/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    credentials: "include",
+  });
+  if (response.status === 401) return "invalid";
+  if (response.status === 429) return "rate_limited";
+  return response.ok ? "valid" : "invalid";
+}
+
 /**
  * Restore a valid access token before dashboard queries run (single-flight).
- * Refresh first (no CSRF required); validate existing bearer only if needed.
+ * Refresh first (HttpOnly cookie); validate existing bearer only if needed.
  */
 export async function bootstrapAuthSession(): Promise<string | null> {
   if (bootstrapInFlight) return bootstrapInFlight;
 
   bootstrapInFlight = (async () => {
     try {
+      resetAuthSessionState();
+
       const refreshed = await refreshAccessToken();
       if (refreshed) return refreshed;
 
       const existing = getAccessToken();
       if (!existing) return null;
 
-      if (!getCsrfToken()) {
-        await fetchCsrfToken().catch(() => undefined);
+      const status = await probeAccessToken(existing);
+      if (status === "valid" || status === "rate_limited") {
+        await syncAuthTokenToStore(existing);
+        return existing;
       }
 
-      try {
-        await api.auth.me(existing);
-        return existing;
-      } catch (e) {
-        if (e instanceof ApiError && (e.status === 401 || e.status === 429)) {
-          return existing;
-        }
-        throw e;
-      }
+      setAccessToken(null);
+      return null;
     } finally {
       bootstrapInFlight = null;
     }
