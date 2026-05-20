@@ -4,7 +4,8 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-:root {
+:root,
+.dark {
   --cyber-bg: #060a12;
   --cyber-surface: #0f1419;
   --cyber-surface-elevated: #151b24;
@@ -12,12 +13,33 @@
   --cyber-accent-dim: #00cc6a;
   --cyber-danger: #ff3366;
   --cyber-info: #00aaff;
+  --cyber-muted: #94a3b8;
+  --cyber-border: #1e293b;
+  --cyber-text: #e2e8f0;
+}
+
+.light {
+  --cyber-bg: #f1f5f9;
+  --cyber-surface: #ffffff;
+  --cyber-surface-elevated: #f8fafc;
+  --cyber-accent: #059669;
+  --cyber-accent-dim: #047857;
+  --cyber-danger: #dc2626;
+  --cyber-info: #0284c7;
+  --cyber-muted: #64748b;
+  --cyber-border: #cbd5e1;
+  --cyber-text: #0f172a;
 }
 
 body {
   background-color: var(--cyber-bg);
-  color: #e2e8f0;
+  color: var(--cyber-text);
   font-family: 'Inter', system-ui, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.light .text-white {
+  color: var(--cyber-text);
 }
 
 @layer components {

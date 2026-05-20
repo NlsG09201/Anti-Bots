@@ -29,7 +29,6 @@ export default function SocDashboardPage() {
 
   return (
     <div className="space-y-6 -m-2">
-      {/* Hero header */}
       <div className="relative overflow-hidden rounded-2xl border border-cyber-accent/20 bg-gradient-to-r from-cyber-surface via-cyber-bg to-cyber-surface p-6 md:p-8">
         <div className="absolute inset-0 scan-line pointer-events-none opacity-30" />
         <div className="absolute top-0 right-0 w-64 h-64 bg-cyber-accent/5 rounded-full blur-3xl" />
@@ -43,7 +42,7 @@ export default function SocDashboardPage() {
             </div>
             <p className="text-cyber-muted text-sm max-w-xl">
               Monitoreo en tiempo real: ataques, viewers sospechosos, threat intel y alertas.
-              WebSocket + gráficos actualizados cada 10–15s.
+              WebSocket + graficos actualizados cada 10-15s.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -84,7 +83,7 @@ export default function SocDashboardPage() {
           <SuspiciousViewers viewers={suspectedViewers} stream={liveStream} />
           <ThreatTimeline entries={threatTimeline} />
         </div>
-      </motion>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
@@ -92,8 +91,6 @@ export default function SocDashboardPage() {
         </div>
         <AdminPanel security={security} />
       </div>
-    </motion>
+    </div>
   );
 }
-
-
