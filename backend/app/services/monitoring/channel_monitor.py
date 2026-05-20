@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.security import decrypt_value
 from app.infrastructure.database.models import Attack, AttackType, Platform, Stream
@@ -26,9 +27,15 @@ from app.services.monitoring.proxy_intel import (
 from app.services.detection.viewer_bot_screening import ViewerBotScreeningService
 from app.services.viewers.session import ViewerSessionService
 from app.services.mitigation.service import MitigationService
+from app.services.mitigation.targets import (
+    build_targets_from_suspected_sessions,
+    dedupe_targets,
+    suspected_sessions_snapshot,
+)
 
 logger = get_logger(__name__)
 ai_service = AIService()
+settings = get_settings()
 
 
 def _detect_viewer_spike(history: List[Dict[str, Any]], current: int) -> Optional[Dict[str, Any]]:
@@ -357,15 +364,18 @@ class ChannelMonitorService:
             full_resync=True,
         )
         await self._screen_viewers_ai(stream, chatters_data, summary)
-        suspected_usernames = [
-            c["username"]
-            for c in chatters_data
+        suspected_sessions = await suspected_sessions_snapshot(self.db, stream.id)
+        suspected_usernames = [s["username"] for s in suspected_sessions if s.get("username")]
+        for c in chatters_data:
+            uname = c.get("username")
+            if not uname:
+                continue
             if score_username_risk(
-                c["username"],
+                uname,
                 c.get("joins", 1),
                 c.get("messages", 0),
-            ) >= 55.0
-        ]
+            ) >= 55.0 and uname not in suspected_usernames:
+                suspected_usernames.append(uname)
 
         counts = await self.viewers.count_active(stream.id)
         summary["chatters_synced"] = sync_stats["total_synced"]
@@ -385,12 +395,15 @@ class ChannelMonitorService:
 
         join_burst = sync_stats["total_synced"] >= 15 and sync_stats["suspected_count"] >= 5
         proxy_attack = proxy_intel["event_count"] >= 3 or len(proxy_intel["proxy_ips"]) >= 2
-        if spike or join_burst or proxy_attack:
+        bot_invasion = counts["suspected"] >= settings.bot_suspected_attack_threshold
+        if spike or join_burst or proxy_attack or bot_invasion:
             risk = 72.0 if spike else 65.0
             if len(suspected_usernames) >= 8:
                 risk = min(risk + 10, 95)
             if proxy_attack:
                 risk = min(risk + 12, 98)
+            if bot_invasion:
+                risk = min(risk + 15, 99)
 
             evidence: Dict[str, Any] = merge_attack_proxy_evidence(
                 {
@@ -398,10 +411,15 @@ class ChannelMonitorService:
                     "viewer_count": stream.viewer_count,
                     "chatters_sampled": len(chatters_data),
                     "suspected_usernames": suspected_usernames[:30],
+                    "suspected_sessions": suspected_sessions[:30],
                     "talking_usernames": talking_usernames[:50],
                     "spike": spike,
                     "join_burst": join_burst,
                     "proxy_attack": proxy_attack,
+                    "bot_invasion": bot_invasion,
+                    "twitch_insights_matches": sum(
+                        1 for s in suspected_sessions if s.get("source") == "twitch_insights"
+                    ),
                     "silent_viewbots_estimate": silent_estimate if silent_estimate > 50 else None,
                 },
                 proxy_intel,
@@ -409,7 +427,7 @@ class ChannelMonitorService:
             source_ips = list(proxy_intel["proxy_ips"])[:20]
             fingerprints = list(proxy_intel["fingerprints"])[:10]
 
-            if proxy_attack and spike:
+            if bot_invasion or (proxy_attack and spike):
                 attack_type = AttackType.VIEWBOT
             elif proxy_attack:
                 attack_type = AttackType.COORDINATED
@@ -424,14 +442,7 @@ class ChannelMonitorService:
             )
             evidence["ai_insight"] = ai_insight
 
-            existing = await self.db.execute(
-                select(Attack).where(
-                    Attack.stream_id == stream.id,
-                    Attack.status == "active",
-                    Attack.attack_type == attack_type,
-                ).limit(1)
-            )
-            if not existing.scalar_one_or_none():
+            if not await correlation.get_active_attack(stream.id, attack_type):
                 attack = await correlation.create_attack_record(
                     stream_id=stream.id,
                     attack_type=attack_type,
@@ -443,15 +454,16 @@ class ChannelMonitorService:
                 )
                 if stream_auto_mitigate(stream) and risk >= 70.0:
                     mitigation = MitigationService(self.db)
-                    targets: List[Dict[str, str]] = []
+                    targets = await build_targets_from_suspected_sessions(
+                        self.db, stream.id, limit=40
+                    )
                     for ip in source_ips[:15]:
                         targets.append({"type": "ip", "value": ip})
-                    for name in suspected_usernames[:15]:
-                        targets.append({"type": "user", "value": name})
                     for fp in fingerprints[:5]:
                         targets.append({"type": "fingerprint", "value": fp})
+                    targets = dedupe_targets(targets)[:80]
                     if targets:
-                        await mitigation.progressive_mitigation(
+                        action = await mitigation.progressive_mitigation(
                             stream_id=stream.id,
                             tenant_id=tenant_id,
                             attack_id=attack.id,
@@ -459,8 +471,11 @@ class ChannelMonitorService:
                             threat_type=attack_type.value,
                             targets=targets,
                             evidence=evidence,
+                            stream=stream,
                         )
                         summary["auto_mitigated"] = True
+                        summary["mitigation_action"] = action.value
+                        summary["mitigation_targets"] = len(targets)
                 alert = await correlation.create_alert(
                     tenant_id=tenant_id,
                     attack=attack,

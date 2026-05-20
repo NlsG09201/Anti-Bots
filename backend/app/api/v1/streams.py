@@ -402,6 +402,81 @@ async def list_viewers(
     )
 
 
+@router.post("/{stream_id}/viewers/ban-suspected")
+async def ban_all_suspected_viewers(
+    stream_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+    apply_twitch_ban: bool = Query(True),
+    duration_hours: Optional[int] = Query(24, ge=1, le=8760),
+):
+    """
+    Bloquea y banea en bloque todos los viewers marcados como sospechosos/bots.
+    Requiere escaneo previo (Verificar bots / monitor).
+    """
+    from app.infrastructure.database.models import AttackType, MitigationAction
+    from app.services.correlation.service import CorrelationService
+    from app.services.mitigation.service import MitigationService
+    from app.services.mitigation.targets import build_targets_from_suspected_sessions
+
+    stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    targets = await build_targets_from_suspected_sessions(db, stream.id, limit=50)
+    if not targets:
+        raise ValidationError(
+            "No hay viewers sospechosos. Ejecuta Verificar bots (Insights + IA) o escanea el canal."
+        )
+
+    correlation = CorrelationService(db)
+    attack = await correlation.get_active_attack(stream.id, AttackType.VIEWBOT)
+    if not attack:
+        attack = await correlation.create_attack_record(
+            stream_id=stream.id,
+            attack_type=AttackType.VIEWBOT,
+            risk_score=90.0,
+            confidence=0.85,
+            evidence={"manual_ban_suspected": True, "target_count": len(targets)},
+            source_ips=[],
+            fingerprints=[],
+        )
+        await correlation.create_alert(
+            tenant_id=current_user.tenant_id,
+            attack=attack,
+            title=f"Bloqueo masivo de bots en {stream.channel_name}",
+            message=f"{len(targets)} objetivos marcados como sospechosos",
+        )
+
+    mitigation = MitigationService(db)
+    action = MitigationAction.TIMEOUT if stream_monitor_mode(stream) else MitigationAction.BAN
+    evidence = {
+        "risk_score": 90.0,
+        "reason": "StreamShield: bloqueo masivo de viewers sospechosos",
+        "apply_twitch_ban": apply_twitch_ban,
+    }
+    bans = await mitigation.apply_mitigation(
+        stream_id=stream.id,
+        tenant_id=current_user.tenant_id,
+        attack_id=attack.id,
+        action=action,
+        targets=targets,
+        evidence=evidence,
+        duration_hours=duration_hours,
+        stream=stream if apply_twitch_ban else None,
+    )
+
+    await ViewerSessionService(db).deactivate_suspected(stream.id)
+    await db.commit()
+
+    twitch_ok = sum(1 for t in evidence.get("twitch_bans", []) if t.get("ok"))
+
+    return {
+        "status": "ok",
+        "targets": len(targets),
+        "bans_created": len(bans),
+        "twitch_bans_applied": twitch_ok,
+        "attack_id": str(attack.id),
+    }
+
+
 @router.post("/{stream_id}/viewers/{viewer_id}/block")
 async def block_viewer(
     stream_id: UUID,
@@ -425,8 +500,12 @@ async def block_viewer(
     if not session:
         raise NotFoundError("Viewer session")
 
-    user_target = session.platform_user_id or session.platform_username or ""
-    targets = [{"type": "user", "value": user_target}]
+    from app.services.mitigation.targets import session_to_user_target
+
+    targets = []
+    ut = session_to_user_target(session)
+    if ut:
+        targets.append(ut)
     if session.ip_address and session.ip_address != "twitch:chat":
         targets.append({"type": "ip", "value": session.ip_address})
 
@@ -453,6 +532,7 @@ async def block_viewer(
                 "reason": body.reason,
             },
             duration_hours=body.duration_hours,
+            stream=stream if body.apply_twitch_ban else None,
         )
         if attack:
             attack.status = "mitigated"

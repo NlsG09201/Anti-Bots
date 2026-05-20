@@ -122,6 +122,10 @@ class Settings(BaseSettings):
     twitch_insights_enabled: bool = True
     twitch_insights_cache_hours: int = 6
 
+    auto_twitch_ban_enabled: bool = True
+    bot_suspected_attack_threshold: int = 5
+    background_attack_scan_interval: int = 3
+
     rate_limit_per_minute: int = 100
     rate_limit_burst: int = 20
     fail2ban_max_attempts: int = 5

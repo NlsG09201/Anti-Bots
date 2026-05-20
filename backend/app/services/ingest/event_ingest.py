@@ -11,6 +11,7 @@ from app.services.ai.service import AIService
 from app.services.correlation.service import CorrelationService
 from app.services.dashboard.metrics import get_tenant_stream_ids
 from app.services.detection.engine import BotDetectionEngine, EventBatch
+from app.services.mitigation.enforcement import is_event_blocked
 from app.services.mitigation.service import MitigationService
 from app.services.realtime.notify import push_dashboard_realtime
 from app.services.reputation.service import ReputationService
@@ -31,6 +32,24 @@ async def process_stream_event(
 ) -> Dict[str, Any]:
     correlation = CorrelationService(db)
     reputation_svc = ReputationService(db)
+    mitigation = MitigationService(db)
+
+    blocked = await is_event_blocked(
+        mitigation,
+        stream.id,
+        platform_user_id=event.platform_user_id,
+        platform_username=event.platform_username,
+        ip_address=event.ip_address,
+        fingerprint_hash=event.fingerprint_hash,
+    )
+    if blocked:
+        return {
+            "event_id": None,
+            "risk_score": 0.0,
+            "attack_created": False,
+            "blocked": True,
+            "ban_type": blocked.get("ban_type"),
+        }
 
     ip_data: Dict[str, Any] = {}
     if event.ip_address:
@@ -127,22 +146,30 @@ async def process_stream_event(
         )
         evidence["ai_insight"] = ai_insight
 
-        attack = await correlation.create_attack_record(
-            stream_id=stream.id,
-            attack_type=attack_type,
-            risk_score=risk_score,
-            confidence=ip_result.confidence if ip_result else 0.5,
-            evidence=evidence,
-            source_ips=[event.ip_address] if event.ip_address else [],
-            fingerprints=[event.fingerprint_hash] if event.fingerprint_hash else [],
-            correlation_id=stream_event.correlation_id,
-        )
-        alert = await correlation.create_alert(
-            tenant_id=tenant_id,
-            attack=attack,
-            title=f"Amenaza detectada: {attack_type.value}",
-            message=ai_insight.get("summary", f"Risk {risk_score:.1f} en {stream.channel_name}"),
-        )
+        existing = await correlation.get_active_attack(stream.id, attack_type)
+        is_new_attack = existing is None
+        if existing:
+            attack = existing
+        else:
+            attack = await correlation.create_attack_record(
+                stream_id=stream.id,
+                attack_type=attack_type,
+                risk_score=risk_score,
+                confidence=ip_result.confidence if ip_result else 0.5,
+                evidence=evidence,
+                source_ips=[event.ip_address] if event.ip_address else [],
+                fingerprints=[event.fingerprint_hash] if event.fingerprint_hash else [],
+                correlation_id=stream_event.correlation_id,
+            )
+
+        alert = None
+        if is_new_attack:
+            alert = await correlation.create_alert(
+                tenant_id=tenant_id,
+                attack=attack,
+                title=f"Amenaza detectada: {attack_type.value}",
+                message=ai_insight.get("summary", f"Risk {risk_score:.1f} en {stream.channel_name}"),
+            )
 
         attack_payload = {
             "id": str(attack.id),
@@ -152,22 +179,23 @@ async def process_stream_event(
             "stream_id": str(stream.id),
             "channel_name": stream.channel_name,
         }
-        alert_payload = {
-            "id": str(alert.id),
-            "title": alert.title,
-            "message": alert.message,
-            "severity": alert.severity.value,
-            "status": alert.status,
-            "created_at": alert.created_at.isoformat(),
-        }
+        if alert:
+            alert_payload = {
+                "id": str(alert.id),
+                "title": alert.title,
+                "message": alert.message,
+                "severity": alert.severity.value,
+                "status": alert.status,
+                "created_at": alert.created_at.isoformat(),
+            }
 
         if risk_score >= 70.0 and stream_auto_mitigate(stream):
-            mitigation = MitigationService(db)
             targets = []
-            if event.platform_user_id:
-                targets.append({"type": "user", "value": event.platform_user_id})
+            uid = (event.platform_user_id or "").strip()
+            if uid.isdigit():
+                targets.append({"type": "user", "value": uid})
             elif event.platform_username:
-                targets.append({"type": "user", "value": event.platform_username})
+                targets.append({"type": "user_login", "value": event.platform_username})
             if event.ip_address:
                 targets.append({"type": "ip", "value": event.ip_address})
             if event.fingerprint_hash:
@@ -180,7 +208,8 @@ async def process_stream_event(
                     risk_score=risk_score,
                     threat_type=attack_type.value,
                     targets=targets,
-                    evidence=attack.evidence,
+                    evidence=evidence,
+                    stream=stream,
                 )
 
     tenant_streams = await get_tenant_stream_ids(db, tenant_id)

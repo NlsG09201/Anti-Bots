@@ -352,6 +352,31 @@ export const api = {
         { method: "POST", body: JSON.stringify(body) },
         token,
       ),
+    banSuspected: (
+      token: string,
+      streamId: string,
+      params?: { apply_twitch_ban?: boolean; duration_hours?: number },
+    ) => {
+      const q = new URLSearchParams();
+      if (params?.apply_twitch_ban !== undefined) {
+        q.set("apply_twitch_ban", String(params.apply_twitch_ban));
+      }
+      if (params?.duration_hours !== undefined) {
+        q.set("duration_hours", String(params.duration_hours));
+      }
+      const qs = q.toString();
+      return request<{
+        status: string;
+        targets: number;
+        bans_created: number;
+        twitch_bans_applied: number;
+        attack_id: string;
+      }>(
+        `/api/v1/streams/${streamId}/viewers/ban-suspected${qs ? `?${qs}` : ""}`,
+        { method: "POST" },
+        token,
+      );
+    },
   },
   ai: {
     attackInsight: (token: string, attackId: string) =>

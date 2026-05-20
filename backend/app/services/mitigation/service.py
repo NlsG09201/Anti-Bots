@@ -5,16 +5,21 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core.security import decrypt_value
+from app.infrastructure.cache.redis_client import RedisCache
 from app.infrastructure.database.models import (
     Attack,
     Ban,
+    Fingerprint,
+    IPReputation,
     MitigationAction,
     Stream,
 )
-from app.core.config import get_settings
-from app.infrastructure.cache.redis_client import RedisCache
 from app.integrations.cloudflare.firewall import CloudflareFirewall
+from app.integrations.twitch.moderation import ban_user_on_twitch
+from app.services.streams.helpers import stream_monitor_mode
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -65,6 +70,9 @@ class MitigationService:
         targets: List[Dict[str, str]],
         evidence: Dict[str, Any],
         duration_hours: Optional[int] = None,
+        *,
+        stream: Optional[Stream] = None,
+        mark_attack_mitigated: bool = True,
     ) -> List[Ban]:
         bans: List[Ban] = []
         expires_at = None
@@ -84,6 +92,9 @@ class MitigationService:
             target_value = target.get("value", "")
             if not target_value:
                 continue
+            if target_type == "user" and not str(target_value).isdigit():
+                target_type = "user_login"
+                target_value = str(target_value).lower()
 
             ban = Ban(
                 stream_id=stream_id,
@@ -100,19 +111,33 @@ class MitigationService:
             bans.append(ban)
 
             cache_key = f"ban:{stream_id}:{target_type}:{target_value}"
-            await self.cache.set(cache_key, {
-                "ban_type": ban.ban_type,
-                "expires_at": expires_at.isoformat() if expires_at else None,
-            }, ttl=duration_hours * 3600 if duration_hours else 86400)
+            await self.cache.set(
+                cache_key,
+                {
+                    "ban_type": ban.ban_type,
+                    "expires_at": expires_at.isoformat() if expires_at else None,
+                },
+                ttl=duration_hours * 3600 if duration_hours else 86400,
+            )
+
+        update_values: Dict[str, Any] = {
+            "mitigation_action": action,
+            "mitigated_at": datetime.now(timezone.utc),
+        }
+        if mark_attack_mitigated and action in (
+            MitigationAction.BAN,
+            MitigationAction.SHADOW_BAN,
+            MitigationAction.TIMEOUT,
+            MitigationAction.MUTE,
+            MitigationAction.QUARANTINE,
+        ):
+            update_values["status"] = "mitigated"
 
         await self.db.execute(
-            update(Attack)
-            .where(Attack.id == attack_id)
-            .values(
-                mitigation_action=action,
-                mitigated_at=datetime.now(timezone.utc),
-            )
+            update(Attack).where(Attack.id == attack_id).values(**update_values)
         )
+
+        await self._mark_intel_blocked(targets)
 
         risk = evidence.get("risk_score", 0)
         if (
@@ -127,14 +152,94 @@ class MitigationService:
                         reason=f"StreamShield attack {attack_id}",
                     )
 
+        twitch_results: List[Dict[str, Any]] = []
+        if stream and settings.auto_twitch_ban_enabled:
+            twitch_results = await self._apply_twitch_bans(
+                stream,
+                targets,
+                action,
+                evidence.get("reason", "StreamShield: ataque de bots detectado"),
+                duration_hours,
+            )
+        if twitch_results:
+            evidence["twitch_bans"] = twitch_results
+
         logger.info(
             "mitigation_applied",
             stream_id=str(stream_id),
             attack_id=str(attack_id),
             action=action.value,
             target_count=len(bans),
+            twitch_bans=len(twitch_results),
         )
         return bans
+
+    async def _apply_twitch_bans(
+        self,
+        stream: Stream,
+        targets: List[Dict[str, str]],
+        action: MitigationAction,
+        reason: str,
+        duration_hours: Optional[int],
+    ) -> List[Dict[str, Any]]:
+        if stream_monitor_mode(stream):
+            return []
+        if not stream.oauth_token_encrypted:
+            return []
+        if action not in (
+            MitigationAction.BAN,
+            MitigationAction.TIMEOUT,
+            MitigationAction.SHADOW_BAN,
+        ):
+            return []
+
+        token = decrypt_value(stream.oauth_token_encrypted)
+        duration_seconds = None
+        if duration_hours:
+            duration_seconds = duration_hours * 3600
+        elif action == MitigationAction.TIMEOUT:
+            duration_seconds = 3600
+
+        results: List[Dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for target in targets:
+            if target.get("type") != "user":
+                continue
+            user_id = str(target.get("value", "")).strip()
+            if not user_id.isdigit() or user_id in seen_ids:
+                continue
+            seen_ids.add(user_id)
+            res = await ban_user_on_twitch(
+                stream.external_id,
+                token,
+                user_id,
+                reason=reason[:500],
+                duration_seconds=duration_seconds,
+            )
+            results.append({"user_id": user_id, **res})
+        return results
+
+    async def _mark_intel_blocked(self, targets: List[Dict[str, str]]) -> None:
+        for target in targets:
+            typ = target.get("type")
+            val = target.get("value", "")
+            if not val:
+                continue
+            if typ == "ip":
+                result = await self.db.execute(
+                    select(IPReputation).where(IPReputation.ip_address == val)
+                )
+                row = result.scalar_one_or_none()
+                if row:
+                    row.is_blocked = True
+            elif typ == "fingerprint":
+                result = await self.db.execute(
+                    select(Fingerprint).where(Fingerprint.hash == val)
+                )
+                row = result.scalar_one_or_none()
+                if row:
+                    row.is_blocked = True
+        await self.db.flush()
 
     async def is_banned(
         self,
@@ -147,11 +252,12 @@ class MitigationService:
         if cached:
             return cached
 
+        lookup_value = target_value.lower() if target_type == "user_login" else target_value
         result = await self.db.execute(
             select(Ban).where(
                 Ban.stream_id == stream_id,
                 Ban.target_type == target_type,
-                Ban.target_value == target_value,
+                Ban.target_value == lookup_value,
                 Ban.is_active == True,
             )
         )
@@ -175,6 +281,8 @@ class MitigationService:
         threat_type: str,
         targets: List[Dict[str, str]],
         evidence: Dict[str, Any],
+        *,
+        stream: Optional[Stream] = None,
     ) -> MitigationAction:
         action = self.determine_action(risk_score, threat_type)
         if action == MitigationAction.NONE:
@@ -196,6 +304,7 @@ class MitigationService:
             targets=targets,
             evidence=evidence,
             duration_hours=duration_map.get(action),
+            stream=stream,
         )
         return action
 

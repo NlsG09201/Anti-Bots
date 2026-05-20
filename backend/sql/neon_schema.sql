@@ -307,6 +307,7 @@ CREATE INDEX IF NOT EXISTS ix_audit_logs_action ON audit_logs (action);
 CREATE INDEX IF NOT EXISTS ix_audit_logs_created_at ON audit_logs (created_at);
 
 CREATE INDEX IF NOT EXISTS ix_viewer_sessions_stream ON viewer_sessions (stream_id, is_active);
+CREATE INDEX IF NOT EXISTS ix_viewer_sessions_suspected ON viewer_sessions (stream_id, is_suspected_bot) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS ix_viewer_sessions_fingerprint ON viewer_sessions (fingerprint_hash);
 
 -- -----------------------------------------------------------------------------

@@ -12,58 +12,9 @@ from app.infrastructure.database.models import Alert, Attack, Ban, Stream
 from app.infrastructure.database.session import get_db
 from app.services.mitigation.service import MitigationService
 from app.services.correlation.service import CorrelationService
-from app.services.monitoring.proxy_intel import collect_proxy_threats
+from app.services.mitigation.targets import build_mitigation_targets_from_attack
 
 router = APIRouter(tags=["Attacks & Security"])
-
-
-def _dedupe_targets(targets: List[Dict[str, str]]) -> List[Dict[str, str]]:
-    seen: Set[tuple[str, str]] = set()
-    out: List[Dict[str, str]] = []
-    for t in targets:
-        key = (t.get("type", ""), t.get("value", "").strip().lower())
-        if not key[1] or key in seen:
-            continue
-        seen.add(key)
-        out.append({"type": key[0], "value": t["value"].strip()})
-    return out
-
-
-async def _build_full_mitigation_targets(
-    db: AsyncSession,
-    attack: Attack,
-) -> List[Dict[str, str]]:
-    evidence = attack.evidence or {}
-    targets: List[Dict[str, str]] = []
-
-    for ip in (attack.source_ips or []):
-        if ip and str(ip).strip():
-            targets.append({"type": "ip", "value": str(ip).strip()})
-    for ip in (evidence.get("proxy_ips") or []):
-        if ip:
-            targets.append({"type": "ip", "value": str(ip).strip()})
-    for name in (evidence.get("suspected_usernames") or []):
-        if name:
-            targets.append({"type": "user", "value": str(name).strip()})
-    for name in (evidence.get("talking_usernames") or []):
-        if name:
-            targets.append({"type": "user", "value": str(name).strip()})
-    for fp in (attack.fingerprints or []):
-        if fp:
-            targets.append({"type": "fingerprint", "value": str(fp).strip()})
-    for fp in (evidence.get("fingerprints") or []):
-        if fp:
-            targets.append({"type": "fingerprint", "value": str(fp).strip()})
-
-    proxy_intel = await collect_proxy_threats(db, attack.stream_id)
-    for ip in proxy_intel.get("proxy_ips", []):
-        targets.append({"type": "ip", "value": ip})
-    for fp in proxy_intel.get("fingerprints", []):
-        targets.append({"type": "fingerprint", "value": fp})
-    for asn in proxy_intel.get("asns", []):
-        targets.append({"type": "asn", "value": str(asn)})
-
-    return _dedupe_targets(targets)[:80]
 
 
 @router.get("/attacks", response_model=List[AttackResponse])
@@ -121,8 +72,10 @@ async def mitigate_attack(
     if not attack:
         raise NotFoundError("Attack")
 
+    stream = await db.get(Stream, attack.stream_id)
+
     if data.full_mitigation:
-        targets = await _build_full_mitigation_targets(db, attack)
+        targets = await build_mitigation_targets_from_attack(db, attack)
     else:
         targets = [{"type": t.type, "value": t.value.strip()} for t in data.targets if t.value.strip()]
         if not targets:
@@ -159,13 +112,18 @@ async def mitigate_attack(
         targets=targets,
         evidence=evidence_payload,
         duration_hours=data.duration_hours,
+        stream=stream,
     )
     attack.status = "mitigated"
     await db.flush()
+    twitch_bans = sum(
+        1 for t in (evidence_payload.get("twitch_bans") or []) if t.get("ok")
+    )
     return {
         "action": action.value,
         "bans_created": len(bans),
         "targets": len(targets),
+        "twitch_bans_applied": twitch_bans,
         "full_mitigation": data.full_mitigation,
     }
 

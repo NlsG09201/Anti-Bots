@@ -88,6 +88,21 @@ class CorrelationService:
 
         return correlations
 
+    async def get_active_attack(
+        self,
+        stream_id: UUID,
+        attack_type: Optional[AttackType] = None,
+    ) -> Optional[Attack]:
+        query = select(Attack).where(
+            Attack.stream_id == stream_id,
+            Attack.status == "active",
+        )
+        if attack_type is not None:
+            query = query.where(Attack.attack_type == attack_type)
+        query = query.order_by(Attack.created_at.desc()).limit(1)
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
     async def create_attack_record(
         self,
         stream_id: UUID,

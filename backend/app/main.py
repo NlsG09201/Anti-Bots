@@ -42,7 +42,11 @@ async def _background_channel_monitor() -> None:
     from app.services.monitoring.channel_monitor import ChannelMonitorService
     from app.services.streams.helpers import stream_monitor_mode
 
+    from app.core.config import get_settings as _gs
+
+    cfg = _gs()
     idx = 0
+    scan_every = max(cfg.background_attack_scan_interval, 2)
     while True:
         try:
             async with AsyncSessionLocal() as db:
@@ -54,10 +58,11 @@ async def _background_channel_monitor() -> None:
                 if streams:
                     stream = streams[idx % len(streams)]
                     idx += 1
-                    await ChannelMonitorService(db).run_quick_sync(
-                        stream,
-                        stream.tenant_id,
-                    )
+                    monitor = ChannelMonitorService(db)
+                    if idx % scan_every == 0:
+                        await monitor.run_cycle(stream, stream.tenant_id, irc_duration=45.0)
+                    else:
+                        await monitor.run_quick_sync(stream, stream.tenant_id)
                     await db.commit()
         except Exception as exc:
             logger.warning("background_monitor_error", error=str(exc))

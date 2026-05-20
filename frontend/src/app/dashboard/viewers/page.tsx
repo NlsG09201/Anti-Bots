@@ -142,6 +142,20 @@ function ViewersContent() {
     onError: (e: Error) => setMessage(e.message),
   });
 
+  const banSuspectedMutation = useMutation({
+    mutationFn: () =>
+      api.streams.banSuspected(token, streamId, { apply_twitch_ban: true, duration_hours: 24 }),
+    onSuccess: (res) => {
+      setMessage(
+        `Bloqueados ${res.targets} sospechosos · ${res.bans_created} bans · ` +
+          `${res.twitch_bans_applied} bans en Twitch`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["viewers"] });
+      queryClient.invalidateQueries({ queryKey: ["attacks-active"] });
+    },
+    onError: (e: Error) => setMessage(e.message),
+  });
+
   const mitigateMutation = useMutation({
     mutationFn: () => {
       const attacks = queryClient.getQueryData<{ id: string; status: string }[]>([
@@ -152,9 +166,10 @@ function ViewersContent() {
       if (!active) throw new Error("No hay ataques activos en este canal");
       return api.attacks.mitigate(token, active.id, { full_mitigation: true });
     },
-    onSuccess: (res: { bans_created?: number; targets?: number }) => {
+    onSuccess: (res: { bans_created?: number; targets?: number; twitch_bans_applied?: number }) => {
       setMessage(
-        `Ataque mitigado: ${res.targets ?? 0} objetivos bloqueados (${res.bans_created ?? 0} bans)`,
+        `Ataque mitigado: ${res.targets ?? 0} objetivos · ${res.bans_created ?? 0} bans` +
+          (res.twitch_bans_applied ? ` · ${res.twitch_bans_applied} en Twitch` : ""),
       );
       queryClient.invalidateQueries({ queryKey: ["attacks-active"] });
       queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
@@ -322,6 +337,19 @@ function ViewersContent() {
           <Brain size={16} className={aiScreenMutation.isPending ? "animate-pulse" : ""} />
           {aiScreenMutation.isPending ? "Analizando..." : "Verificar bots (Insights + IA)"}
         </button>
+        {suspectedCount > 0 && (
+          <button
+            type="button"
+            disabled={banSuspectedMutation.isPending}
+            onClick={() => banSuspectedMutation.mutate()}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-950/40 text-red-300 border border-red-500/40 text-sm disabled:opacity-50"
+          >
+            <Ban size={16} />
+            {banSuspectedMutation.isPending
+              ? "Baneando..."
+              : `Banear sospechosos (${suspectedCount})`}
+          </button>
+        )}
         {activeAttacks > 0 && (
           <button
             type="button"

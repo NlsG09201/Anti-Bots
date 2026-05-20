@@ -269,6 +269,24 @@ class ViewerSessionService:
             "suspected": suspected,
         }
 
+    async def deactivate_suspected(self, stream_id: UUID) -> int:
+        result = await self.db.execute(
+            select(ViewerSession).where(
+                ViewerSession.stream_id == stream_id,
+                ViewerSession.is_active == True,
+                ViewerSession.is_suspected_bot == True,
+            )
+        )
+        count = 0
+        now = datetime.now(timezone.utc)
+        for session in result.scalars().all():
+            session.is_active = False
+            session.left_at = now
+            count += 1
+        if count:
+            await self.db.flush()
+        return count
+
     async def deactivate(self, session_id: UUID, stream_id: UUID) -> Optional[ViewerSession]:
         result = await self.db.execute(
             select(ViewerSession).where(
