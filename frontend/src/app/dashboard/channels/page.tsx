@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, Link2, Plus, RefreshCw, Trash2, Users, Tv, Radio } from "lucide-react";
 import Link from "next/link";
 import { api, type Stream } from "@/lib/api";
+import { PlatformBadge } from "@/components/PlatformBadge";
 import { useAuthStore } from "@/stores/authStore";
 
 function ChannelsContent() {
@@ -218,7 +219,10 @@ function ChannelSection({
             className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-cyber-border bg-cyber-bg/40"
           >
             <div>
-              <p className="text-white font-medium">{stream.channel_name}</p>
+              <p className="text-white font-medium flex items-center gap-2">
+                {stream.channel_name}
+                <PlatformBadge platform={stream.platform} />
+              </p>
               <p className="text-xs text-cyber-muted">
                 @{stream.login || stream.channel_name.toLowerCase()} ·{" "}
                 {stream.is_live ? (

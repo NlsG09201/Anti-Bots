@@ -1,0 +1,95 @@
+# StreamShield Enterprise — full local stack
+# Usage:
+#   cp deploy/render.import.env deploy/enterprise/.env
+#   docker compose -f deploy/enterprise/docker-compose.enterprise.yml up --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: streamshield
+      POSTGRES_PASSWORD: streamshield_dev
+      POSTGRES_DB: streamshield
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U streamshield"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    env_file:
+      - ../render.import.env
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://streamshield:streamshield_dev@postgres:5432/streamshield
+      REDIS_URL: redis://redis:6379/0
+      EVENT_PIPELINE_ENABLED: "true"
+      EVENT_QUEUE_ENABLED: "true"
+      EVENT_REALTIME_PUBSUB_ENABLED: "true"
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  event-worker:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: arq app.workers.arq_worker.WorkerSettings
+    env_file:
+      - ../render.import.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://streamshield:streamshield_dev@postgres:5432/streamshield
+      REDIS_URL: redis://redis:6379/0
+      EVENT_PIPELINE_ENABLED: "true"
+      EVENT_QUEUE_ENABLED: "true"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  celery-worker:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+    env_file:
+      - ../render.import.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://streamshield:streamshield_dev@postgres:5432/streamshield
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Frontend: run locally with `cd frontend && npm run dev` (no Dockerfile yet)
+
+volumes:
+  pgdata:

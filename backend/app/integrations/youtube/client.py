@@ -85,6 +85,46 @@ class YouTubeLiveClient:
                 "polling_interval_ms": data.get("pollingIntervalMillis", 5000),
             }
 
+    async def search_live_by_channel(self, channel_query: str) -> Optional[Dict[str, Any]]:
+        """Find active live video for a channel name or handle."""
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                f"{self.BASE_URL}/search",
+                headers=self._headers(),
+                params=self._params({
+                    "part": "snippet",
+                    "q": channel_query,
+                    "eventType": "live",
+                    "type": "video",
+                    "maxResults": 1,
+                }),
+            )
+            if response.status_code != 200:
+                return None
+            items = response.json().get("items", [])
+            if not items:
+                return None
+            video_id = items[0]["id"]["videoId"]
+            stats = await self.get_video_statistics(video_id)
+            return {
+                "id": video_id,
+                "snippet": items[0].get("snippet", {}),
+                "statistics": {
+                    "concurrentViewers": stats.get("concurrent_viewers", 0),
+                    "viewCount": stats.get("viewer_count", 0),
+                },
+            }
+
+    async def list_live_chat_messages(
+        self, video_id: str, max_results: int = 200
+    ) -> List[Dict[str, Any]]:
+        stats = await self.get_video_statistics(video_id)
+        chat_id = stats.get("active_live_chat_id")
+        if not chat_id:
+            return []
+        result = await self.get_live_chat_messages(chat_id)
+        return (result.get("messages") or [])[:max_results]
+
     async def get_video_statistics(self, video_id: str) -> Dict[str, Any]:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(

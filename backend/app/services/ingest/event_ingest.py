@@ -11,9 +11,11 @@ from app.services.ai.service import AIService
 from app.services.correlation.service import CorrelationService
 from app.services.dashboard.metrics import get_tenant_stream_ids
 from app.core.config import get_settings
+from app.services.detection.anomaly_intelligence import AnomalyIntelligenceService
 from app.services.detection.engine import BotDetectionEngine, EventBatch
 from app.services.detection.realtime_viewbot import get_realtime_viewbot_engine
 from app.services.detection.realtime_actions import apply_viewbot_assessment
+from app.services.security.network_policy import NetworkPolicyEngine
 from app.services.mitigation.enforcement import is_event_blocked
 from app.services.mitigation.service import MitigationService
 from app.services.realtime.notify import push_dashboard_realtime
@@ -23,6 +25,8 @@ from app.services.viewers.session import ViewerSessionService
 
 detection_engine = BotDetectionEngine()
 ai_service = AIService()
+network_policy = NetworkPolicyEngine()
+anomaly_svc = AnomalyIntelligenceService()
 ingest_settings = get_settings()
 
 
@@ -62,6 +66,25 @@ async def process_stream_event(
     fp_risk = float(event.metadata.get("fingerprint_risk", 0.0)) if event.fingerprint_hash else 0.0
 
     ip_result = detection_engine.analyze_ip(ip_data) if ip_data else None
+
+    fp_flags = event.metadata.get("automation_flags") or event.metadata.get("checks") or []
+    if isinstance(fp_flags, dict):
+        fp_flags = list(fp_flags.keys())
+    policy = network_policy.evaluate(
+        ip_intel=ip_data,
+        fingerprint_flags=fp_flags if isinstance(fp_flags, list) else [],
+        automation_detected=bool(event.metadata.get("automation_detected")),
+    )
+    if not policy.allowed:
+        return {
+            "event_id": None,
+            "risk_score": policy.risk_score,
+            "attack_created": False,
+            "blocked": True,
+            "ban_type": "network_policy",
+            "policy": policy.to_dict(),
+        }
+
     pattern_score = 0.0
     if event.event_type == "viewer_join":
         vb = detection_engine.analyze_viewbot_pattern(
@@ -83,7 +106,29 @@ async def process_stream_event(
         ip_result.risk_score if ip_result else 0.0,
         fp_risk,
         pattern_score,
+        policy.risk_score,
     )
+
+    if event.event_type == "viewer_join":
+        anomaly = await anomaly_svc.assess_window(
+            str(stream.id),
+            joins_per_minute=float(event.metadata.get("joins_per_minute", 1)),
+            unique_ip_ratio=float(event.metadata.get("unique_ip_ratio", 1.0)),
+            proxy_ratio=1.0 if ip_data.get("is_proxy") else 0.0,
+            fingerprint_collision_ratio=float(
+                event.metadata.get("fingerprint_collision_ratio", 0)
+            ),
+            chat_participation_ratio=float(
+                event.metadata.get("chat_participation_ratio", 0.5)
+            ),
+        )
+        if anomaly.is_anomaly:
+            risk_score = max(risk_score, anomaly.anomaly_score)
+            meta_anomaly = anomaly.to_dict()
+        else:
+            meta_anomaly = None
+    else:
+        meta_anomaly = None
 
     rt_assessment = None
     if ingest_settings.viewbot_realtime_enabled:
@@ -103,6 +148,9 @@ async def process_stream_event(
 
     meta = dict(event.metadata)
     meta["ingest_source"] = source
+    meta["network_policy"] = policy.to_dict()
+    if meta_anomaly:
+        meta["anomaly"] = meta_anomaly
 
     stream_event = StreamEvent(
         stream_id=stream.id,

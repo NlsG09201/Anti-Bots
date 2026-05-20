@@ -224,7 +224,15 @@ async def quick_sync_stream(
         stream = await sync_stream_live_status(db, stream)
     if not stream.is_live:
         return {"status": "offline", "message": "El canal no esta en vivo"}
-    summary = await ChannelMonitorService(db).run_quick_sync(stream, current_user.tenant_id)
+    from app.infrastructure.database.models import Platform
+    from app.services.platforms.sync_service import PlatformSyncService
+
+    if stream.platform in (Platform.KICK, Platform.YOUTUBE):
+        summary = await PlatformSyncService(db).sync_viewers(stream)
+    else:
+        summary = await ChannelMonitorService(db).run_quick_sync(
+            stream, current_user.tenant_id
+        )
     return {"status": "ok", **summary}
 
 
