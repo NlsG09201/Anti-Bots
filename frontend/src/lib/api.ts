@@ -4,8 +4,9 @@ import { resolveApiBaseUrl, resolveDirectApiBaseUrl } from "@/lib/runtime-urls";
 const API_URL = resolveApiBaseUrl();
 
 export function resolveAuthToken(explicit?: string | null): string | undefined {
-  const token = (explicit ?? getAccessToken())?.trim();
-  return token || undefined;
+  const trimmed = explicit?.trim();
+  const token = (trimmed ? trimmed : getAccessToken()?.trim()) || undefined;
+  return token;
 }
 
 export class ApiError extends Error {
@@ -187,15 +188,23 @@ export async function refreshAccessToken(): Promise<string | null> {
 
   refreshInFlight = (async () => {
     try {
-      const csrf = getCsrfToken();
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (csrf) headers["X-CSRF-Token"] = csrf;
+      const attempt = async () => {
+        const csrf = getCsrfToken();
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (csrf) headers["X-CSRF-Token"] = csrf;
 
-      const response = await fetch(`${API_URL}/api/v1/auth/refresh`, {
-        method: "POST",
-        credentials: "include",
-        headers,
-      });
+        return fetch(`${API_URL}/api/v1/auth/refresh`, {
+          method: "POST",
+          credentials: "include",
+          headers,
+        });
+      };
+
+      let response = await attempt();
+      if (response.status === 403) {
+        await fetchCsrfToken();
+        response = await attempt();
+      }
       if (!response.ok) return null;
       const data = (await response.json()) as { access_token: string };
       await syncAuthTokenToStore(data.access_token);
@@ -250,7 +259,13 @@ export async function bootstrapAuthSession(): Promise<string | null> {
       if (!existing) return null;
 
       const status = await probeAccessToken(existing);
-      if (status === "valid" || status === "rate_limited") {
+      if (status === "valid") {
+        await syncAuthTokenToStore(existing);
+        return existing;
+      }
+      if (status === "rate_limited") {
+        const retryRefresh = await refreshAccessToken();
+        if (retryRefresh) return retryRefresh;
         await syncAuthTokenToStore(existing);
         return existing;
       }

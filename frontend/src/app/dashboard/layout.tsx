@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { useAuthStore } from "@/stores/authStore";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
-import { bootstrapAuthSession, getAccessToken } from "@/lib/api";
+import { bootstrapAuthSession, fetchCsrfToken, getAccessToken } from "@/lib/api";
 import { Wifi, WifiOff } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -34,6 +34,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (cancelled) return;
       if (token) {
         setTokens(token);
+        await fetchCsrfToken();
         setAuthReady(true);
         return;
       }

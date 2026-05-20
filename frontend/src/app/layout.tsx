@@ -5,6 +5,7 @@ import { Providers } from "./providers";
 export const metadata: Metadata = {
   title: "StreamShield - Anti-Bot Security Platform",
   description: "Enterprise anti-bot protection for Twitch, Kick, and YouTube Live streamers",
+  icons: { icon: "/icon.svg", apple: "/icon.svg" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

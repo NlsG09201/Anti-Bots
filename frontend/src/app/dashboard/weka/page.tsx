@@ -43,7 +43,7 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
 }
 
 export default function WekaJ48Page() {
-  const token = useApiToken() ?? "";
+  const token = useApiToken();
   const queryClient = useQueryClient();
   const [source, setSource] = useState<J48Source>("mixed");
   const [selectedStream, setSelectedStream] = useState("");

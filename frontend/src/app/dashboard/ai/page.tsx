@@ -82,7 +82,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 export default function AIPredictionsPage() {
-  const token = useApiToken() ?? "";
+  const token = useApiToken();
   const queryClient = useQueryClient();
 
   const { data: health } = useQuery({

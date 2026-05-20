@@ -23,7 +23,7 @@ type ViewFilter = "all" | "talking" | "suspected";
 
 function ViewersContent() {
   const searchParams = useSearchParams();
-  const token = useApiToken() ?? "";
+  const token = useApiToken();
   const queryClient = useQueryClient();
   const [selectedStream, setSelectedStream] = useState(searchParams.get("stream") ?? "");
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");

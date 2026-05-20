@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shield, Eye, EyeOff, Zap } from "lucide-react";
-import { api, resetAuthSessionState } from "@/lib/api";
+import { api, bootstrapAuthSession, fetchCsrfToken, resetAuthSessionState } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 
 const TWITCH_CALLBACK =
@@ -28,6 +28,22 @@ function LoginForm() {
   });
 
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const token = await bootstrapAuthSession();
+      if (!cancelled && token) {
+        setTokens(token);
+        const user = await api.auth.me(token);
+        setUser(user);
+        router.replace("/dashboard");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router, setTokens, setUser]);
+
+  useEffect(() => {
     if (searchParams.get("session") === "expired") {
       setError("Tu sesión expiró. Vuelve a iniciar sesión.");
     } else if (searchParams.get("error") === "redirect_mismatch") {
@@ -45,6 +61,7 @@ function LoginForm() {
   const finishLogin = async (accessToken: string) => {
     resetAuthSessionState();
     setTokens(accessToken);
+    await fetchCsrfToken();
     const user = await api.auth.me(accessToken);
     setUser(user);
     router.push("/dashboard");
