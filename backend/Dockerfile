@@ -2,13 +2,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Java 17 para Weka (python-weka-wrapper3 / J48)
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+# Java 21 (Debian trixie; openjdk-17 ya no está en repos)
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev curl \
-    openjdk-17-jre-headless \
+    openjdk-21-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

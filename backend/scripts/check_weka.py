@@ -18,7 +18,7 @@ def main() -> int:
         print("\nInstala: pip install python-weka-wrapper3")
         return 1
     if not st["java_available"]:
-        print("\nInstala Java 17+ y define JAVA_HOME")
+        print("\nInstala Java 11+ (17 o 21) y define JAVA_HOME")
         return 1
 
     print("\nArrancando JVM…")

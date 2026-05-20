@@ -28,7 +28,7 @@ Vista previa antes de entrenar: `GET /api/v1/ml/weka-j48/dataset/preview?source=
 ## Activar Weka Python
 
 1. **Dependencia**: `python-weka-wrapper3==0.3.3` en `backend/requirements.txt`.
-2. **Java**: OpenJDK 17 (Docker ya lo instala; en Windows: Temurin 17 + opcional `WEKA_JAVA_HOME`).
+2. **Java**: 11+ (Docker instala OpenJDK 21 en Debian trixie; en Windows: Temurin 17/21 + opcional `WEKA_JAVA_HOME`).
 3. **Variables**:
    - `WEKA_PYTHON_ENABLED=true`
    - `WEKA_JVM_EAGER_START=true` — arranca JVM al levantar la API
@@ -56,7 +56,7 @@ Vista previa antes de entrenar: `GET /api/v1/ml/weka-j48/dataset/preview?source=
 
 El API en Render usa **runtime Docker** (`render.yaml`) con `backend/Dockerfile`:
 
-- OpenJDK 17 (`JAVA_HOME` preconfigurado)
+- OpenJDK 21 JRE (`JAVA_HOME` preconfigurado en la imagen)
 - `python-weka-wrapper3` instalado en build
 
 Sin Java, el sistema usa el fallback sklearn automáticamente (`backend: sklearn_j48_compat`).
