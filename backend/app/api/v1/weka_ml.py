@@ -46,9 +46,9 @@ async def weka_health(
 
 @router.post("/train", response_model=TrainResponse)
 async def train_j48(
-    limit: int = Query(5000, ge=100, le=20000),
-    db: AsyncSession = Depends(get_db),
     current_user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(5000, ge=100, le=20000),
 ):
     svc = get_weka_j48_service()
     result = await svc.train_for_tenant(db, current_user.tenant_id, limit=limit)
