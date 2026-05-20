@@ -457,11 +457,14 @@ async def list_viewers(
     svc = ViewerSessionService(db)
     if suspected_only:
         filter = "suspected"
-    return await svc.list_active(
+    sessions = await svc.list_active(
         stream_id,
         suspected_only=(filter == "suspected"),
         talking_only=(filter == "talking"),
     )
+    from app.ml.weka_j48.enrich import enrich_viewer_responses
+
+    return await enrich_viewer_responses(db, sessions)
 
 
 @router.post("/{stream_id}/viewers/ban-suspected")

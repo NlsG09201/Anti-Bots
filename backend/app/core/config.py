@@ -146,6 +146,12 @@ class Settings(BaseSettings):
     viewbot_auto_block_threshold: float = 85.0
     viewbot_ml_enabled: bool = True
 
+    weka_j48_enabled: bool = True
+    weka_j48_prefer_weka: bool = True
+    weka_j48_model_path: str = "data/weka_models"
+    weka_java_home: str = ""
+    weka_j48_min_training_samples: int = 50
+
     event_pipeline_enabled: bool = True
     event_pipeline_sync_fallback: bool = False
     event_queue_enabled: bool = True

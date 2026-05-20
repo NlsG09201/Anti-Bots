@@ -269,6 +269,9 @@ class ViewerSessionResponse(BaseModel):
     chat_messages: int = 0
     behavior_metrics: Dict[str, Any] = Field(default_factory=dict)
     joined_at: datetime
+    j48_is_bot: Optional[bool] = None
+    j48_probability: Optional[float] = None
+    j48_backend: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

@@ -23,6 +23,7 @@ from app.api.v1 import (
     users,
     webhooks,
     widget,
+    weka_ml,
 )
 from app.api.websocket import routes as ws_routes
 from app.core.config import get_settings, invalidate_settings_cache
@@ -172,6 +173,7 @@ app.include_router(detection.router, prefix=API_PREFIX)
 app.include_router(security.router, prefix=API_PREFIX)
 app.include_router(enterprise.router, prefix=API_PREFIX)
 app.include_router(ai_intel.router, prefix=API_PREFIX)
+app.include_router(weka_ml.router, prefix=API_PREFIX)
 app.include_router(threat_intel.router, prefix=API_PREFIX)
 app.include_router(events_pipeline.router, prefix=API_PREFIX)
 app.include_router(ai_insights.router, prefix=API_PREFIX)

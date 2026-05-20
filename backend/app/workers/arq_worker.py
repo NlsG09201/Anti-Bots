@@ -52,10 +52,24 @@ async def ai_train_models_job(ctx: dict) -> Dict[str, Any]:
     return {"training": train_result, "adaptive": tune_result}
 
 
+async def weka_j48_train_job(ctx: dict, tenant_id: Optional[str] = None) -> Dict[str, Any]:
+    from uuid import UUID
+
+    from app.infrastructure.database.session import AsyncSessionLocal
+    from app.ml.weka_j48.service import get_weka_j48_service
+
+    if not tenant_id:
+        return {"ok": False, "error": "tenant_id_required"}
+    async with AsyncSessionLocal() as db:
+        result = await get_weka_j48_service().train_for_tenant(db, UUID(tenant_id))
+        await db.commit()
+    return result
+
+
 class WorkerSettings:
     """Configuración arq — una función, múltiples colas vía _queue_name al encolar."""
 
-    functions = [process_pipeline_event_job, ai_train_models_job]
+    functions = [process_pipeline_event_job, ai_train_models_job, weka_j48_train_job]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
