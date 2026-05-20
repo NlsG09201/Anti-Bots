@@ -78,7 +78,7 @@
     }).join("");
   }
 
-  function collectFingerprint() {
+  function collectFingerprintBasic() {
     return {
       screen: window.screen ? window.screen.width + "x" + window.screen.height : "",
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
@@ -93,15 +93,22 @@
     };
   }
 
-  function ping() {
+  function collectFingerprint() {
+    if (window.StreamShieldFP && window.StreamShieldFP.collect) {
+      return window.StreamShieldFP.collect();
+    }
+    return Promise.resolve(collectFingerprintBasic());
+  }
+
+  function sendPing(fingerprint) {
     var body = {
       stream_key: streamKey,
       event_type: "viewer_pulse",
       platform_username: username || null,
       platform_user_id: userId || null,
-      fingerprint: collectFingerprint(),
+      fingerprint: fingerprint,
       metadata: {
-        widget_version: "1.1",
+        widget_version: "2.0",
         page_url: window.location.href,
         timestamp: new Date().toISOString(),
       },
@@ -114,7 +121,7 @@
       "X-SS-Timestamp": String(Date.now()),
     };
 
-    fetch(apiUrl + "/api/v1/widget/ping", {
+    return fetch(apiUrl + "/api/v1/widget/ping", {
       method: "POST",
       headers: headers,
       body: payload,
@@ -125,16 +132,35 @@
         return r.json();
       })
       .then(function (data) {
-        if (data && data.ok && data.is_proxy) {
-          console.info("[StreamShield] Proxy/VPN detectado, risk=" + data.risk_score);
+        if (data && data.ok && (data.is_proxy || data.risk_score >= 50)) {
+          console.info("[StreamShield] risk=" + data.risk_score);
         }
+        return data;
       })
       .catch(function () {
-        /* silencioso en overlay */
+        return null;
       });
   }
 
-  ping();
+  function ping() {
+    collectFingerprint().then(sendPing);
+  }
+
+  function ensureFpCollector(cb) {
+    if (window.StreamShieldFP) {
+      cb();
+      return;
+    }
+    var base = script.src.replace(/streamshield-widget\.js.*$/, "");
+    var s = document.createElement("script");
+    s.src = base + "streamshield-fp.js";
+    s.async = true;
+    s.onload = cb;
+    s.onerror = cb;
+    document.head.appendChild(s);
+  }
+
+  ensureFpCollector(ping);
   if (intervalSec > 0) {
     setInterval(ping, Math.max(intervalSec, 30) * 1000);
   }

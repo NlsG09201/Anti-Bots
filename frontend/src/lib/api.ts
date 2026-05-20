@@ -261,6 +261,12 @@ export const api = {
   },
   fingerprints: {
     list: (token: string) => request<Fingerprint[]>("/api/v1/fingerprints", {}, token),
+    analyzeAdvanced: (token: string, body: object) =>
+      request<AdvancedFingerprintResult>(
+        "/api/v1/detection/fingerprint/advanced",
+        { method: "POST", body: JSON.stringify(body) },
+        token,
+      ),
   },
   ips: {
     list: (token: string) => request<SuspiciousIP[]>("/api/v1/ips", {}, token),
@@ -522,6 +528,24 @@ export interface Fingerprint {
   is_blocked: boolean;
   occurrence_count: number;
   automation_flags: string[];
+}
+
+export interface AdvancedFingerprintResult {
+  device_hash: string;
+  fingerprint_hash: string;
+  session_key: string;
+  trust_score: number;
+  risk_score: number;
+  confidence_score: number;
+  is_automation: boolean;
+  is_headless: boolean;
+  is_blocked: boolean;
+  automation_flags: string[];
+  signals: Record<string, unknown>;
+  correlated_sessions: string[];
+  correlation_strength: number;
+  correlation: Record<string, unknown>;
+  recommended_action: string;
 }
 
 export interface SuspiciousIP {

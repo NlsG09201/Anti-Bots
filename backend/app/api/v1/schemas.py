@@ -131,6 +131,33 @@ class FingerprintSubmit(BaseModel):
     playwright: bool = False
     user_agent: Optional[str] = None
     languages: Optional[List[str]] = None
+    session_id: Optional[str] = None
+
+
+class AdvancedFingerprintSubmit(FingerprintSubmit):
+    """Señales extendidas para fingerprinting avanzado."""
+
+    timezone_offset_minutes: Optional[int] = None
+    color_depth: Optional[int] = None
+    device_memory: Optional[float] = None
+    hardware_concurrency: Optional[int] = None
+    canvas_duplicate_hash: Optional[str] = None
+    canvas_noise_detected: Optional[bool] = None
+    canvas_noise_expected: bool = True
+    webgl_vendor: Optional[str] = None
+    webgl_renderer: Optional[str] = None
+    webrtc_local_ips: Optional[List[str]] = None
+    webrtc_public_ip: Optional[str] = None
+    webrtc_mdns_host: Optional[str] = None
+    webrtc_failed: Optional[bool] = None
+    user_agent_data: Optional[Dict[str, Any]] = None
+    client_hints: Optional[Dict[str, Any]] = None
+    headless_hints: Optional[Dict[str, Any]] = None
+    plugins_count: Optional[int] = None
+    fonts_count: Optional[int] = None
+    outer_dimensions_zero: Optional[bool] = None
+    touch_support: Optional[bool] = None
+    stream_id: Optional[str] = None
 
 
 class FingerprintResponse(BaseModel):
@@ -139,6 +166,24 @@ class FingerprintResponse(BaseModel):
     is_headless: bool
     is_blocked: bool
     automation_flags: List[str]
+
+
+class AdvancedFingerprintResponse(BaseModel):
+    device_hash: str
+    fingerprint_hash: str
+    session_key: str
+    trust_score: float
+    risk_score: float
+    confidence_score: float
+    is_automation: bool
+    is_headless: bool
+    is_blocked: bool
+    automation_flags: List[str]
+    signals: Dict[str, Any] = Field(default_factory=dict)
+    correlated_sessions: List[str] = Field(default_factory=list)
+    correlation_strength: float = 0.0
+    correlation: Dict[str, Any] = Field(default_factory=dict)
+    recommended_action: str = "none"
 
 
 class EventIngest(BaseModel):

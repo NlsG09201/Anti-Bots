@@ -11,7 +11,6 @@ from app.api.dependencies import CurrentUser
 from app.api.v1.schemas import EventIngest
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ValidationError
-from app.core.security import hash_fingerprint
 from app.infrastructure.database.models import Stream
 from app.infrastructure.database.session import get_db
 from app.services.detection.engine import BotDetectionEngine
@@ -74,19 +73,34 @@ async def _stream_by_ingest_key(db: AsyncSession, stream_key: str) -> Optional[S
 
 
 class WidgetFingerprint(BaseModel):
+    model_config = {"extra": "allow"}
+
     screen: Optional[str] = None
+    screen_resolution: Optional[str] = None
     timezone: Optional[str] = None
+    timezone_offset_minutes: Optional[int] = None
     language: Optional[str] = None
+    languages: Optional[list] = None
     platform: Optional[str] = None
     canvas_hash: Optional[str] = None
+    canvas_duplicate_hash: Optional[str] = None
+    canvas_noise_detected: Optional[bool] = None
     webgl_hash: Optional[str] = None
+    webgl_vendor: Optional[str] = None
+    webgl_renderer: Optional[str] = None
+    audio_hash: Optional[str] = None
+    webrtc_local_ips: Optional[list] = None
+    webrtc_mdns_host: Optional[str] = None
+    webrtc_failed: Optional[bool] = None
     user_agent: Optional[str] = None
+    session_id: Optional[str] = None
     plugins_count: Optional[int] = None
     hardware_concurrency: Optional[int] = None
     webdriver: bool = False
     selenium: bool = False
     puppeteer: bool = False
     playwright: bool = False
+    headless_hints: Optional[Dict[str, Any]] = None
 
 
 class WidgetPing(BaseModel):
@@ -163,32 +177,38 @@ async def widget_ping(
 
     fp_hash: Optional[str] = None
     fp_risk = 0.0
+    trust_score = 100.0
+    device_hash: Optional[str] = None
+    session_key: Optional[str] = None
     automation_flags: list[str] = []
     if body.fingerprint:
+        from app.services.detection.fingerprint_service import analyze_fingerprint_payload
+
         fp_dict = body.fingerprint.model_dump(exclude_none=True)
+        if fp_dict.get("screen") and not fp_dict.get("screen_resolution"):
+            fp_dict["screen_resolution"] = fp_dict["screen"]
         if not fp_dict.get("user_agent"):
             fp_dict["user_agent"] = request.headers.get("user-agent", "")[:512]
-        fp_hash = hash_fingerprint(fp_dict)
-        detection = fp_engine.analyze_fingerprint(
-            {
-                "screen_resolution": fp_dict.get("screen"),
-                "timezone": fp_dict.get("timezone"),
-                "language": fp_dict.get("language"),
-                "platform": fp_dict.get("platform"),
-                "user_agent": fp_dict.get("user_agent"),
-                "plugins": [""] * int(fp_dict.get("plugins_count") or 0),
-                "fonts": [],
-                "webdriver": fp_dict.get("webdriver", False),
-                "selenium": fp_dict.get("selenium", False),
-                "puppeteer": fp_dict.get("puppeteer", False),
-                "playwright": fp_dict.get("playwright", False),
-            }
+        fp_result = await analyze_fingerprint_payload(
+            db,
+            fp_dict,
+            tenant_id=stream.tenant_id,
+            server_ip=client_ip,
+            persist=True,
+            stream_id=stream.id,
         )
-        fp_risk = detection.risk_score
-        automation_flags = list(detection.evidence.get("checks", []))
+        fp_hash = fp_result.fingerprint_hash
+        fp_risk = fp_result.risk_score
+        trust_score = fp_result.trust_score
+        device_hash = fp_result.device_hash
+        session_key = fp_result.session_key
+        automation_flags = list(fp_result.automation_flags)
 
     meta = dict(body.metadata)
     meta["fingerprint_risk"] = fp_risk
+    meta["trust_score"] = trust_score
+    meta["device_hash"] = device_hash
+    meta["session_key"] = session_key
     meta["automation_flags"] = automation_flags
     meta["ip_analysis"] = {
         "risk_score": ip_analysis.get("risk_score"),
@@ -250,7 +270,8 @@ async def get_widget_embed(
         f'<script src="{script_src}" async\n'
         f'  data-stream-key="{ingest_key}"\n'
         f'  data-api-url="{api_public}"\n'
-        f'  data-interval="60"></script>'
+        f'  data-interval="60"></script>\n'
+        f'<!-- Carga automática de streamshield-fp.js (fingerprint avanzado) desde el mismo origen -->'
     )
 
     obs_snippet = (

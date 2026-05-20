@@ -65,6 +65,27 @@ class BotDetectionEngine:
             logger.info("sklearn_not_installed_using_statistical_anomaly_detection")
 
     def analyze_fingerprint(self, fp_data: Dict[str, Any]) -> DetectionResult:
+        try:
+            from app.services.detection.advanced_fingerprint import AdvancedFingerprintEngine
+
+            adv = AdvancedFingerprintEngine().analyze(fp_data)
+            return DetectionResult(
+                is_threat=adv.risk_score >= 50.0,
+                threat_type="automation" if adv.is_automation else "none",
+                risk_score=adv.risk_score,
+                confidence=adv.confidence_score,
+                evidence={
+                    "checks": adv.automation_flags,
+                    "trust_score": adv.trust_score,
+                    "device_hash": adv.device_hash,
+                    "session_key": adv.session_key,
+                    "signals": adv.signals,
+                },
+                recommended_action=adv.recommended_action,
+            )
+        except Exception:
+            pass
+
         score = 0.0
         evidence: Dict[str, Any] = {"checks": []}
 

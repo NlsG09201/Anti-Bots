@@ -1,13 +1,18 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import CurrentUser
-from app.api.v1.schemas import FingerprintResponse, FingerprintSubmit
-from app.core.security import hash_fingerprint
-from app.infrastructure.database.models import Fingerprint
+from app.api.dependencies import AnalystUser, CurrentUser
+from app.api.v1.schemas import (
+    AdvancedFingerprintResponse,
+    AdvancedFingerprintSubmit,
+    FingerprintResponse,
+    FingerprintSubmit,
+)
 from app.infrastructure.database.session import get_db
 from app.services.detection.engine import BotDetectionEngine
+from app.services.detection.fingerprint_service import analyze_fingerprint_payload
 from app.infrastructure.security.client_ip import resolve_client_ip
 from app.infrastructure.security.ip_analysis import analyze_client_ip
 from app.services.reputation.service import ReputationService
@@ -22,62 +27,68 @@ async def submit_fingerprint(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    fp_dict = data.model_dump()
-    fp_hash = hash_fingerprint(fp_dict)
-
-    result = await db.execute(select(Fingerprint).where(Fingerprint.hash == fp_hash))
-    fingerprint = result.scalar_one_or_none()
-
-    detection = engine.analyze_fingerprint(fp_dict)
     client_ip, ip_meta = resolve_client_ip(request)
+    advanced = await analyze_fingerprint_payload(
+        db,
+        data.model_dump(exclude_none=True),
+        server_ip=client_ip if client_ip != "unknown" else None,
+        persist=True,
+    )
     if client_ip and client_ip != "unknown":
         ip_intel = await analyze_client_ip(
             db, client_ip, spoof_risk=bool(ip_meta.get("xff_spoof_risk"))
         )
-        detection.risk_score = min(
+        advanced.risk_score = min(
             100.0,
-            max(detection.risk_score, ip_intel.get("risk_score", 0)),
+            max(advanced.risk_score, ip_intel.get("risk_score", 0)),
         )
         for flag in ip_intel.get("flags", []):
-            detection.evidence.setdefault("checks", []).append(flag)
-    automation_flags = list(detection.evidence.get("checks", []))
-
-    if fingerprint:
-        fingerprint.occurrence_count += 1
-        fingerprint.risk_score = max(fingerprint.risk_score, detection.risk_score)
-        if detection.evidence.get("checks"):
-            existing = set(fingerprint.automation_flags or [])
-            fingerprint.automation_flags = list(existing | set(automation_flags))
-    else:
-        fingerprint = Fingerprint(
-            hash=fp_hash,
-            canvas_hash=data.canvas_hash,
-            webgl_hash=data.webgl_hash,
-            audio_hash=data.audio_hash,
-            screen_resolution=data.screen_resolution,
-            timezone=data.timezone,
-            language=data.language,
-            platform=data.platform,
-            plugins=data.plugins,
-            fonts=data.fonts,
-            is_headless=detection.evidence.get("checks", []) != [],
-            is_selenium=data.selenium,
-            is_puppeteer=data.puppeteer,
-            is_playwright=data.playwright,
-            automation_flags=automation_flags,
-            risk_score=detection.risk_score,
-            fp_metadata=detection.evidence,
-        )
-        db.add(fingerprint)
+            if flag not in advanced.automation_flags:
+                advanced.automation_flags.append(flag)
 
     await db.flush()
     return FingerprintResponse(
-        hash=fp_hash,
-        risk_score=fingerprint.risk_score,
-        is_headless=fingerprint.is_headless,
-        is_blocked=fingerprint.is_blocked,
-        automation_flags=fingerprint.automation_flags or [],
+        hash=advanced.fingerprint_hash,
+        risk_score=advanced.risk_score,
+        is_headless=advanced.is_headless,
+        is_blocked=advanced.is_blocked,
+        automation_flags=advanced.automation_flags,
     )
+
+
+@router.post("/fingerprint/advanced", response_model=AdvancedFingerprintResponse)
+async def submit_advanced_fingerprint(
+    data: AdvancedFingerprintSubmit,
+    request: Request,
+    current_user: AnalystUser,
+    db: AsyncSession = Depends(get_db),
+):
+    client_ip, ip_meta = resolve_client_ip(request)
+    stream_uuid = None
+    if data.stream_id:
+        try:
+            stream_uuid = UUID(data.stream_id)
+        except ValueError:
+            stream_uuid = None
+
+    result = await analyze_fingerprint_payload(
+        db,
+        data.model_dump(exclude_none=True),
+        tenant_id=current_user.tenant_id,
+        server_ip=client_ip if client_ip != "unknown" else None,
+        persist=True,
+        stream_id=stream_uuid,
+    )
+    if client_ip and client_ip != "unknown":
+        ip_intel = await analyze_client_ip(
+            db, client_ip, spoof_risk=bool(ip_meta.get("xff_spoof_risk"))
+        )
+        result.risk_score = min(
+            100.0,
+            max(result.risk_score, ip_intel.get("risk_score", 0)),
+        )
+    await db.flush()
+    return result
 
 
 @router.post("/analyze-ip")
