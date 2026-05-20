@@ -66,6 +66,18 @@
     }
   }
 
+  function randomNonce() {
+    var arr = new Uint8Array(16);
+    if (window.crypto && window.crypto.getRandomValues) {
+      window.crypto.getRandomValues(arr);
+    } else {
+      for (var i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
+    }
+    return Array.from(arr, function (b) {
+      return b.toString(16).padStart(2, "0");
+    }).join("");
+  }
+
   function collectFingerprint() {
     return {
       screen: window.screen ? window.screen.width + "x" + window.screen.height : "",
@@ -77,6 +89,7 @@
       user_agent: (navigator.userAgent || "").slice(0, 512),
       plugins_count: navigator.plugins ? navigator.plugins.length : 0,
       hardware_concurrency: navigator.hardwareConcurrency || 0,
+      webdriver: !!navigator.webdriver,
     };
   }
 
@@ -88,16 +101,23 @@
       platform_user_id: userId || null,
       fingerprint: collectFingerprint(),
       metadata: {
-        widget_version: "1.0",
+        widget_version: "1.1",
         page_url: window.location.href,
         timestamp: new Date().toISOString(),
       },
     };
 
+    var payload = JSON.stringify(body);
+    var headers = {
+      "Content-Type": "application/json",
+      "X-SS-Nonce": randomNonce(),
+      "X-SS-Timestamp": String(Date.now()),
+    };
+
     fetch(apiUrl + "/api/v1/widget/ping", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      headers: headers,
+      body: payload,
       mode: "cors",
       keepalive: true,
     })

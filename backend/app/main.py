@@ -17,9 +17,8 @@ from app.infrastructure.cache.redis_client import close_redis
 from app.infrastructure.database.init_db import init_database
 from app.infrastructure.database.session import engine
 from app.infrastructure.security.csrf import CSRFMiddleware
+from app.infrastructure.security.gateway import SecurityGatewayMiddleware
 from app.infrastructure.security.middleware import (
-    AntiDDoSMiddleware,
-    DistributedRateLimitMiddleware,
     RequestTimingMiddleware,
     SecurityHeadersMiddleware,
 )
@@ -132,8 +131,7 @@ app.add_middleware(
 )
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(AntiDDoSMiddleware)
-app.add_middleware(DistributedRateLimitMiddleware)
+app.add_middleware(SecurityGatewayMiddleware)
 app.add_middleware(RequestTimingMiddleware)
 
 API_PREFIX = f"/api/{settings.app_api_version}"

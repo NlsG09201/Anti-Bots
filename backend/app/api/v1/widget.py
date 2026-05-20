@@ -25,7 +25,9 @@ fp_engine = BotDetectionEngine()
 WIDGET_CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Stream-Key",
+    "Access-Control-Allow-Headers": (
+        "Content-Type, X-Stream-Key, X-SS-Nonce, X-SS-Timestamp, X-SS-Signature"
+    ),
     "Access-Control-Max-Age": "86400",
 }
 
@@ -42,12 +44,12 @@ def _cors_response(content: dict, status_code: int = 200) -> Response:
 
 
 def get_client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For") or request.headers.get("CF-Connecting-IP")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return ""
+    if hasattr(request.state, "client_ip"):
+        return request.state.client_ip
+    from app.infrastructure.security.client_ip import resolve_client_ip
+
+    ip, _ = resolve_client_ip(request)
+    return ip if ip != "unknown" else ""
 
 
 def _ensure_ingest_key(stream: Stream) -> str:
@@ -81,6 +83,10 @@ class WidgetFingerprint(BaseModel):
     user_agent: Optional[str] = None
     plugins_count: Optional[int] = None
     hardware_concurrency: Optional[int] = None
+    webdriver: bool = False
+    selenium: bool = False
+    puppeteer: bool = False
+    playwright: bool = False
 
 
 class WidgetPing(BaseModel):
@@ -111,12 +117,47 @@ async def widget_ping(
     if not stream:
         return _cors_response({"ok": False, "error": "invalid_stream_key"}, 401)
 
+    from app.core.exceptions import ValidationError
+    from app.infrastructure.security.ip_analysis import analyze_client_ip
+    from app.infrastructure.security.replay import ReplayProtection
+
+    ts_header = request.headers.get("X-SS-Timestamp")
+    timestamp_ms = int(ts_header) if ts_header and ts_header.isdigit() else None
+    try:
+        await ReplayProtection().validate_request(
+            scope=f"widget:{stream.id}",
+            nonce=request.headers.get("X-SS-Nonce"),
+            timestamp_ms=timestamp_ms,
+            signature=request.headers.get("X-SS-Signature"),
+            body=body.model_dump_json().encode("utf-8"),
+            secret=body.stream_key.strip() if settings.security_widget_hmac_enabled else None,
+        )
+    except ValidationError as exc:
+        return _cors_response({"ok": False, "error": exc.message}, 400)
+
     client_ip = get_client_ip(request)
     if not client_ip:
         return _cors_response({"ok": False, "error": "no_client_ip"}, 400)
 
+    ip_meta = getattr(request.state, "ip_meta", {}) or {}
+    ip_analysis = await analyze_client_ip(
+        db,
+        client_ip,
+        spoof_risk=bool(ip_meta.get("xff_spoof_risk")),
+    )
+    if ip_analysis.get("is_threat") and ip_analysis.get("risk_score", 0) >= 70:
+        return _cors_response(
+            {
+                "ok": False,
+                "error": "connection_blocked",
+                "risk_score": ip_analysis["risk_score"],
+            },
+            403,
+        )
+
     fp_hash: Optional[str] = None
     fp_risk = 0.0
+    automation_flags: list[str] = []
     if body.fingerprint:
         fp_dict = body.fingerprint.model_dump(exclude_none=True)
         if not fp_dict.get("user_agent"):
@@ -129,17 +170,27 @@ async def widget_ping(
                 "language": fp_dict.get("language"),
                 "platform": fp_dict.get("platform"),
                 "user_agent": fp_dict.get("user_agent"),
-                "plugins": [],
+                "plugins": [""] * int(fp_dict.get("plugins_count") or 0),
                 "fonts": [],
-                "selenium": False,
-                "puppeteer": False,
-                "playwright": False,
+                "webdriver": fp_dict.get("webdriver", False),
+                "selenium": fp_dict.get("selenium", False),
+                "puppeteer": fp_dict.get("puppeteer", False),
+                "playwright": fp_dict.get("playwright", False),
             }
         )
         fp_risk = detection.risk_score
+        automation_flags = list(detection.evidence.get("checks", []))
 
     meta = dict(body.metadata)
     meta["fingerprint_risk"] = fp_risk
+    meta["automation_flags"] = automation_flags
+    meta["ip_analysis"] = {
+        "risk_score": ip_analysis.get("risk_score"),
+        "flags": ip_analysis.get("flags", []),
+        "asn": ip_analysis.get("asn"),
+        "is_proxy": ip_analysis.get("is_proxy"),
+        "is_vpn": ip_analysis.get("is_vpn"),
+    }
     meta["widget_version"] = body.metadata.get("widget_version", "1.0")
     meta["page_url"] = body.metadata.get("page_url") or str(request.headers.get("referer", ""))[:512]
 

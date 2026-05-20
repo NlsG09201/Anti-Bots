@@ -8,6 +8,8 @@ from app.core.security import hash_fingerprint
 from app.infrastructure.database.models import Fingerprint
 from app.infrastructure.database.session import get_db
 from app.services.detection.engine import BotDetectionEngine
+from app.infrastructure.security.client_ip import resolve_client_ip
+from app.infrastructure.security.ip_analysis import analyze_client_ip
 from app.services.reputation.service import ReputationService
 
 router = APIRouter(prefix="/detection", tags=["Detection"])
@@ -27,6 +29,17 @@ async def submit_fingerprint(
     fingerprint = result.scalar_one_or_none()
 
     detection = engine.analyze_fingerprint(fp_dict)
+    client_ip, ip_meta = resolve_client_ip(request)
+    if client_ip and client_ip != "unknown":
+        ip_intel = await analyze_client_ip(
+            db, client_ip, spoof_risk=bool(ip_meta.get("xff_spoof_risk"))
+        )
+        detection.risk_score = min(
+            100.0,
+            max(detection.risk_score, ip_intel.get("risk_score", 0)),
+        )
+        for flag in ip_intel.get("flags", []):
+            detection.evidence.setdefault("checks", []).append(flag)
     automation_flags = list(detection.evidence.get("checks", []))
 
     if fingerprint:

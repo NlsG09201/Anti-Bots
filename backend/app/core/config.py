@@ -135,6 +135,23 @@ class Settings(BaseSettings):
 
     rate_limit_per_minute: int = 100
     rate_limit_burst: int = 20
+
+    security_trust_proxy_headers: bool = True
+    security_rate_limit_enabled: bool = True
+    security_global_ip_limit_per_minute: int = 400
+    security_block_empty_ua: bool = True
+    security_block_spoofed_ip: bool = True
+    security_block_automation: bool = False
+    security_strict_browser_headers: bool = False
+    security_header_block_threshold: float = 80.0
+    security_replay_protection_enabled: bool = True
+    security_replay_strict: bool = False
+    security_replay_max_skew_seconds: int = 120
+    security_replay_nonce_ttl_seconds: int = 300
+    security_widget_hmac_enabled: bool = False
+    security_blocked_countries: str = ""
+    security_blocked_asn_keywords: str = "HOSTING,DATACENTER,AMAZON,GOOGLE,CLOUDFLARE,DIGITALOCEAN,OVH,HETZNER"
+    security_fingerprint_min_entropy: bool = True
     fail2ban_max_attempts: int = 5
     fail2ban_window_seconds: int = 300
 
@@ -199,6 +216,14 @@ class Settings(BaseSettings):
     @property
     def trusted_hosts_list(self) -> List[str]:
         return [h.strip() for h in self.trusted_hosts.split(",") if h.strip()]
+
+    @property
+    def security_blocked_countries_list(self) -> List[str]:
+        return [c.strip().upper() for c in self.security_blocked_countries.split(",") if c.strip()]
+
+    @property
+    def security_blocked_asn_keywords_list(self) -> List[str]:
+        return [k.strip().upper() for k in self.security_blocked_asn_keywords.split(",") if k.strip()]
 
 
 @lru_cache
