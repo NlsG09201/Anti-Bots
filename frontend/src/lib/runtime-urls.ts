@@ -45,6 +45,31 @@ export function resolveApiBaseUrl(): string {
   return "";
 }
 
+/**
+ * Llamadas largas (IRC ~30s) van directo al backend para evitar timeout del proxy Vercel (~60s).
+ * Auth va por Bearer; no depende de cookies cross-origin.
+ */
+export function resolveDirectApiBaseUrl(): string {
+  const direct =
+    process.env.NEXT_PUBLIC_API_DIRECT_URL?.replace(/\/$/, "") ||
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+    "";
+
+  if (typeof window === "undefined") {
+    return direct && !isLocalUrl(direct) ? direct : "http://localhost:8000";
+  }
+
+  if (isLocalHost(window.location.hostname)) {
+    return direct || "http://localhost:8000";
+  }
+
+  if (direct && !isLocalUrl(direct)) {
+    return direct;
+  }
+
+  return resolveApiBaseUrl() || window.location.origin;
+}
+
 export function resolveWsBaseUrl(): string {
   const configured = process.env.NEXT_PUBLIC_WS_URL?.replace(/\/$/, "") ?? "";
 

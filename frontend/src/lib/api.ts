@@ -1,4 +1,4 @@
-import { resolveApiBaseUrl } from "@/lib/runtime-urls";
+import { resolveApiBaseUrl, resolveDirectApiBaseUrl } from "@/lib/runtime-urls";
 
 // En Vercel: "" → /api/* mismo origen (rewrite a Render). Ignora localhost en el build.
 const API_URL = resolveApiBaseUrl();
@@ -49,6 +49,7 @@ async function request<T>(
   path: string,
   options: RequestInit = {},
   token?: string,
+  baseUrl?: string,
 ): Promise<T> {
   const authToken = resolveAuthToken(token);
   const headers: Record<string, string> = {
@@ -58,11 +59,12 @@ async function request<T>(
   if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
 
   const csrf = getCsrfToken();
-  if (csrf && options.method && options.method !== "GET") {
+  const apiBase = baseUrl ?? API_URL;
+  if (csrf && options.method && options.method !== "GET" && apiBase === API_URL) {
     headers["X-CSRF-Token"] = csrf;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${apiBase}${path}`, {
     ...options,
     headers,
     credentials: "include",
@@ -76,7 +78,7 @@ async function request<T>(
   if (response.status === 401 && !isAuthAttempt && path !== "/api/v1/auth/refresh") {
     const refreshed = await tryRefreshToken();
     if (refreshed) {
-      return request<T>(path, options, refreshed);
+      return request<T>(path, options, refreshed, baseUrl);
     }
     await handleAuthFailure();
     throw new ApiError(401, "Sesión expirada. Inicia sesión de nuevo.");
@@ -308,7 +310,12 @@ export const api = {
         has_broadcaster_oauth?: boolean;
         source?: string;
         helix_chatters?: number;
-      }>(`/api/v1/streams/${streamId}/viewers/load-full`, { method: "POST" }, token),
+      }>(
+        `/api/v1/streams/${streamId}/viewers/load-full`,
+        { method: "POST" },
+        token,
+        resolveDirectApiBaseUrl(),
+      ),
     syncQuick: (token: string, streamId: string) =>
       request<{
         status: string;

@@ -125,6 +125,7 @@ class Settings(BaseSettings):
     auto_twitch_ban_enabled: bool = True
     bot_suspected_attack_threshold: int = 5
     background_attack_scan_interval: int = 3
+    viewer_load_irc_seconds: float = 35.0
 
     rate_limit_per_minute: int = 100
     rate_limit_burst: int = 20

@@ -29,6 +29,7 @@ function ViewersContent() {
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
   const [message, setMessage] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
+  const [loadPhase, setLoadPhase] = useState<"idle" | "quick" | "full">("idle");
   const lastFullLoadStream = useRef<string | null>(null);
 
   const handleStreamSelect = (id: string) => {
@@ -100,15 +101,48 @@ function ViewersContent() {
       queryClient.invalidateQueries({ queryKey: ["viewers"] });
       queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
     },
-    onError: (e: Error) => setMessage(e.message),
+    onError: (e: Error) => {
+      setMessage(e.message);
+      setLoadPhase("idle");
+    },
+    onSettled: () => setLoadPhase("idle"),
   });
 
-  const triggerFullLoad = (id: string, force = false) => {
+  const triggerFullLoad = async (id: string, force = false) => {
     if (!id || !token) return;
     if (!force && lastFullLoadStream.current === id) return;
     lastFullLoadStream.current = id;
     setViewFilter("all");
-    setMessage("Cargando listado completo del canal…");
+
+    setLoadPhase("quick");
+    setMessage("Sincronizando viewers en chat (Helix)…");
+    try {
+      const quick = await api.streams.syncQuick(token, id);
+      await queryClient.invalidateQueries({ queryKey: ["viewers"] });
+      await queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
+      if (quick.status === "offline") {
+        setMessage(quick.message || "Canal offline");
+        setLoadPhase("idle");
+        return;
+      }
+      const inChat = quick.chatters_synced ?? 0;
+      const twitchTotal = quick.viewer_count ?? 0;
+      if (inChat > 0) {
+        setMessage(
+          `En chat: ${inChat} usuarios` +
+            (twitchTotal ? ` · Twitch reporta ${twitchTotal} viewers en el stream` : ""),
+        );
+      }
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Error al sincronizar");
+    }
+
+    setLoadPhase("full");
+    setMessage((prev) =>
+      prev.includes("En chat:")
+        ? `${prev} · ampliando con IRC (~30s)…`
+        : "Cargando listado completo del chat (IRC)…",
+    );
     fullLoadMutation.mutate(id);
   };
 
@@ -213,18 +247,18 @@ function ViewersContent() {
   const silentBots = monitorStatus?.silent_viewbots_estimate ?? 0;
   const proxyIps = monitorStatus?.proxy_ips_detected ?? 0;
   const activeAttacks = monitorStatus?.active_attacks ?? 0;
-  const syncing = fullLoadMutation.isPending;
+  const syncing = loadPhase !== "idle" || fullLoadMutation.isPending;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Users className="text-cyber-info" />
-          Usuarios del stream
+          Quién está viendo el stream
         </h1>
         <p className="text-cyber-muted text-sm mt-1 max-w-3xl">
-          Al elegir un canal se carga el listado completo del chat (Helix + IRC ~30s). Twitch no expone viewers
-          silenciosos por API — solo quien esta en la sala de chat. Viewers totales:{" "}
+          Al elegir un canal cargamos quien está en el chat (Helix + IRC). Twitch no da la lista de viewers
+          silenciosos — solo usuarios en sala de chat. Contador global de viewers:{" "}
           <strong className="text-white">{twitchViewers || "—"}</strong>
           {monitorStatus?.active_viewers_tracked != null && twitchViewers > 0 && (
             <>
@@ -326,7 +360,11 @@ function ViewersContent() {
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyber-accent/20 text-cyber-accent border border-cyber-accent/40 text-sm disabled:opacity-50"
         >
           <Users size={16} className={syncing ? "animate-spin" : ""} />
-          {syncing ? "Cargando listado (~30s)…" : "Recargar listado"}
+          {syncing
+            ? loadPhase === "quick"
+              ? "Listando (Helix)…"
+              : "Ampliando (IRC)…"
+            : "Recargar listado"}
         </button>
         <button
           type="button"
