@@ -339,6 +339,7 @@ export const api = {
     syncQuick: (token: string, streamId: string) =>
       request<{
         status: string;
+        viewer_count?: number;
         chatters_synced?: number;
         suspected_count?: number;
         talking_count?: number;
