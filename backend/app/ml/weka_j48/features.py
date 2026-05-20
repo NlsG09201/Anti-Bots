@@ -79,6 +79,57 @@ def session_to_features(
     ]
 
 
+def aggregate_flow_to_features(
+    *,
+    chat_messages: int = 0,
+    watch_duration_seconds: int = 0,
+    risk_score: float = 0.0,
+    has_fingerprint: bool = False,
+    event_stats: Optional[Dict[str, Any]] = None,
+    username: str = "",
+) -> List[float]:
+    stats = event_stats or {}
+    watch = max(int(watch_duration_seconds), 0)
+    chat = int(chat_messages)
+    msgs_per_min = chat / max(watch / 60.0, 0.1)
+    return [
+        float(chat),
+        float(watch),
+        float(risk_score),
+        1.0 if has_fingerprint else 0.0,
+        float(stats.get("event_count", 0)),
+        float(stats.get("proxy_ratio", 0.0)),
+        float(stats.get("vpn_ratio", 0.0)),
+        float(stats.get("datacenter_ratio", 0.0)),
+        float(min(len(username), 64)),
+        float(msgs_per_min),
+        _lurker_score(chat, watch),
+    ]
+
+
+def insights_record_to_features(rec: Any) -> List[float]:
+    """Features sintéticas para bots de Twitch Insights sin sesión local."""
+    from app.integrations.twitchinsights.bot_database import TwitchInsightsBotRecord
+
+    if not isinstance(rec, TwitchInsightsBotRecord):
+        return aggregate_flow_to_features(risk_score=92.0, watch_duration_seconds=600)
+    channel_factor = min(float(rec.channel_count), 500.0) / 500.0
+    risk = 98.0 if rec.is_online_now else 90.0 + channel_factor * 5
+    return aggregate_flow_to_features(
+        chat_messages=0,
+        watch_duration_seconds=600,
+        risk_score=risk,
+        has_fingerprint=False,
+        event_stats={
+            "event_count": float(rec.channel_count),
+            "proxy_ratio": 0.3,
+            "vpn_ratio": 0.2,
+            "datacenter_ratio": 0.4,
+        },
+        username=rec.username,
+    )
+
+
 def label_from_session(session: ViewerSession, *, force_bot: bool = False) -> str:
     if force_bot or session.is_suspected_bot or (session.risk_score or 0) >= 80:
         return "yes"

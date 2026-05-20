@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AdminUser, CurrentUser, get_db
 from app.infrastructure.database.models import Stream, ViewerSession
+from app.ml.weka_j48.sources import TrainingSource
 from app.ml.weka_j48.service import get_weka_j48_service
 from app.services.dashboard.metrics import get_tenant_stream_ids
 
@@ -24,6 +25,10 @@ class TrainResponse(BaseModel):
     training: Dict[str, Any] | None = None
     error: str | None = None
     required: int | None = None
+    bots: int | None = None
+    humans: int | None = None
+    dataset: Dict[str, Any] | None = None
+    hint: str | None = None
 
 
 class PredictResponse(BaseModel):
@@ -44,14 +49,47 @@ async def weka_health(
     return get_weka_j48_service().health()
 
 
+@router.get("/dataset/preview")
+async def preview_training_dataset(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+    source: TrainingSource = Query(
+        "mixed",
+        description="registered_bots | channel_flow | mixed",
+    ),
+    include_twitch_insights: bool = Query(True),
+) -> Dict[str, Any]:
+    return await get_weka_j48_service().preview_for_tenant(
+        db,
+        current_user.tenant_id,
+        source=source,
+        include_twitch_insights=include_twitch_insights,
+    )
+
+
 @router.post("/train", response_model=TrainResponse)
 async def train_j48(
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
     limit: int = Query(5000, ge=100, le=20000),
+    source: TrainingSource = Query(
+        "mixed",
+        description=(
+            "registered_bots: Twitch Insights + bans + fingerprints; "
+            "channel_flow: flujo de usuarios en tus canales; "
+            "mixed: ambas"
+        ),
+    ),
+    include_twitch_insights: bool = Query(True),
 ):
     svc = get_weka_j48_service()
-    result = await svc.train_for_tenant(db, current_user.tenant_id, limit=limit)
+    result = await svc.train_for_tenant(
+        db,
+        current_user.tenant_id,
+        limit=limit,
+        source=source,
+        include_twitch_insights=include_twitch_insights,
+    )
     return TrainResponse(**result)
 
 

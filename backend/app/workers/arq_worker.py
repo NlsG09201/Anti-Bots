@@ -52,7 +52,12 @@ async def ai_train_models_job(ctx: dict) -> Dict[str, Any]:
     return {"training": train_result, "adaptive": tune_result}
 
 
-async def weka_j48_train_job(ctx: dict, tenant_id: Optional[str] = None) -> Dict[str, Any]:
+async def weka_j48_train_job(
+    ctx: dict,
+    tenant_id: Optional[str] = None,
+    source: str = "mixed",
+    include_twitch_insights: bool = True,
+) -> Dict[str, Any]:
     from uuid import UUID
 
     from app.infrastructure.database.session import AsyncSessionLocal
@@ -61,7 +66,12 @@ async def weka_j48_train_job(ctx: dict, tenant_id: Optional[str] = None) -> Dict
     if not tenant_id:
         return {"ok": False, "error": "tenant_id_required"}
     async with AsyncSessionLocal() as db:
-        result = await get_weka_j48_service().train_for_tenant(db, UUID(tenant_id))
+        result = await get_weka_j48_service().train_for_tenant(
+            db,
+            UUID(tenant_id),
+            source=source,  # type: ignore[arg-type]
+            include_twitch_insights=include_twitch_insights,
+        )
         await db.commit()
     return result
 

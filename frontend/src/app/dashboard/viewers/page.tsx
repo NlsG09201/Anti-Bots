@@ -30,6 +30,7 @@ function ViewersContent() {
   const [message, setMessage] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
   const [loadPhase, setLoadPhase] = useState<"idle" | "quick" | "full">("idle");
+  const [j48Source, setJ48Source] = useState<"mixed" | "registered_bots" | "channel_flow">("mixed");
   const lastFullLoadStream = useRef<string | null>(null);
   const fullLoadInFlight = useRef(false);
 
@@ -177,17 +178,25 @@ function ViewersContent() {
     onError: (e: Error) => setMessage(e.message),
   });
 
+  const wekaPreviewQuery = useQuery({
+    queryKey: ["weka-j48-preview", j48Source],
+    queryFn: () => api.wekaJ48.preview(token, j48Source),
+    enabled: !!token,
+    staleTime: 60000,
+  });
+
   const wekaTrainMutation = useMutation({
-    mutationFn: () => api.wekaJ48.train(token),
+    mutationFn: () => api.wekaJ48.train(token, { source: j48Source }),
     onSuccess: (res) => {
       if (!res.ok) {
-        setMessage(res.error || "No hay suficientes datos para entrenar J48");
+        setMessage(res.hint || res.error || "No hay suficientes datos para entrenar J48");
         return;
       }
       setMessage(
-        `Modelo J48 entrenado (${res.samples ?? 0} muestras, backend: ${(res.training as { backend?: string })?.backend ?? "?"})`,
+        `J48 entrenado: ${res.samples ?? 0} muestras (${res.bots ?? 0} bots / ${res.humans ?? 0} humanos) · ${(res.training as { backend?: string })?.backend ?? "?"}`,
       );
       queryClient.invalidateQueries({ queryKey: ["viewers"] });
+      queryClient.invalidateQueries({ queryKey: ["weka-j48-preview"] });
     },
     onError: (e: Error) => setMessage(e.message),
   });
@@ -409,16 +418,37 @@ function ViewersContent() {
           <Brain size={16} className={aiScreenMutation.isPending ? "animate-pulse" : ""} />
           {aiScreenMutation.isPending ? "Analizando..." : "Verificar bots (Insights + IA)"}
         </button>
-        <button
-          type="button"
-          disabled={wekaTrainMutation.isPending}
-          onClick={() => wekaTrainMutation.mutate()}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-cyber-border text-sm text-cyber-muted hover:text-white disabled:opacity-50"
-          title="Entrena arbol J48 con sesiones del tenant (requiere admin)"
-        >
-          <Brain size={16} className={wekaTrainMutation.isPending ? "animate-pulse" : ""} />
-          {wekaTrainMutation.isPending ? "Entrenando J48..." : "Entrenar J48"}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            value={j48Source}
+            onChange={(e) =>
+              setJ48Source(e.target.value as "mixed" | "registered_bots" | "channel_flow")
+            }
+            className="bg-cyber-bg border border-cyber-border rounded-lg px-2 py-2 text-xs text-white"
+            title="Fuente de datos para entrenar J48"
+          >
+            <option value="mixed">J48: mixto</option>
+            <option value="registered_bots">J48: bases bots</option>
+            <option value="channel_flow">J48: flujo canales</option>
+          </select>
+          <button
+            type="button"
+            disabled={wekaTrainMutation.isPending}
+            onClick={() => wekaTrainMutation.mutate()}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-cyber-border text-sm text-cyber-muted hover:text-white disabled:opacity-50"
+            title="Entrena arbol J48 (requiere admin)"
+          >
+            <Brain size={16} className={wekaTrainMutation.isPending ? "animate-pulse" : ""} />
+            {wekaTrainMutation.isPending ? "Entrenando..." : "Entrenar J48"}
+          </button>
+          {wekaPreviewQuery.data && (
+            <span className="text-[10px] text-cyber-muted">
+              {wekaPreviewQuery.data.rows} filas ({wekaPreviewQuery.data.bots}B/
+              {wekaPreviewQuery.data.humans}H)
+              {wekaPreviewQuery.data.ready ? " · listo" : " · faltan datos"}
+            </span>
+          )}
+        </div>
         {suspectedCount > 0 && (
           <button
             type="button"

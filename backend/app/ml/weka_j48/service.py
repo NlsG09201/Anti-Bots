@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.infrastructure.database.models import ViewerSession
-from app.ml.weka_j48.dataset import load_session_row, load_training_rows
+from app.ml.weka_j48.dataset import load_session_row
+from app.ml.weka_j48.sources import TrainingSource, build_training_dataset, preview_dataset
 from app.ml.weka_j48.engine import J48Engine, weka_runtime_available
 
 logger = get_logger(__name__)
@@ -35,18 +36,63 @@ class WekaJ48BotService:
         tenant_id: UUID,
         *,
         limit: int = 5000,
+        source: TrainingSource = "mixed",
+        include_twitch_insights: bool = True,
     ) -> Dict[str, Any]:
-        rows = await load_training_rows(db, tenant_id, limit=limit)
+        rows, dataset_stats = await build_training_dataset(
+            db,
+            tenant_id,
+            source=source,
+            limit=limit,
+            include_twitch_insights=include_twitch_insights,
+        )
+        yes = sum(1 for r in rows if r.label == "yes")
+        no = sum(1 for r in rows if r.label == "no")
         if len(rows) < self.min_samples:
             return {
                 "ok": False,
                 "error": "insufficient_samples",
                 "samples": len(rows),
                 "required": self.min_samples,
+                "dataset": dataset_stats,
+                "bots": yes,
+                "humans": no,
+            }
+        if yes < 2 or no < 2:
+            return {
+                "ok": False,
+                "error": "imbalanced_classes",
+                "samples": len(rows),
+                "bots": yes,
+                "humans": no,
+                "dataset": dataset_stats,
+                "hint": "Necesitas al menos 2 bots y 2 humanos. Prueba source=mixed o channel_flow tras escanear canales.",
             }
         cfg = get_settings()
         meta = self.engine.train(rows, prefer_weka=cfg.weka_j48_prefer_weka)
-        return {"ok": True, "training": meta, "samples": len(rows)}
+        return {
+            "ok": True,
+            "training": meta,
+            "samples": len(rows),
+            "bots": yes,
+            "humans": no,
+            "dataset": dataset_stats,
+        }
+
+    async def preview_for_tenant(
+        self,
+        db: AsyncSession,
+        tenant_id: UUID,
+        *,
+        source: TrainingSource = "mixed",
+        include_twitch_insights: bool = True,
+    ) -> Dict[str, Any]:
+        return await preview_dataset(
+            db,
+            tenant_id,
+            source=source,
+            include_twitch_insights=include_twitch_insights,
+        )
 
     async def predict_session(
         self,

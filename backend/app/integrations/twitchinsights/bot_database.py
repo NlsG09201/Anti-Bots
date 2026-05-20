@@ -92,6 +92,15 @@ class TwitchInsightsBotDatabase:
             return None
         return self._bots.get(username.lower())
 
+    def iter_records(self, limit: Optional[int] = None):
+        """Itera registros de la base (para entrenamiento ML)."""
+        count = 0
+        for rec in self._bots.values():
+            yield rec
+            count += 1
+            if limit is not None and count >= limit:
+                break
+
     async def ensure_loaded(self) -> bool:
         if not settings.twitch_insights_enabled:
             return False

@@ -666,12 +666,50 @@ export const api = {
         backend: string | null;
         weka_runtime: boolean;
       }>("/api/v1/ml/weka-j48/health", {}, token),
-    train: (token: string, limit = 5000) =>
-      request<{ ok: boolean; samples?: number; training?: Record<string, unknown>; error?: string }>(
-        `/api/v1/ml/weka-j48/train?limit=${limit}`,
-        { method: "POST" },
+    preview: (
+      token: string,
+      source: "registered_bots" | "channel_flow" | "mixed" = "mixed",
+      includeTwitchInsights = true,
+    ) =>
+      request<{
+        source: string;
+        rows: number;
+        bots: number;
+        humans: number;
+        ready: boolean;
+        min_required: number;
+        twitch_insights_db_size?: number;
+      }>(
+        `/api/v1/ml/weka-j48/dataset/preview?source=${source}&include_twitch_insights=${includeTwitchInsights}`,
+        {},
         token,
       ),
+    train: (
+      token: string,
+      opts?: {
+        limit?: number;
+        source?: "registered_bots" | "channel_flow" | "mixed";
+        includeTwitchInsights?: boolean;
+      },
+    ) => {
+      const limit = opts?.limit ?? 5000;
+      const source = opts?.source ?? "mixed";
+      const ti = opts?.includeTwitchInsights ?? true;
+      return request<{
+        ok: boolean;
+        samples?: number;
+        bots?: number;
+        humans?: number;
+        training?: Record<string, unknown>;
+        dataset?: Record<string, unknown>;
+        error?: string;
+        hint?: string;
+      }>(
+        `/api/v1/ml/weka-j48/train?limit=${limit}&source=${source}&include_twitch_insights=${ti}`,
+        { method: "POST" },
+        token,
+      );
+    },
   },
 };
 
