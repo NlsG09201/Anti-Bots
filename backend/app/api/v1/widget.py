@@ -133,6 +133,9 @@ async def widget_ping(
             secret=body.stream_key.strip() if settings.security_widget_hmac_enabled else None,
         )
     except ValidationError as exc:
+        from app.infrastructure.security.metrics_recorder import get_security_metrics_recorder
+
+        await get_security_metrics_recorder().record("replay_400")
         return _cors_response({"ok": False, "error": exc.message}, 400)
 
     client_ip = get_client_ip(request)
@@ -146,6 +149,9 @@ async def widget_ping(
         spoof_risk=bool(ip_meta.get("xff_spoof_risk")),
     )
     if ip_analysis.get("is_threat") and ip_analysis.get("risk_score", 0) >= 70:
+        from app.infrastructure.security.metrics_recorder import get_security_metrics_recorder
+
+        await get_security_metrics_recorder().record("widget_blocked_403")
         return _cors_response(
             {
                 "ok": False,

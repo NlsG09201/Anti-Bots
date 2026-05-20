@@ -441,6 +441,22 @@ export const api = {
         body: JSON.stringify({ is_active: isActive }),
       }, token),
   },
+  security: {
+    dashboard: (
+      token: string,
+      opts?: { hours?: number; streamId?: string },
+    ) => {
+      const params = new URLSearchParams();
+      if (opts?.hours) params.set("hours", String(opts.hours));
+      if (opts?.streamId) params.set("stream_id", opts.streamId);
+      const q = params.toString();
+      return request<SecurityDashboard>(
+        `/api/v1/security/dashboard${q ? `?${q}` : ""}`,
+        {},
+        token,
+      );
+    },
+  },
   twitch: {
     status: (token: string) =>
       request<{
@@ -565,6 +581,53 @@ export interface TenantUser {
   is_active: boolean;
   mfa_enabled: boolean;
   last_login: string | null;
+}
+
+export interface SecurityDashboard {
+  hours: number;
+  stream_id: string | null;
+  summary: {
+    blocks_429: number;
+    blocks_403: number;
+    blocks_widget: number;
+    blocks_replay: number;
+    proxy_detections: number;
+    vpn_detections: number;
+    tor_detections: number;
+    datacenter_detections: number;
+    high_risk_events: number;
+    automation_signals: number;
+    security_attacks: number;
+    total_events: number;
+  };
+  gateway: {
+    timeline: { time: string; blocks: number }[];
+    top_reasons: { reason: string; count: number }[];
+    blocks_429: number;
+    blocks_403: number;
+    blocks_widget: number;
+    blocks_replay: number;
+    blocks_payload: number;
+  };
+  timeline: { time: string; events: number; high_risk: number; proxy: number }[];
+  top_flags: { flag: string; count: number }[];
+  per_stream: {
+    stream_id: string;
+    channel_name: string;
+    events: number;
+    proxy: number;
+    vpn: number;
+    high_risk: number;
+  }[];
+  recent_signals: {
+    stream_id: string;
+    ip_address: string;
+    risk_score: number;
+    is_proxy: boolean;
+    is_vpn: boolean;
+    flags: string[];
+    created_at: string | null;
+  }[];
 }
 
 export interface Viewer {
