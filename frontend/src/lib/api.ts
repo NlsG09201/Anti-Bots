@@ -3,6 +3,11 @@ import { resolveApiBaseUrl } from "@/lib/runtime-urls";
 // En Vercel: "" → /api/* mismo origen (rewrite a Render). Ignora localhost en el build.
 const API_URL = resolveApiBaseUrl();
 
+export function resolveAuthToken(explicit?: string | null): string | undefined {
+  const token = explicit ?? getAccessToken();
+  return token ?? undefined;
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -45,11 +50,12 @@ async function request<T>(
   options: RequestInit = {},
   token?: string,
 ): Promise<T> {
+  const authToken = resolveAuthToken(token);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
 
   const csrf = getCsrfToken();
   if (csrf && options.method && options.method !== "GET") {
@@ -93,24 +99,42 @@ export function getAccessToken(): string | null {
   return memoryAccessToken;
 }
 
-async function tryRefreshToken(): Promise<string | null> {
-  try {
-    const csrf = getCsrfToken();
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (csrf) headers["X-CSRF-Token"] = csrf;
+let refreshInFlight: Promise<string | null> | null = null;
 
-    const response = await fetch(`${API_URL}/api/v1/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-      headers,
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    memoryAccessToken = data.access_token;
-    return data.access_token;
-  } catch {
-    return null;
-  }
+/** Silently renew access token using HttpOnly refresh cookie (single-flight). */
+export async function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    try {
+      if (!getCsrfToken()) {
+        await fetchCsrfToken();
+      }
+      const csrf = getCsrfToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (csrf) headers["X-CSRF-Token"] = csrf;
+
+      const response = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers,
+      });
+      if (!response.ok) return null;
+      const data = (await response.json()) as { access_token: string };
+      memoryAccessToken = data.access_token;
+      return data.access_token;
+    } catch {
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+async function tryRefreshToken(): Promise<string | null> {
+  return refreshAccessToken();
 }
 
 export async function fetchCsrfToken(): Promise<void> {

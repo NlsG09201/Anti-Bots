@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { getAccessToken, setAccessToken } from "@/lib/api";
+import { getAccessToken, refreshAccessToken, setAccessToken } from "@/lib/api";
 
 interface AuthState {
   accessToken: string | null;
@@ -30,6 +30,13 @@ export const useAuthStore = create<AuthState>()(
     {
       name: "streamshield-auth",
       partialize: (state) => ({ user: state.user }),
+      onRehydrateStorage: () => (state) => {
+        if (!state?.user) return;
+        if (state.accessToken || getAccessToken()) return;
+        void refreshAccessToken().then((token) => {
+          if (token) state?.setTokens(token);
+        });
+      },
     },
   ),
 );

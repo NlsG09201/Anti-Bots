@@ -8,6 +8,22 @@ function isLocalUrl(url: string): boolean {
   return /^(https?|wss?):\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(url);
 }
 
+function configuredApiHost(configured: string): string | null {
+  try {
+    return new URL(configured).hostname;
+  } catch {
+    return null;
+  }
+}
+
+/** Cross-origin API URL breaks HttpOnly refresh cookies (Vercel UI → Render API). */
+function mustUseSameOriginProxy(hostname: string, configured: string): boolean {
+  if (isLocalHost(hostname)) return false;
+  const apiHost = configuredApiHost(configured);
+  if (!apiHost) return false;
+  return apiHost !== hostname;
+}
+
 export function resolveApiBaseUrl(): string {
   const configured = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
@@ -20,6 +36,9 @@ export function resolveApiBaseUrl(): string {
   }
 
   if (configured && !isLocalUrl(configured)) {
+    if (mustUseSameOriginProxy(window.location.hostname, configured)) {
+      return "";
+    }
     return configured;
   }
 

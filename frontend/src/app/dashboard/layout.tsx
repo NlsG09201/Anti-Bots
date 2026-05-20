@@ -1,22 +1,59 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { useAuthStore } from "@/stores/authStore";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
+import { getAccessToken, refreshAccessToken } from "@/lib/api";
 import { Wifi, WifiOff } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const { user, accessToken, setTokens, logout, isAuthenticated } = useAuthStore();
   const { connected } = useWebSocketContext();
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push("/login");
+    let cancelled = false;
+
+    async function ensureSession() {
+      if (accessToken || getAccessToken()) {
+        if (!cancelled) setAuthReady(true);
+        return;
+      }
+      if (user) {
+        const token = await refreshAccessToken();
+        if (cancelled) return;
+        if (token) {
+          setTokens(token);
+          setAuthReady(true);
+          return;
+        }
+        logout();
+        router.replace("/login");
+        return;
+      }
+      if (!isAuthenticated()) {
+        router.replace("/login");
+        return;
+      }
+      if (!cancelled) setAuthReady(true);
     }
-  }, [isAuthenticated, router]);
+
+    void ensureSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, user, setTokens, logout, isAuthenticated, router]);
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-cyber-muted text-sm">
+        Restaurando sesión…
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen">

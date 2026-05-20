@@ -54,6 +54,16 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _as_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _auth_response(
     response: Response,
     access_token: str,
@@ -225,7 +235,7 @@ async def refresh_token_endpoint(
         )
     )
     stored = result.scalar_one_or_none()
-    if not stored or stored.expires_at < datetime.now(timezone.utc):
+    if not stored or _as_utc(stored.expires_at) < _utc_now():
         clear_auth_cookies(response)
         raise AuthenticationError("Refresh token expired")
 
