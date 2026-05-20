@@ -218,27 +218,27 @@ async def revoke_ban(
 @router.get("/fingerprints")
 async def list_fingerprints(
     current_user: CurrentUser,
-    min_risk: float = Query(50.0),
+    stream_id: Optional[UUID] = Query(None, description="Filtrar por canal"),
+    q: Optional[str] = Query(None, max_length=64, description="Buscar por hash (parcial)"),
+    min_risk: float = Query(0.0, ge=0, le=100),
+    limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.infrastructure.database.models import Fingerprint
-    result = await db.execute(
-        select(Fingerprint)
-        .where(Fingerprint.risk_score >= min_risk)
-        .order_by(Fingerprint.risk_score.desc())
-        .limit(100)
+    from app.services.detection.fingerprint_queries import list_tenant_fingerprints
+
+    if stream_id:
+        stream = await db.get(Stream, stream_id)
+        if not stream or stream.tenant_id != current_user.tenant_id:
+            raise NotFoundError("Stream")
+
+    return await list_tenant_fingerprints(
+        db,
+        current_user.tenant_id,
+        stream_id=stream_id,
+        q=q,
+        min_risk=min_risk,
+        limit=limit,
     )
-    return [
-        {
-            "hash": fp.hash,
-            "risk_score": fp.risk_score,
-            "is_headless": fp.is_headless,
-            "is_blocked": fp.is_blocked,
-            "occurrence_count": fp.occurrence_count,
-            "automation_flags": fp.automation_flags,
-        }
-        for fp in result.scalars().all()
-    ]
 
 
 @router.get("/ips")

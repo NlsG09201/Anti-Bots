@@ -339,7 +339,27 @@ export const api = {
     list: (token: string) => request<Ban[]>("/api/v1/bans", {}, token),
   },
   fingerprints: {
-    list: (token: string) => request<Fingerprint[]>("/api/v1/fingerprints", {}, token),
+    list: (
+      token: string,
+      params?: {
+        stream_id?: string;
+        q?: string;
+        min_risk?: number;
+        limit?: number;
+      },
+    ) => {
+      const search = new URLSearchParams();
+      if (params?.stream_id) search.set("stream_id", params.stream_id);
+      if (params?.q) search.set("q", params.q);
+      if (params?.min_risk != null) search.set("min_risk", String(params.min_risk));
+      if (params?.limit != null) search.set("limit", String(params.limit));
+      const qs = search.toString();
+      return request<{ fingerprints: Fingerprint[]; count: number }>(
+        `/api/v1/fingerprints${qs ? `?${qs}` : ""}`,
+        {},
+        token,
+      );
+    },
     analyzeAdvanced: (token: string, body: object) =>
       request<AdvancedFingerprintResult>(
         "/api/v1/detection/fingerprint/advanced",
@@ -675,6 +695,12 @@ export interface Ban {
   created_at: string;
 }
 
+export interface FingerprintChannelRef {
+  stream_id: string;
+  channel_name: string;
+  platform: string;
+}
+
 export interface Fingerprint {
   hash: string;
   risk_score: number;
@@ -682,6 +708,9 @@ export interface Fingerprint {
   is_blocked: boolean;
   occurrence_count: number;
   automation_flags: string[];
+  event_count?: number;
+  channels?: FingerprintChannelRef[];
+  channel_count?: number;
 }
 
 export interface ThreatIntelReport {
