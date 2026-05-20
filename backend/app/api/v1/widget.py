@@ -14,7 +14,7 @@ from app.core.exceptions import NotFoundError, ValidationError
 from app.infrastructure.database.models import Stream
 from app.infrastructure.database.session import get_db
 from app.services.detection.engine import BotDetectionEngine
-from app.services.ingest.event_ingest import process_stream_event
+from app.events.bus import ingest_event
 from app.services.streams.helpers import stream_to_response_dict
 
 router = APIRouter(tags=["Widget"])
@@ -229,7 +229,7 @@ async def widget_ping(
         metadata=meta,
     )
 
-    result = await process_stream_event(
+    result = await ingest_event(
         db,
         stream,
         stream.tenant_id,

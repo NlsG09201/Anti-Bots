@@ -1,0 +1,29 @@
+# Pipeline de eventos: API + worker arq (requiere Redis)
+# Uso: docker compose -f deploy/local/docker-compose.pipeline.yml up --build
+
+services:
+  api:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    env_file:
+      - ../render.import.env
+    ports:
+      - "8000:8000"
+    environment:
+      EVENT_PIPELINE_ENABLED: "true"
+      EVENT_QUEUE_ENABLED: "true"
+      EVENT_REALTIME_PUBSUB_ENABLED: "true"
+
+  event-worker:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: arq app.workers.arq_worker.WorkerSettings
+    env_file:
+      - ../render.import.env
+    depends_on:
+      - api
+    environment:
+      EVENT_PIPELINE_ENABLED: "true"
+      EVENT_QUEUE_ENABLED: "true"

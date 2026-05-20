@@ -43,7 +43,7 @@ from app.services.detection.realtime_viewbot import get_realtime_viewbot_engine
 from app.services.mitigation.service import MitigationService
 from app.services.realtime.notify import push_dashboard_realtime
 from app.services.reputation.service import ReputationService
-from app.services.ingest.event_ingest import process_stream_event
+from app.events.bus import ingest_event
 from app.services.monitoring.channel_monitor import ChannelMonitorService
 from app.services.streams.helpers import (
     stream_auto_mitigate,
@@ -343,7 +343,7 @@ async def ingest_event(
     db: AsyncSession = Depends(get_db),
 ):
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
-    result = await process_stream_event(
+    result = await ingest_event(
         db,
         stream,
         current_user.tenant_id,

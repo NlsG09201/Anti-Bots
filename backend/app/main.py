@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse, ORJSONResponse
 from prometheus_client import Counter, Histogram, generate_latest
 from starlette.responses import Response
 
-from app.api.v1 import auth, attacks, ai_insights, detection, mfa, security, streams, threat_intel, twitch_integration, users, webhooks, widget
+from app.api.v1 import auth, attacks, ai_insights, detection, events_pipeline, mfa, security, streams, threat_intel, twitch_integration, users, webhooks, widget
 from app.api.websocket import routes as ws_routes
 from app.core.config import get_settings, invalidate_settings_cache
 from app.core.exceptions import StreamShieldError
@@ -83,6 +83,11 @@ async def lifespan(app: FastAPI):
         if _cfg.twitch_insights_enabled:
             asyncio.create_task(get_twitch_insights_db().ensure_loaded())
         monitor_task = asyncio.create_task(_background_channel_monitor())
+        from app.workers.pipeline_consumer import start_pipeline_consumer
+        from app.workers.realtime_subscriber import start_realtime_subscriber
+
+        await start_pipeline_consumer()
+        await start_realtime_subscriber()
     except Exception as exc:
         logger.error(
             "database_startup_failed",
@@ -97,6 +102,11 @@ async def lifespan(app: FastAPI):
             await monitor_task
         except asyncio.CancelledError:
             pass
+    from app.workers.pipeline_consumer import stop_pipeline_consumer
+    from app.workers.realtime_subscriber import stop_realtime_subscriber
+
+    await stop_pipeline_consumer()
+    await stop_realtime_subscriber()
     await close_redis()
     await engine.dispose()
     logger.info("application_shutdown")
@@ -145,6 +155,7 @@ app.include_router(attacks.router, prefix=API_PREFIX)
 app.include_router(detection.router, prefix=API_PREFIX)
 app.include_router(security.router, prefix=API_PREFIX)
 app.include_router(threat_intel.router, prefix=API_PREFIX)
+app.include_router(events_pipeline.router, prefix=API_PREFIX)
 app.include_router(ai_insights.router, prefix=API_PREFIX)
 app.include_router(webhooks.router, prefix=API_PREFIX)
 app.include_router(ws_routes.router)

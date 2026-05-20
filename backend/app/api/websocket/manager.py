@@ -84,6 +84,14 @@ class ConnectionManager:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
+    async def broadcast_live_event(self, tenant_id: str, payload: Dict[str, Any]) -> None:
+        """Eventos del pipeline (viewers, follows, mensajes, conexiones, sospechosos)."""
+        await self.broadcast_to_tenant(tenant_id, {
+            **payload,
+            "timestamp": payload.get("timestamp")
+            or datetime.now(timezone.utc).isoformat(),
+        })
+
     @property
     def connection_count(self) -> int:
         return sum(len(conns) for conns in self.active_connections.values())
