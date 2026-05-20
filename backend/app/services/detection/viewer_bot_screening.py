@@ -1,4 +1,4 @@
-"""Cruce de usuarios en chat con bases locales + IA (viewbots / bots maliciosos)."""
+"""Cruce de usuarios en chat con Twitch Insights + heurísticas locales + IA."""
 
 import json
 import re
@@ -11,12 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.integrations.twitch.chat_filters import TWITCH_CHAT_BOTS, is_valid_chatter_username
+from app.integrations.twitchinsights.bot_database import (
+    TI_ATTRIBUTION,
+    TwitchInsightsBotRecord,
+    get_twitch_insights_db,
+)
 from app.services.viewers.session import ViewerSessionService
 
 logger = get_logger(__name__)
 settings = get_settings()
 
-# Patrones tipicos de viewbots / cuentas compradas (bases heurísticas usadas en anti-bot)
 VIEWBOT_NAME_PATTERNS = [
     re.compile(r"^[a-z]{2,5}\d{5,12}$", re.I),
     re.compile(r"^\d{6,}$"),
@@ -24,7 +28,6 @@ VIEWBOT_NAME_PATTERNS = [
     re.compile(r"viewbot|followbot|bot\d", re.I),
 ]
 
-# Servicios/bots maliciosos conocidos en ecosistema Twitch (no mods legitimos)
 KNOWN_MALICIOUS_INDICATORS = frozenset(
     {
         "viewerbot",
@@ -51,12 +54,21 @@ class ViewerBotScreeningService:
             if is_valid_chatter_username(c.get("username", ""))
         ]
         if not usernames:
-            return {"screened": 0, "flagged": 0}
+            return {
+                "screened": 0,
+                "flagged": 0,
+                "twitch_insights_matched": 0,
+                "twitch_insights_db_size": 0,
+            }
+
+        insights_db = get_twitch_insights_db()
+        await insights_db.ensure_loaded()
 
         verdicts = await self.analyze_usernames(channel_name, usernames)
         viewer_svc = ViewerSessionService(db)
         sessions = await viewer_svc.list_active(stream_id, chat_only=True, limit=500)
         flagged = 0
+        insights_matched = 0
 
         for session in sessions:
             uname = session.platform_username or ""
@@ -66,13 +78,20 @@ class ViewerBotScreeningService:
             metrics = dict(session.behavior_metrics or {})
             metrics["ai_verdict"] = verdict
             session.behavior_metrics = metrics
+            if verdict.get("source") == "twitch_insights":
+                insights_matched += 1
             if verdict.get("is_malicious"):
                 session.is_suspected_bot = True
                 session.risk_score = max(session.risk_score, float(verdict.get("risk_score", 55)))
                 flagged += 1
 
         await db.flush()
-        return {"screened": len(usernames), "flagged": flagged}
+        return {
+            "screened": len(usernames),
+            "flagged": flagged,
+            "twitch_insights_matched": insights_matched,
+            "twitch_insights_db_size": insights_db.size,
+        }
 
     async def analyze_usernames(
         self,
@@ -80,11 +99,14 @@ class ViewerBotScreeningService:
         usernames: List[str],
     ) -> Dict[str, Dict[str, Any]]:
         """Devuelve dict keyed by lowercase username."""
+        insights_db = get_twitch_insights_db()
+        await insights_db.ensure_loaded()
+
         results: Dict[str, Dict[str, Any]] = {}
         needs_ai: List[str] = []
 
         for name in usernames:
-            local = self._local_verdict(name)
+            local = self._local_verdict(name, insights_db.lookup(name))
             key = name.lower()
             results[key] = local
             if local.get("needs_ai") and len(needs_ai) < 40:
@@ -92,7 +114,11 @@ class ViewerBotScreeningService:
 
         if needs_ai and settings.ai_enabled and settings.openai_api_key:
             try:
-                ai_map = await self._ai_screen_batch(channel_name, needs_ai)
+                ai_map = await self._ai_screen_batch(
+                    channel_name,
+                    needs_ai,
+                    insights_db_size=insights_db.size,
+                )
                 for name, ai_v in ai_map.items():
                     key = name.lower()
                     merged = self._merge_verdict(results.get(key, {}), ai_v)
@@ -102,7 +128,35 @@ class ViewerBotScreeningService:
 
         return results
 
-    def _local_verdict(self, username: str) -> Dict[str, Any]:
+    def _verdict_from_twitch_insights(self, rec: TwitchInsightsBotRecord) -> Dict[str, Any]:
+        online_note = (
+            " Aparece en la lista de bots activos ahora mismo en Twitch Insights."
+            if rec.is_online_now
+            else ""
+        )
+        return {
+            "is_malicious": True,
+            "risk_score": 98.0 if rec.is_online_now else 92.0,
+            "risk_description": (
+                f"Cuenta en la base Twitch Insights de viewbots de listas de espectadores "
+                f"(vista en {rec.channel_count} canales en vivo; última vez {rec.last_seen_iso})."
+                f"{online_note}"
+            ),
+            "source": "twitch_insights",
+            "needs_ai": False,
+            "twitch_insights": {
+                "channel_count": rec.channel_count,
+                "last_seen_ts": rec.last_seen_ts,
+                "is_online_now": rec.is_online_now,
+                "reference": TI_ATTRIBUTION,
+            },
+        }
+
+    def _local_verdict(
+        self,
+        username: str,
+        insights_record: Optional[TwitchInsightsBotRecord] = None,
+    ) -> Dict[str, Any]:
         lower = username.lower()
         if lower in TWITCH_CHAT_BOTS:
             return {
@@ -112,6 +166,9 @@ class ViewerBotScreeningService:
                 "source": "local_db",
                 "needs_ai": False,
             }
+
+        if insights_record:
+            return self._verdict_from_twitch_insights(insights_record)
 
         for ind in KNOWN_MALICIOUS_INDICATORS:
             if ind in lower:
@@ -145,7 +202,7 @@ class ViewerBotScreeningService:
         return {
             "is_malicious": False,
             "risk_score": 10.0,
-            "risk_description": "Sin coincidencias en base de bots conocidos.",
+            "risk_description": "Sin coincidencias en Twitch Insights ni heurísticas locales.",
             "source": "local_db",
             "needs_ai": False,
         }
@@ -154,25 +211,33 @@ class ViewerBotScreeningService:
         risk = max(float(local.get("risk_score", 0)), float(ai.get("risk_score", 0)))
         malicious = local.get("is_malicious") or ai.get("is_malicious")
         desc = ai.get("risk_description") or local.get("risk_description", "")
+        source = local.get("source", "local_db")
+        if ai.get("source") == "openai":
+            source = "twitch_insights+openai" if source == "twitch_insights" else "local+openai"
         return {
             "is_malicious": malicious,
             "risk_score": risk,
             "risk_description": desc,
-            "source": "local+openai" if ai.get("source") == "openai" else local.get("source"),
+            "source": source,
             "needs_ai": False,
             "ai_confidence": ai.get("confidence"),
+            **({"twitch_insights": local["twitch_insights"]} if local.get("twitch_insights") else {}),
         }
 
     async def _ai_screen_batch(
         self,
         channel_name: str,
         usernames: List[str],
+        *,
+        insights_db_size: int = 0,
     ) -> Dict[str, Dict[str, Any]]:
         prompt = (
             f"Canal Twitch: {channel_name}. Usuarios actualmente en el chat:\n"
             f"{', '.join(usernames[:40])}\n\n"
-            "Compara con patrones conocidos de viewbots, followbots, spam bots y cuentas "
-            "compradas en Twitch. NO marques como maliciosos a viewers normales ni mods.\n"
+            "Usa como referencia la base comunitaria Twitch Insights "
+            f"({TI_ATTRIBUTION}), que cataloga ~{insights_db_size} cuentas conocidas de "
+            "viewbots en listas de espectadores desde 2018. Compara patrones de nombres, "
+            "viewbots, followbots y cuentas compradas. NO marques viewers normales ni mods.\n"
             "Responde JSON: {\"users\": [{\"username\": \"...\", \"is_malicious\": bool, "
             "\"risk_score\": 0-100, \"risk_description\": \"una frase en español\"}]}"
         )
@@ -189,9 +254,9 @@ class ViewerBotScreeningService:
                         {
                             "role": "system",
                             "content": (
-                                "Analista anti-viewbot para Twitch. Conoces bases de bots "
-                                "maliciosos, patrones de nombres generados y ataques coordinados. "
-                                "Solo JSON valido."
+                                "Analista anti-viewbot para Twitch. Conoces la base Twitch "
+                                "Insights de viewbots, patrones de nombres generados y ataques "
+                                "coordinados en listas de espectadores. Solo JSON valido."
                             ),
                         },
                         {"role": "user", "content": prompt},

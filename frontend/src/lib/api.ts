@@ -259,7 +259,13 @@ export const api = {
     viewers: (token: string, streamId: string, filter: "all" | "talking" | "suspected" = "all") =>
       request<Viewer[]>(`/api/v1/streams/${streamId}/viewers?filter=${filter}`, {}, token),
     screenViewers: (token: string, streamId: string) =>
-      request<{ status: string; screened: number; flagged: number }>(
+      request<{
+        status: string;
+        screened: number;
+        flagged: number;
+        twitch_insights_matched?: number;
+        twitch_insights_db_size?: number;
+      }>(
         `/api/v1/streams/${streamId}/viewers/screen`,
         { method: "POST" },
         token,

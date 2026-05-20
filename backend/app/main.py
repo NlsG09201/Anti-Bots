@@ -72,6 +72,12 @@ async def lifespan(app: FastAPI):
     monitor_task = None
     try:
         await init_database(engine)
+        from app.core.config import get_settings as _gs
+        from app.integrations.twitchinsights.bot_database import get_twitch_insights_db
+
+        _cfg = _gs()
+        if _cfg.twitch_insights_enabled:
+            asyncio.create_task(get_twitch_insights_db().ensure_loaded())
         monitor_task = asyncio.create_task(_background_channel_monitor())
     except Exception as exc:
         logger.error(

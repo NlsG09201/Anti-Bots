@@ -112,8 +112,11 @@ function ViewersContent() {
   const aiScreenMutation = useMutation({
     mutationFn: () => api.streams.screenViewers(token, streamId),
     onSuccess: (res) => {
+      const ti = res.twitch_insights_matched ?? 0;
+      const db = res.twitch_insights_db_size ?? 0;
       setMessage(
-        `IA: ${res.screened} usuarios analizados · ${res.flagged} marcados como maliciosos`,
+        `IA + Twitch Insights (${db} bots conocidos): ${res.screened} analizados · ` +
+          `${res.flagged} maliciosos · ${ti} en base Twitch Insights`,
       );
       queryClient.invalidateQueries({ queryKey: ["viewers"] });
       queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
@@ -317,7 +320,7 @@ function ViewersContent() {
           className="flex items-center gap-2 px-3 py-2 rounded-lg border border-cyber-border text-sm text-cyber-muted hover:text-white disabled:opacity-50"
         >
           <Brain size={16} className={aiScreenMutation.isPending ? "animate-pulse" : ""} />
-          {aiScreenMutation.isPending ? "Analizando IA..." : "Verificar bots (IA)"}
+          {aiScreenMutation.isPending ? "Analizando..." : "Verificar bots (Insights + IA)"}
         </button>
         {activeAttacks > 0 && (
           <button
@@ -400,7 +403,12 @@ function ViewersContent() {
                 <td className="py-3 px-2 text-center text-xs max-w-[220px]">
                   {v.is_suspected_bot ? (
                     <div>
-                      <span className="text-cyber-danger block">Bot / malicioso</span>
+                      <span className="text-cyber-danger block">
+                        {(v.behavior_metrics?.ai_verdict as { source?: string })?.source ===
+                        "twitch_insights"
+                          ? "Viewbot (Twitch Insights)"
+                          : "Bot / malicioso"}
+                      </span>
                       <span
                         className="text-cyber-muted text-[10px] line-clamp-2"
                         title={String(

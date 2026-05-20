@@ -119,6 +119,9 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     ai_enabled: bool = True
 
+    twitch_insights_enabled: bool = True
+    twitch_insights_cache_hours: int = 6
+
     rate_limit_per_minute: int = 100
     rate_limit_burst: int = 20
     fail2ban_max_attempts: int = 5
