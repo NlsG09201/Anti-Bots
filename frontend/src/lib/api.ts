@@ -75,6 +75,10 @@ async function request<T>(
     path === "/api/v1/auth/register" ||
     path === "/api/v1/auth/mfa/verify";
 
+  if (response.status === 429) {
+    throw new ApiError(429, "Demasiadas peticiones. Espera unos segundos e inténtalo de nuevo.");
+  }
+
   if (response.status === 401 && !isAuthAttempt && path !== "/api/v1/auth/refresh") {
     const refreshed = await tryRefreshToken();
     if (refreshed) {
@@ -134,9 +138,6 @@ export async function refreshAccessToken(): Promise<string | null> {
 
   refreshInFlight = (async () => {
     try {
-      if (!getCsrfToken()) {
-        await fetchCsrfToken();
-      }
       const csrf = getCsrfToken();
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (csrf) headers["X-CSRF-Token"] = csrf;
@@ -168,28 +169,42 @@ export async function fetchCsrfToken(): Promise<void> {
   await fetch(`${API_URL}/api/v1/auth/csrf`, { credentials: "include" });
 }
 
+let bootstrapInFlight: Promise<string | null> | null = null;
+
 /**
- * Restore a valid access token before dashboard queries run.
- * Prefers refresh cookie; falls back to validating the current bearer token.
+ * Restore a valid access token before dashboard queries run (single-flight).
+ * Refresh first (no CSRF required); validate existing bearer only if needed.
  */
 export async function bootstrapAuthSession(): Promise<string | null> {
-  await fetchCsrfToken().catch(() => undefined);
+  if (bootstrapInFlight) return bootstrapInFlight;
 
-  const refreshed = await refreshAccessToken();
-  if (refreshed) return refreshed;
+  bootstrapInFlight = (async () => {
+    try {
+      const refreshed = await refreshAccessToken();
+      if (refreshed) return refreshed;
 
-  const existing = getAccessToken();
-  if (!existing) return null;
+      const existing = getAccessToken();
+      if (!existing) return null;
 
-  try {
-    await api.auth.me(existing);
-    return existing;
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 401) {
-      return null;
+      if (!getCsrfToken()) {
+        await fetchCsrfToken().catch(() => undefined);
+      }
+
+      try {
+        await api.auth.me(existing);
+        return existing;
+      } catch (e) {
+        if (e instanceof ApiError && (e.status === 401 || e.status === 429)) {
+          return existing;
+        }
+        throw e;
+      }
+    } finally {
+      bootstrapInFlight = null;
     }
-    throw e;
-  }
+  })();
+
+  return bootstrapInFlight;
 }
 
 export const api = {
@@ -358,7 +373,6 @@ export const api = {
         `/api/v1/streams/${streamId}/viewers/load-full`,
         { method: "POST" },
         token,
-        resolveDirectApiBaseUrl(),
       ),
     syncQuick: (token: string, streamId: string) =>
       request<{

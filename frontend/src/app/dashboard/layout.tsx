@@ -11,7 +11,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { user, accessToken, setTokens, logout, isAuthenticated } = useAuthStore();
+  const { setTokens, logout, isAuthenticated } = useAuthStore();
   const { connected } = useWebSocketContext();
   const [authReady, setAuthReady] = useState(false);
 
@@ -20,11 +20,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     async function ensureSession() {
       const stored = getAccessToken();
-      if (stored && !accessToken) {
+      if (stored) {
         setTokens(stored);
       }
 
-      const hasSessionHint = !!user || !!getAccessToken() || !!accessToken;
+      const hasSessionHint = !!useAuthStore.getState().user || !!getAccessToken();
       if (hasSessionHint) {
         const token = await bootstrapAuthSession();
         if (cancelled) return;
@@ -45,11 +45,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (!cancelled) setAuthReady(true);
     }
 
-    void ensureSession();
+    const run = () => {
+      void ensureSession();
+    };
+
+    if (useAuthStore.persist.hasHydrated()) {
+      run();
+    } else {
+      const unsub = useAuthStore.persist.onFinishHydration(() => {
+        unsub();
+        run();
+      });
+      return () => {
+        cancelled = true;
+        unsub();
+      };
+    }
+
     return () => {
       cancelled = true;
     };
-  }, [accessToken, user, setTokens, logout, isAuthenticated, router]);
+  }, [setTokens, logout, isAuthenticated, router]);
 
   if (!authReady) {
     return (

@@ -15,7 +15,9 @@ settings = get_settings()
 ROUTE_LIMITS: Dict[str, Tuple[int, int]] = {
     "/api/v1/auth/login": (8, 60),
     "/api/v1/auth/register": (4, 3600),
-    "/api/v1/auth/refresh": (30, 60),
+    "/api/v1/auth/refresh": (60, 60),
+    "/api/v1/auth/csrf": (120, 60),
+    "/api/v1/auth/me": (120, 60),
     "/api/v1/auth/mfa": (10, 60),
     "/api/v1/detection/fingerprint": (40, 60),
     "/api/v1/detection/analyze-ip": (20, 60),
@@ -47,10 +49,14 @@ class AdvancedRateLimiter:
 
         client_ip, _ = resolve_client_ip(request)
         route_limit, window = self._match_route_limit(path)
+        auth_header = request.headers.get("authorization", "")
+        has_bearer = auth_header.lower().startswith("bearer ")
 
         # Bucket global por IP (anti-DDoS distribuido)
         global_key = f"ip:{client_ip}:global"
         global_limit = settings.security_global_ip_limit_per_minute
+        if has_bearer:
+            global_limit = max(global_limit, 600)
         allowed_g, count_g = await self._cache.check_rate_limit(
             global_key, global_limit, 60
         )
@@ -59,17 +65,23 @@ class AdvancedRateLimiter:
                 f"Global rate limit exceeded for IP ({count_g}/{global_limit} per minute)"
             )
 
-        # Burst corto (picos de 10s)
-        burst_key = f"ip:{client_ip}:burst"
-        burst_limit = settings.rate_limit_burst
-        allowed_b, count_b = await self._cache.check_rate_limit(
-            burst_key, burst_limit, 10
-        )
-        if not allowed_b:
-            raise RateLimitError(f"Burst limit exceeded ({count_b}/{burst_limit} per 10s)")
+        # Burst corto (picos de 10s) — no aplicar a sesiones Bearer (dashboard SPA)
+        if not has_bearer:
+            burst_key = f"ip:{client_ip}:burst"
+            burst_limit = settings.rate_limit_burst
+            allowed_b, count_b = await self._cache.check_rate_limit(
+                burst_key, burst_limit, 10
+            )
+            if not allowed_b:
+                raise RateLimitError(f"Burst limit exceeded ({count_b}/{burst_limit} per 10s)")
 
-        # Por ruta
-        route_key = f"ip:{client_ip}:route:{path}"
+        # Por ruta (agrupa sub-recursos para no contar cada UUID por separado en el burst de ruta)
+        route_path = path
+        if path.startswith("/api/v1/streams/") and path.count("/") >= 4:
+            parts = path.split("/")
+            if len(parts) >= 5:
+                route_path = "/".join(parts[:5])
+        route_key = f"ip:{client_ip}:route:{route_path}"
         allowed_r, count_r = await self._cache.check_rate_limit(
             route_key, route_limit, window
         )

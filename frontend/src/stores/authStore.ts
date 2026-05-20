@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { bootstrapAuthSession, getAccessToken, setAccessToken } from "@/lib/api";
+import { getAccessToken, setAccessToken } from "@/lib/api";
 
 interface AuthState {
   accessToken: string | null;
@@ -40,9 +40,6 @@ export const useAuthStore = create<AuthState>()(
         if (!state?.user) return;
         const stored = getAccessToken();
         if (stored) state?.setTokens(stored);
-        void bootstrapAuthSession().then((token) => {
-          if (token) state?.setTokens(token);
-        });
       },
     },
   ),

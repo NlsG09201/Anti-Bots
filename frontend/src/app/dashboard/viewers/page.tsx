@@ -31,6 +31,7 @@ function ViewersContent() {
   const [inviteUrl, setInviteUrl] = useState("");
   const [loadPhase, setLoadPhase] = useState<"idle" | "quick" | "full">("idle");
   const lastFullLoadStream = useRef<string | null>(null);
+  const fullLoadInFlight = useRef(false);
 
   const handleStreamSelect = (id: string) => {
     lastFullLoadStream.current = null;
@@ -63,14 +64,14 @@ function ViewersContent() {
     queryKey: ["monitor-status", streamId],
     queryFn: () => api.streams.monitorStatus(token, streamId),
     enabled: !!token && !!streamId,
-    refetchInterval: 15000,
+    refetchInterval: 30000,
   });
 
   const { data: viewers = [], isLoading } = useQuery({
     queryKey: ["viewers", streamId, viewFilter],
     queryFn: () => api.streams.viewers(token, streamId, viewFilter),
     enabled: !!token && !!streamId,
-    refetchInterval: 15000,
+    refetchInterval: 30000,
   });
 
   const inviteMutation = useMutation({
@@ -105,12 +106,17 @@ function ViewersContent() {
       setMessage(e.message);
       setLoadPhase("idle");
     },
-    onSettled: () => setLoadPhase("idle"),
+    onSettled: () => {
+      setLoadPhase("idle");
+      fullLoadInFlight.current = false;
+    },
   });
 
   const triggerFullLoad = async (id: string, force = false) => {
     if (!id || !token) return;
+    if (fullLoadInFlight.current) return;
     if (!force && lastFullLoadStream.current === id) return;
+    fullLoadInFlight.current = true;
     lastFullLoadStream.current = id;
     setViewFilter("all");
 
@@ -123,6 +129,7 @@ function ViewersContent() {
       if (quick.status === "offline") {
         setMessage(quick.message || "Canal offline");
         setLoadPhase("idle");
+        fullLoadInFlight.current = false;
         return;
       }
       const inChat = quick.chatters_synced ?? 0;
@@ -135,6 +142,9 @@ function ViewersContent() {
       }
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error al sincronizar");
+      fullLoadInFlight.current = false;
+      setLoadPhase("idle");
+      return;
     }
 
     setLoadPhase("full");
@@ -148,9 +158,9 @@ function ViewersContent() {
 
   useEffect(() => {
     if (!streamId || !token) return;
-    triggerFullLoad(streamId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- load full viewer list when channel changes
-  }, [streamId, token]);
+    void triggerFullLoad(streamId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when channel changes, not on token refresh
+  }, [streamId]);
 
   const aiScreenMutation = useMutation({
     mutationFn: () => api.streams.screenViewers(token, streamId),
