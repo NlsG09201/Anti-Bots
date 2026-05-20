@@ -82,6 +82,23 @@ export default function WekaJ48Page() {
     refetchInterval: 45000,
   });
 
+  const jvmMutation = useMutation({
+    mutationFn: () => api.wekaJ48.startJvm(token),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        setMessage(res.error || "No se pudo iniciar la JVM de Weka");
+        return;
+      }
+      setMessage(
+        res.already_running
+          ? "Weka JVM ya estaba activa"
+          : "Weka Python / JVM activados correctamente",
+      );
+      void refetchHealth();
+    },
+    onError: (e: Error) => setMessage(e.message),
+  });
+
   const trainMutation = useMutation({
     mutationFn: () => api.wekaJ48.train(token, { source }),
     onSuccess: (res) => {
@@ -192,10 +209,28 @@ export default function WekaJ48Page() {
             label={health?.java_available ? "Java OK" : "Sin Java"}
           />
           <StatusPill
+            ok={!!health?.jvm_started}
+            label={health?.jvm_started ? "JVM activa" : "JVM apagada"}
+          />
+          <StatusPill
             ok={!!preview?.ready}
             label={preview?.ready ? "Datos listos" : "Faltan datos"}
           />
         </div>
+        {health?.last_error && !health?.jvm_started && (
+          <p className="text-xs text-orange-300">{health.last_error}</p>
+        )}
+        {!health?.weka_python_available && (
+          <button
+            type="button"
+            disabled={jvmMutation.isPending || !health?.weka_python_enabled}
+            onClick={() => jvmMutation.mutate()}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-cyber-accent/40 text-cyber-accent text-xs disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={jvmMutation.isPending ? "animate-spin" : ""} />
+            {jvmMutation.isPending ? "Activando Weka…" : "Activar Weka Python (JVM)"}
+          </button>
+        )}
         {preview && (
           <p className="text-xs text-cyber-muted">
             Vista previa ({source}): {preview.rows} filas · {preview.bots} bots · {preview.humans}{" "}

@@ -13,42 +13,27 @@ from sklearn.tree import DecisionTreeClassifier
 
 from app.core.logging import get_logger
 from app.ml.weka_j48.features import ATTRIBUTE_NAMES, NOMINAL_CLASS, ViewerMLRow
+from app.ml.weka_j48.runtime import (
+    is_jvm_started,
+    warm_weka_jvm,
+    weka_python_installed,
+)
 
 logger = get_logger(__name__)
 
-_jvm_started = False
+
+def weka_runtime_available(java_home: str = "") -> bool:
+    """Weka Python instalado + Java disponible (JVM puede arrancar bajo demanda)."""
+    from app.ml.weka_j48.runtime import java_available
+
+    return weka_python_installed() and java_available(java_home)
 
 
-def weka_runtime_available() -> bool:
-    try:
-        import weka.core.jvm as jvm  # noqa: F401
-
-        return bool(os.environ.get("JAVA_HOME") or _java_on_path())
-    except ImportError:
-        return False
-
-
-def _java_on_path() -> bool:
-    from shutil import which
-
-    return which("java") is not None
-
-
-def _ensure_jvm(java_home: str = "") -> bool:
-    global _jvm_started
-    if _jvm_started:
+def _ensure_jvm(java_home: str = "", max_heap: str = "512m") -> bool:
+    if is_jvm_started():
         return True
-    try:
-        import weka.core.jvm as jvm
-
-        if java_home:
-            os.environ.setdefault("JAVA_HOME", java_home)
-        jvm.start(system_cp=True, packages=True)
-        _jvm_started = True
-        return True
-    except Exception as exc:
-        logger.warning("weka_jvm_start_failed", error=str(exc))
-        return False
+    result = warm_weka_jvm(java_home=java_home, max_heap=max_heap)
+    return bool(result.get("ok"))
 
 
 def _build_weka_instances(rows: List[ViewerMLRow]):
@@ -78,9 +63,10 @@ class J48ModelBundle:
 
 
 class J48Engine:
-    def __init__(self, model_dir: Path, java_home: str = ""):
+    def __init__(self, model_dir: Path, java_home: str = "", max_heap: str = "512m"):
         self.model_dir = model_dir
         self.java_home = java_home
+        self.max_heap = max_heap
         self.model_dir.mkdir(parents=True, exist_ok=True)
         self._bundle: Optional[J48ModelBundle] = None
 
@@ -104,7 +90,7 @@ class J48Engine:
                 meta=data.get("meta", {}),
             )
             if self._bundle.backend == "weka" and self.weka_model_path.exists():
-                if _ensure_jvm(self.java_home):
+                if _ensure_jvm(self.java_home, self.max_heap):
                     from weka.core.serialization import read as weka_read
 
                     self._bundle.artifact = weka_read(str(self.weka_model_path))
@@ -128,7 +114,11 @@ class J48Engine:
         if yes < 2 or no < 2:
             raise ValueError("Need at least 2 examples per class (bot / human)")
 
-        use_weka = prefer_weka and weka_runtime_available() and _ensure_jvm(self.java_home)
+        use_weka = (
+            prefer_weka
+            and weka_runtime_available(self.java_home)
+            and _ensure_jvm(self.java_home, self.max_heap)
+        )
         if use_weka:
             return self._train_weka(labeled, confidence=confidence, min_instances=min_instances)
         return self._train_sklearn(labeled)
@@ -272,9 +262,12 @@ class J48Engine:
             )
             trained_at = mtime.isoformat()
         meta = self._bundle.meta if self._bundle else {}
+        from app.ml.weka_j48.runtime import java_available, runtime_status
+
+        rt = runtime_status(self.java_home)
         return {
-            "weka_python_available": weka_runtime_available(),
-            "java_available": _java_on_path(),
+            **rt,
+            "weka_python_available": rt["weka_python_installed"] and rt["java_available"],
             "model_loaded": self.is_loaded(),
             "model_path": str(self.model_path),
             "backend": self._bundle.backend if self._bundle else None,

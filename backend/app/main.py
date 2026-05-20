@@ -99,6 +99,21 @@ async def lifespan(app: FastAPI):
         _cfg = _gs()
         if _cfg.twitch_insights_enabled:
             asyncio.create_task(get_twitch_insights_db().ensure_loaded())
+        if (
+            _cfg.weka_j48_enabled
+            and _cfg.weka_python_enabled
+            and _cfg.weka_jvm_eager_start
+        ):
+            from app.ml.weka_j48.runtime import warm_weka_jvm
+
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: warm_weka_jvm(
+                    java_home=_cfg.weka_java_home or "",
+                    max_heap=_cfg.weka_jvm_max_heap,
+                ),
+            )
         monitor_task = asyncio.create_task(_background_channel_monitor())
         from app.workers.pipeline_consumer import start_pipeline_consumer
         from app.workers.realtime_subscriber import start_realtime_subscriber

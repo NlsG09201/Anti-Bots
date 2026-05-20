@@ -49,6 +49,18 @@ async def weka_health(
     return get_weka_j48_service().health()
 
 
+@router.post("/jvm/start")
+async def start_weka_jvm(
+    current_user: AdminUser,
+) -> Dict[str, Any]:
+    """Arranca la JVM de Weka (python-weka-wrapper3). Requiere Java en el servidor."""
+    import asyncio
+
+    svc = get_weka_j48_service()
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, svc.start_weka_jvm)
+
+
 @router.get("/dataset/preview")
 async def preview_training_dataset(
     current_user: CurrentUser,

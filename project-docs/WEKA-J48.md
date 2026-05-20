@@ -22,32 +22,55 @@ Vista previa antes de entrenar: `GET /api/v1/ml/weka-j48/dataset/preview?source=
 
 | Modo | Requisito |
 |------|-----------|
-| `weka` | Java 11+, `pip install weka-python3`, `JAVA_HOME` |
-| `sklearn_j48_compat` | Solo scikit-learn (árbol entropía, sin Java) |
+| `weka` | Java 11+, `pip install python-weka-wrapper3`, JVM arrancada |
+| `sklearn_j48_compat` | Solo scikit-learn (árbol entropía, sin Java) — fallback automático |
+
+## Activar Weka Python
+
+1. **Dependencia**: `python-weka-wrapper3==0.3.3` en `backend/requirements.txt`.
+2. **Java**: OpenJDK 17 (Docker ya lo instala; en Windows: Temurin 17 + opcional `WEKA_JAVA_HOME`).
+3. **Variables**:
+   - `WEKA_PYTHON_ENABLED=true`
+   - `WEKA_JVM_EAGER_START=true` — arranca JVM al levantar la API
+   - `WEKA_JVM_MAX_HEAP=512m`
+   - `WEKA_J48_PREFER_WEKA=true`
+4. **API admin**: `POST /api/v1/ml/weka-j48/jvm/start` — arranca JVM manualmente.
+5. **Dashboard**: `/dashboard/weka` → botón **Activar Weka Python (JVM)**.
+6. **Smoke test local**:
+   ```bash
+   cd backend && python scripts/check_weka.py
+   ```
 
 ## Variables
 
 - `WEKA_J48_ENABLED` — activar servicio
+- `WEKA_PYTHON_ENABLED` — permitir JVM / Weka nativo
+- `WEKA_JVM_EAGER_START` — precalentar JVM en startup
+- `WEKA_JVM_MAX_HEAP` — heap JPype (ej. `512m`)
 - `WEKA_J48_MODEL_PATH` — carpeta del modelo (`bot_j48.bundle.joblib`)
+- `WEKA_JAVA_HOME` — ruta JDK si no está en PATH
 - `WEKA_J48_MIN_TRAINING_SAMPLES` — mínimo filas etiquetadas (default 50)
 - `VIEWBOT_ML_ENABLED` — enriquecer lista de viewers con `j48_probability`
 
 ## Docker / Render
 
-Para Weka nativo, añade JRE al contenedor:
+El API en Render usa **runtime Docker** (`render.yaml`) con `backend/Dockerfile`:
 
-```dockerfile
-RUN apt-get update && apt-get install -y openjdk-17-jre-headless
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-RUN pip install weka-python3
-```
+- OpenJDK 17 (`JAVA_HOME` preconfigurado)
+- `python-weka-wrapper3` instalado en build
 
-Sin Java, el sistema usa el fallback sklearn automáticamente.
+Sin Java, el sistema usa el fallback sklearn automáticamente (`backend: sklearn_j48_compat`).
 
 ## API
 
-- `GET /api/v1/ml/weka-j48/health`
+- `GET /api/v1/ml/weka-j48/health` — `weka_python_installed`, `jvm_started`, `weka_runtime_ready`
+- `POST /api/v1/ml/weka-j48/jvm/start` — admin, arranca JVM
 - `GET /api/v1/ml/weka-j48/dataset/preview?source=mixed`
 - `POST /api/v1/ml/weka-j48/train?limit=5000&source=mixed&include_twitch_insights=true`
 - `GET /api/v1/ml/weka-j48/predict/session/{session_id}`
 - `GET /api/v1/ml/weka-j48/predict/stream/{stream_id}`
+
+## UI
+
+- **Viewers** — columna J48 (`j48_is_bot`, `j48_probability`, `j48_backend`)
+- **Weka J48** — `/dashboard/weka` — estado JVM, entrenar, predicciones por canal

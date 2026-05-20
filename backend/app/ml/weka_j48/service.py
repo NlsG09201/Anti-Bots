@@ -16,6 +16,7 @@ from app.infrastructure.database.models import ViewerSession
 from app.ml.weka_j48.dataset import load_session_row
 from app.ml.weka_j48.sources import TrainingSource, build_training_dataset, preview_dataset
 from app.ml.weka_j48.engine import J48Engine, weka_runtime_available
+from app.ml.weka_j48.runtime import warm_weka_jvm
 
 logger = get_logger(__name__)
 
@@ -24,8 +25,13 @@ class WekaJ48BotService:
     def __init__(self) -> None:
         settings = get_settings()
         model_dir = Path(settings.weka_j48_model_path)
-        self.engine = J48Engine(model_dir, java_home=settings.weka_java_home or "")
+        self.engine = J48Engine(
+            model_dir,
+            java_home=settings.weka_java_home or "",
+            max_heap=settings.weka_jvm_max_heap,
+        )
         self.enabled = settings.weka_j48_enabled
+        self.python_enabled = settings.weka_python_enabled
         self.min_samples = settings.weka_j48_min_training_samples
         if self.enabled:
             self.engine.load()
@@ -134,10 +140,22 @@ class WekaJ48BotService:
             out.append(pred)
         return out
 
+    def start_weka_jvm(self) -> Dict[str, Any]:
+        if not self.python_enabled:
+            return {"ok": False, "error": "weka_python_disabled"}
+        settings = get_settings()
+        return warm_weka_jvm(
+            java_home=settings.weka_java_home or "",
+            max_heap=settings.weka_jvm_max_heap,
+        )
+
     def health(self) -> Dict[str, Any]:
+        settings = get_settings()
         h = self.engine.health()
         h["enabled"] = self.enabled
-        h["weka_runtime"] = weka_runtime_available()
+        h["weka_python_enabled"] = self.python_enabled
+        h["weka_runtime"] = weka_runtime_available(settings.weka_java_home or "")
+        h["prefer_weka"] = settings.weka_j48_prefer_weka
         return h
 
 

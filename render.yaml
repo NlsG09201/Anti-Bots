@@ -1,10 +1,11 @@
 services:
   - type: web
     name: anti-bots-api
-    runtime: python
+    runtime: docker
     rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
-    buildCommand: pip install --upgrade pip setuptools wheel && pip install --prefer-binary -r requirements.txt
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
@@ -25,6 +26,4 @@ services:
       - key: RENDER
         value: "true"
       # Secrets: Render Dashboard -> Environment -> import deploy/render.import.env
-    # Preflight must run first so missing DATABASE_URL shows clearly in logs (not only uvicorn traceback).
-    startCommand: python scripts/render_check_env.py && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health

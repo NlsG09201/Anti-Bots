@@ -699,12 +699,24 @@ export const api = {
         backend: string | null;
         weka_runtime: boolean;
         weka_python_available?: boolean;
+        weka_python_installed?: boolean;
+        weka_python_enabled?: boolean;
         java_available?: boolean;
+        jvm_started?: boolean;
+        weka_runtime_ready?: boolean;
+        last_error?: string | null;
         trained_at?: string | null;
         training_samples?: number | null;
         meta?: Record<string, unknown>;
         model_path?: string;
       }>("/api/v1/ml/weka-j48/health", {}, token),
+    startJvm: (token: string) =>
+      request<{
+        ok: boolean;
+        jvm_started?: boolean;
+        error?: string;
+        already_running?: boolean;
+      }>("/api/v1/ml/weka-j48/jvm/start", { method: "POST" }, token),
     predictStream: (token: string, streamId: string, limit = 500) =>
       request<{
         stream_id: string;
