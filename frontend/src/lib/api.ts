@@ -716,7 +716,12 @@ export const api = {
         jvm_started?: boolean;
         error?: string;
         already_running?: boolean;
-      }>("/api/v1/ml/weka-j48/jvm/start", { method: "POST" }, token),
+      }>(
+        "/api/v1/ml/weka-j48/jvm/start",
+        { method: "POST" },
+        token,
+        resolveDirectApiBaseUrl(),
+      ),
     predictStream: (token: string, streamId: string, limit = 500) =>
       request<{
         stream_id: string;
@@ -770,6 +775,7 @@ export const api = {
         `/api/v1/ml/weka-j48/train?limit=${limit}&source=${source}&include_twitch_insights=${ti}`,
         { method: "POST" },
         token,
+        resolveDirectApiBaseUrl(),
       );
     },
   },

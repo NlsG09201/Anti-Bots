@@ -48,13 +48,21 @@ class WekaJ48BotService:
         source: TrainingSource = "mixed",
         include_twitch_insights: bool = True,
     ) -> Dict[str, Any]:
-        rows, dataset_stats = await build_training_dataset(
-            db,
-            tenant_id,
-            source=source,
-            limit=limit,
-            include_twitch_insights=include_twitch_insights,
-        )
+        try:
+            rows, dataset_stats = await build_training_dataset(
+                db,
+                tenant_id,
+                source=source,
+                limit=limit,
+                include_twitch_insights=include_twitch_insights,
+            )
+        except Exception as exc:
+            logger.exception("weka_j48_dataset_build_failed")
+            return {
+                "ok": False,
+                "error": "dataset_build_failed",
+                "hint": str(exc)[:500],
+            }
         yes = sum(1 for r in rows if r.label == "yes")
         no = sum(1 for r in rows if r.label == "no")
         if len(rows) < self.min_samples:
@@ -78,16 +86,33 @@ class WekaJ48BotService:
                 "hint": "Necesitas al menos 2 bots y 2 humanos. Prueba source=mixed o channel_flow tras escanear canales.",
             }
         cfg = get_settings()
+        train_timeout = 180.0
         try:
             loop = asyncio.get_running_loop()
-            meta = await loop.run_in_executor(
-                None,
-                partial(
-                    self.engine.train,
-                    rows,
-                    prefer_weka=cfg.weka_j48_prefer_weka,
+            meta = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    partial(
+                        self.engine.train,
+                        rows,
+                        prefer_weka=cfg.weka_j48_prefer_weka,
+                    ),
                 ),
+                timeout=train_timeout,
             )
+        except asyncio.TimeoutError:
+            return {
+                "ok": False,
+                "error": "train_timeout",
+                "hint": (
+                    f"El entrenamiento superó {int(train_timeout)}s. "
+                    "Prueba source=channel_flow o reduce limit=2000."
+                ),
+                "samples": len(rows),
+                "bots": yes,
+                "humans": no,
+                "dataset": dataset_stats,
+            }
         except ValueError as exc:
             return {
                 "ok": False,

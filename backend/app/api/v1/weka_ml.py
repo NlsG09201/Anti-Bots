@@ -6,7 +6,8 @@ from typing import Any, Dict, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi.encoders import jsonable_encoder
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -81,7 +82,7 @@ async def preview_training_dataset(
     )
 
 
-@router.post("/train", response_model=TrainResponse)
+@router.post("/train")
 async def train_j48(
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
@@ -95,7 +96,11 @@ async def train_j48(
         ),
     ),
     include_twitch_insights: bool = Query(True),
-):
+) -> Dict[str, Any]:
+    """Entrena J48. Siempre HTTP 200 con ok true/false (evita 500 por validación de respuesta)."""
+    from app.core.logging import get_logger
+
+    log = get_logger(__name__)
     svc = get_weka_j48_service()
     try:
         result = await svc.train_for_tenant(
@@ -105,15 +110,15 @@ async def train_j48(
             source=source,
             include_twitch_insights=include_twitch_insights,
         )
-        return TrainResponse(**result)
+        return jsonable_encoder(result)
     except Exception as exc:
-        from app.core.logging import get_logger
-
-        get_logger(__name__).exception("weka_j48_train_endpoint_failed")
-        return TrainResponse(
-            ok=False,
-            error="train_failed",
-            hint=str(exc)[:500],
+        log.exception("weka_j48_train_endpoint_failed")
+        return jsonable_encoder(
+            {
+                "ok": False,
+                "error": "train_failed",
+                "hint": str(exc)[:500],
+            }
         )
 
 

@@ -67,7 +67,20 @@ export function resolveDirectApiBaseUrl(): string {
     return direct;
   }
 
-  return resolveApiBaseUrl() || window.location.origin;
+  const proxied = resolveApiBaseUrl();
+  if (proxied && !isLocalUrl(proxied)) {
+    return proxied;
+  }
+
+  // Mismo origen (proxy Vercel → Render): no usar vercel.app para llamadas largas
+  if (
+    window.location.hostname.endsWith(".vercel.app") ||
+    window.location.hostname === "anti-bots.vercel.app"
+  ) {
+    return "https://anti-bots.onrender.com";
+  }
+
+  return window.location.origin;
 }
 
 export function resolveWsBaseUrl(): string {

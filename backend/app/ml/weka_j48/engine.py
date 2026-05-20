@@ -75,8 +75,17 @@ class J48Engine:
         try:
             self.model_dir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            logger.warning("weka_model_dir_mkdir_failed", path=str(self.model_dir), error=str(exc))
-            raise
+            fallback = Path("/tmp/streamshield/weka_models")
+            if self.model_dir != fallback.resolve():
+                logger.warning(
+                    "weka_model_dir_mkdir_failed_using_tmp",
+                    path=str(self.model_dir),
+                    error=str(exc),
+                )
+                self.model_dir = fallback
+                self.model_dir.mkdir(parents=True, exist_ok=True)
+            else:
+                raise
         self._bundle: Optional[J48ModelBundle] = None
 
     @property
