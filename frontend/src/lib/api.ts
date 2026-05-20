@@ -683,7 +683,24 @@ export const api = {
         model_loaded: boolean;
         backend: string | null;
         weka_runtime: boolean;
+        weka_python_available?: boolean;
+        java_available?: boolean;
+        trained_at?: string | null;
+        training_samples?: number | null;
+        meta?: Record<string, unknown>;
+        model_path?: string;
       }>("/api/v1/ml/weka-j48/health", {}, token),
+    predictStream: (token: string, streamId: string, limit = 500) =>
+      request<{
+        stream_id: string;
+        count: number;
+        predicted_bots: number;
+        predictions: WekaJ48Prediction[];
+      }>(
+        `/api/v1/ml/weka-j48/predict/stream/${streamId}?limit=${limit}`,
+        {},
+        token,
+      ),
     preview: (
       token: string,
       source: "registered_bots" | "channel_flow" | "mixed" = "mixed",
@@ -998,4 +1015,15 @@ export interface Viewer {
   j48_is_bot?: boolean | null;
   j48_probability?: number | null;
   j48_backend?: string | null;
+}
+
+export interface WekaJ48Prediction {
+  enabled: boolean;
+  session_id?: string | null;
+  platform_username?: string | null;
+  is_bot: boolean | null;
+  probability: number | null;
+  class_label?: string | null;
+  backend?: string | null;
+  error?: string | null;
 }

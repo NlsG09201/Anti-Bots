@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import joblib
 import numpy as np
@@ -159,6 +160,7 @@ class J48Engine:
             "attributes": ATTRIBUTE_NAMES,
             "class": NOMINAL_CLASS,
             "options": {"confidence": confidence, "min_instances": min_instances},
+            "trained_at": datetime.now(timezone.utc).isoformat(),
         }
         joblib.dump(
             {"backend": "weka", "sklearn_model": None, "meta": meta},
@@ -186,6 +188,7 @@ class J48Engine:
             "attributes": ATTRIBUTE_NAMES,
             "class": NOMINAL_CLASS,
             "note": "J48-compatible entropy tree; install Java + weka-python3 for native Weka J48",
+            "trained_at": datetime.now(timezone.utc).isoformat(),
         }
         joblib.dump(
             {"backend": "sklearn_j48_compat", "sklearn_model": clf, "meta": meta},
@@ -262,11 +265,20 @@ class J48Engine:
         }
 
     def health(self) -> Dict[str, Any]:
+        trained_at = None
+        if self.model_path.exists():
+            mtime = datetime.fromtimestamp(
+                self.model_path.stat().st_mtime, tz=timezone.utc
+            )
+            trained_at = mtime.isoformat()
+        meta = self._bundle.meta if self._bundle else {}
         return {
             "weka_python_available": weka_runtime_available(),
             "java_available": _java_on_path(),
             "model_loaded": self.is_loaded(),
             "model_path": str(self.model_path),
             "backend": self._bundle.backend if self._bundle else None,
-            "meta": self._bundle.meta if self._bundle else {},
+            "meta": meta,
+            "trained_at": meta.get("trained_at") or trained_at,
+            "training_samples": meta.get("samples"),
         }

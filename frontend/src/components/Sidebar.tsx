@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Shield, LayoutDashboard, AlertTriangle, Ban, Brain,
+  Shield, LayoutDashboard, AlertTriangle, Ban, Brain, Binary,
   Fingerprint, Globe, Users, Settings, LogOut, Rocket, Radio, Code, ShieldAlert,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
@@ -16,6 +16,7 @@ const navItems = [
   { href: "/dashboard/alerts", label: "Alerts", icon: Shield },
   { href: "/dashboard/security", label: "Security SOC", icon: ShieldAlert },
   { href: "/dashboard/ai", label: "AI Predictions", icon: Brain },
+  { href: "/dashboard/weka", label: "Weka J48", icon: Binary },
   { href: "/dashboard/viewers", label: "Viewers", icon: Users },
   { href: "/dashboard/widget", label: "Widget IP", icon: Code },
   { href: "/dashboard/ips", label: "Suspicious IPs", icon: Globe },
