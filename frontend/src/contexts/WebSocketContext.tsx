@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken } from "@/stores/authStore";
 import { resolveWsBaseUrl } from "@/lib/runtime-urls";
 
 export interface WSMessage {
@@ -29,7 +29,7 @@ interface WebSocketContextValue {
 const WebSocketContext = createContext<WebSocketContextValue | null>(null);
 
 export function WebSocketProvider({ children }: { children: ReactNode }) {
-  const { accessToken } = useAuthStore();
+  const accessToken = useApiToken();
   const [connected, setConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<WSMessage | null>(null);
   const wsRef = useRef<WebSocket | null>(null);

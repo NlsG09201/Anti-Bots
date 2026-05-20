@@ -19,6 +19,9 @@ CSRF_EXEMPT_PATHS = {
     "/api/v1/webhooks",
     "/api/v1/integrations/twitch/callback",
     "/api/v1/widget",
+    "/api/v1/auth/login",
+    "/api/v1/auth/register",
+    "/api/v1/auth/mfa",
     # Refresh is protected by HttpOnly refresh cookie + rotation; exempt avoids
     # parallel 401 retries failing CSRF when the header cookie is stale.
     "/api/v1/auth/refresh",

@@ -21,11 +21,13 @@ def set_refresh_cookie(response: Response, token: str, max_age_days: int | None 
         httponly=True,
         secure=settings.cookie_secure,
         samesite=settings.cookie_samesite,
-        path="/api/v1/auth",
+        # Path /api so the cookie is sent on all proxied API calls (Vercel → Render).
+        path="/api",
     )
 
 
 def clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(key=REFRESH_COOKIE, path="/api")
     response.delete_cookie(key=REFRESH_COOKIE, path="/api/v1/auth")
     response.delete_cookie(key=CSRF_COOKIE, path="/")
 

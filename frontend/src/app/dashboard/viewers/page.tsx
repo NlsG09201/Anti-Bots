@@ -16,15 +16,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { api, type Stream, type Viewer } from "@/lib/api";
-import { useAuthStore } from "@/stores/authStore";
+import { useApiToken } from "@/stores/authStore";
 import clsx from "clsx";
 
 type ViewFilter = "all" | "talking" | "suspected";
 
 function ViewersContent() {
   const searchParams = useSearchParams();
-  const { accessToken } = useAuthStore();
-  const token = accessToken!;
+  const token = useApiToken() ?? "";
   const queryClient = useQueryClient();
   const [selectedStream, setSelectedStream] = useState(searchParams.get("stream") ?? "");
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");

@@ -78,6 +78,8 @@ async function request<T>(
     if (refreshed) {
       return request<T>(path, options, refreshed);
     }
+    await handleAuthFailure();
+    throw new ApiError(401, "Sesión expirada. Inicia sesión de nuevo.");
   }
 
   if (!response.ok) {
@@ -89,14 +91,37 @@ async function request<T>(
   return response.json();
 }
 
+const ACCESS_TOKEN_KEY = "ss_access_token";
+
 let memoryAccessToken: string | null = null;
 
 export function setAccessToken(token: string | null) {
   memoryAccessToken = token;
+  if (typeof window === "undefined") return;
+  if (token) {
+    sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
+  } else {
+    sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+  }
 }
 
 export function getAccessToken(): string | null {
-  return memoryAccessToken;
+  if (memoryAccessToken) return memoryAccessToken;
+  if (typeof window === "undefined") return null;
+  const stored = sessionStorage.getItem(ACCESS_TOKEN_KEY);
+  if (stored) memoryAccessToken = stored;
+  return stored;
+}
+
+async function handleAuthFailure(): Promise<void> {
+  setAccessToken(null);
+  const { useAuthStore } = await import("@/stores/authStore");
+  useAuthStore.getState().logout();
+  if (typeof window === "undefined") return;
+  const path = window.location.pathname;
+  if (!path.startsWith("/login") && !path.startsWith("/register")) {
+    window.location.replace("/login?session=expired");
+  }
 }
 
 let refreshInFlight: Promise<string | null> | null = null;
@@ -121,7 +146,7 @@ export async function refreshAccessToken(): Promise<string | null> {
       });
       if (!response.ok) return null;
       const data = (await response.json()) as { access_token: string };
-      memoryAccessToken = data.access_token;
+      setAccessToken(data.access_token);
       return data.access_token;
     } catch {
       return null;

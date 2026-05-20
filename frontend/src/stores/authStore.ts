@@ -11,6 +11,12 @@ interface AuthState {
   isAuthenticated: () => boolean;
 }
 
+/** Bearer token for API calls (Zustand + sessionStorage fallback). */
+export function useApiToken(): string | null {
+  const accessToken = useAuthStore((s) => s.accessToken);
+  return accessToken || getAccessToken();
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -32,7 +38,11 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({ user: state.user }),
       onRehydrateStorage: () => (state) => {
         if (!state?.user) return;
-        if (state.accessToken || getAccessToken()) return;
+        const stored = getAccessToken();
+        if (stored) {
+          state?.setTokens(stored);
+          return;
+        }
         void refreshAccessToken().then((token) => {
           if (token) state?.setTokens(token);
         });

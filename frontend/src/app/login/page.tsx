@@ -28,7 +28,9 @@ function LoginForm() {
   });
 
   useEffect(() => {
-    if (searchParams.get("error") === "redirect_mismatch") {
+    if (searchParams.get("session") === "expired") {
+      setError("Tu sesión expiró. Vuelve a iniciar sesión.");
+    } else if (searchParams.get("error") === "redirect_mismatch") {
       setError(
         `Twitch: añade esta Redirect URI en dev.twitch.tv → OAuth Redirect URLs: ${TWITCH_CALLBACK}`,
       );

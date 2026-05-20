@@ -18,7 +18,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     let cancelled = false;
 
     async function ensureSession() {
-      if (accessToken || getAccessToken()) {
+      const stored = getAccessToken();
+      if (stored && !accessToken) {
+        setTokens(stored);
+        if (!cancelled) setAuthReady(true);
+        return;
+      }
+      if (accessToken || stored) {
         if (!cancelled) setAuthReady(true);
         return;
       }

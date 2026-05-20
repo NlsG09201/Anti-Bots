@@ -189,10 +189,11 @@ class ChannelMonitorService:
                 logger.warning("full_load_helix_failed", error=str(exc))
                 summary["helix_error"] = str(exc)[:200]
 
+        # IRC ~28s para no superar timeout del proxy Vercel (~60s) hacia Render
         chatters_data, source = await self._fetch_chatters(
             stream,
             login,
-            irc_duration=50.0 if login else 0,
+            irc_duration=28.0 if login else 0,
         )
         summary["helix_chatters"] = helix_count
         summary["merged_chatters"] = len(chatters_data)
