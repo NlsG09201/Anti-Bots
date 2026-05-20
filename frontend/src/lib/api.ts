@@ -447,6 +447,20 @@ export const api = {
         body: JSON.stringify({ is_active: isActive }),
       }, token),
   },
+  threatIntel: {
+    analyze: (token: string, ip: string, forceRefresh = false) =>
+      request<ThreatIntelReport>(
+        `/api/v1/threat-intel/analyze?ip_address=${encodeURIComponent(ip)}&force_refresh=${forceRefresh}`,
+        {},
+        token,
+      ),
+    analyzeBatch: (token: string, ips: string[]) =>
+      request<{ results: ThreatIntelReport[]; count: number }>(
+        "/api/v1/threat-intel/analyze/batch",
+        { method: "POST", body: JSON.stringify({ ip_addresses: ips }) },
+        token,
+      ),
+  },
   security: {
     dashboard: (
       token: string,
@@ -528,6 +542,43 @@ export interface Fingerprint {
   is_blocked: boolean;
   occurrence_count: number;
   automation_flags: string[];
+}
+
+export interface ThreatIntelReport {
+  ip_address: string;
+  reputation_score: number;
+  risk_score: number;
+  confidence: number;
+  is_vpn: boolean;
+  is_proxy: boolean;
+  is_tor: boolean;
+  is_datacenter: boolean;
+  is_residential_proxy: boolean;
+  is_botnet: boolean;
+  is_malicious: boolean;
+  asn: {
+    number: number | null;
+    organization: string | null;
+    is_datacenter: boolean;
+    is_hosting: boolean;
+    risk_keywords: string[];
+  };
+  geo: {
+    country_code: string | null;
+    country_name: string | null;
+    city: string | null;
+    region: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    timezone: string | null;
+  };
+  abuse_reports: number;
+  threat_categories: string[];
+  flags: string[];
+  sources: string[];
+  recommended_action: string;
+  cached: boolean;
+  analyzed_at: string | null;
 }
 
 export interface AdvancedFingerprintResult {

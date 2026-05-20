@@ -15,7 +15,6 @@ from app.services.detection.engine import BotDetectionEngine
 from app.services.detection.fingerprint_service import analyze_fingerprint_payload
 from app.infrastructure.security.client_ip import resolve_client_ip
 from app.infrastructure.security.ip_analysis import analyze_client_ip
-from app.services.reputation.service import ReputationService
 
 router = APIRouter(prefix="/detection", tags=["Detection"])
 engine = BotDetectionEngine()
@@ -97,19 +96,10 @@ async def analyze_ip(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    reputation_svc = ReputationService(db)
-    ip_data = await reputation_svc.enrich_ip(ip_address)
-    result = engine.analyze_ip(ip_data)
-    return {
-        "ip_address": ip_address,
-        "is_threat": result.is_threat,
-        "threat_type": result.threat_type,
-        "risk_score": result.risk_score,
-        "confidence": result.confidence,
-        "evidence": result.evidence,
-        "recommended_action": result.recommended_action,
-        "enrichment": ip_data,
-    }
+    from app.services.threat_intel import ThreatIntelAnalyzer
+
+    report = await ThreatIntelAnalyzer(db).analyze(ip_address)
+    return report.to_dict()
 
 
 @router.post("/analyze-batch")

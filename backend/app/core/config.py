@@ -114,6 +114,12 @@ class Settings(BaseSettings):
     virustotal_api_key: str = ""
     maxmind_license_key: str = ""
     geoip_database_path: str = "/app/data/GeoLite2-City.mmdb"
+    geoip_asn_database_path: str = "/app/data/GeoLite2-ASN.mmdb"
+
+    threat_intel_cache_ttl_seconds: int = 3600
+    threat_intel_cache_ttl_high_risk: int = 7200
+    threat_intel_ipapi_enabled: bool = True
+    threat_intel_block_threshold: float = 85.0
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"

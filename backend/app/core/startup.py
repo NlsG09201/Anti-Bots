@@ -86,6 +86,7 @@ def run_startup_checks() -> None:
             "abuseipdb": bool(settings.abuseipdb_api_key),
             "ipqualityscore": bool(settings.ipqualityscore_api_key),
             "virustotal": bool(settings.virustotal_api_key),
+            "threat_intel_ipapi": settings.threat_intel_ipapi_enabled,
             "cloudflare": bool(settings.cloudflare_api_token and settings.cloudflare_zone_id),
             "twitch": bool(settings.twitch_client_id),
             "discord": bool(settings.discord_webhook_url),
