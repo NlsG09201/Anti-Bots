@@ -125,6 +125,13 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     ai_enabled: bool = True
 
+    ai_intel_enabled: bool = True
+    ai_intel_auto_mitigate: bool = False
+    ai_intel_early_warning_threshold: float = 0.65
+    ai_model_path: str = "data/ai_models"
+    ai_retrain_interval_hours: int = 24
+    mongodb_uri: str = ""
+
     twitch_insights_enabled: bool = True
     twitch_insights_cache_hours: int = 6
 

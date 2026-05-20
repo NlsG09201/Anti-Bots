@@ -551,6 +551,47 @@ export const api = {
     authorize: (token: string) =>
       request<{ authorization_url: string }>("/api/v1/integrations/twitch/authorize", {}, token),
   },
+  aiIntel: {
+    health: (token: string) =>
+      request<{
+        status: string;
+        models_loaded: string[];
+        model_version: string;
+        mode: string;
+      }>("/api/v1/ai-intel/health", {}, token),
+    predictions: (token: string) =>
+      request<{
+        predictions: AIPredictionEntry[];
+        count: number;
+      }>("/api/v1/ai-intel/predictions", {}, token),
+    streamPrediction: (token: string, streamId: string) =>
+      request<{ stream_id: string; prediction: AIAssessment | null }>(
+        `/api/v1/ai-intel/streams/${streamId}/prediction`,
+        {},
+        token,
+      ),
+    feedback: (
+      token: string,
+      body: {
+        stream_id: string;
+        was_true_positive: boolean;
+        classification?: string;
+        notes?: string;
+        features?: Record<string, number>;
+      },
+    ) =>
+      request<{ status: string; total_samples: number }>(
+        "/api/v1/ai-intel/feedback",
+        { method: "POST", body: JSON.stringify(body) },
+        token,
+      ),
+    train: (token: string) =>
+      request<Record<string, unknown>>(
+        "/api/v1/ai-intel/train",
+        { method: "POST" },
+        token,
+      ),
+  },
 };
 
 export interface Attack {
@@ -697,6 +738,35 @@ export interface AIInsight {
   recommendation: string;
   confidence: number;
   source: string;
+}
+
+export interface AIAssessment {
+  risk_score: number;
+  attack_probability: number;
+  threat_level: string;
+  classification: string;
+  early_warning: boolean;
+  confidence: number;
+  false_positive_likelihood: number;
+  anomaly_score: number;
+  bot_probability: number;
+  raid_probability: number;
+  viewbot_probability: number;
+  automation_probability: number;
+  coordination_score: number;
+  flags: string[];
+  recommended_action: string;
+  recommendations: string[];
+  auto_mitigate: boolean;
+  model_version: string;
+  inference_ms: number;
+}
+
+export interface AIPredictionEntry {
+  stream_id: string;
+  channel_name: string;
+  platform: string;
+  prediction: AIAssessment;
 }
 
 export interface Stream {

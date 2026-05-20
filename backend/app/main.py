@@ -12,6 +12,7 @@ from app.api.v1 import (
     attacks,
     ai_insights,
     detection,
+    ai_intel,
     enterprise,
     events_pipeline,
     mfa,
@@ -170,7 +171,7 @@ app.include_router(attacks.router, prefix=API_PREFIX)
 app.include_router(detection.router, prefix=API_PREFIX)
 app.include_router(security.router, prefix=API_PREFIX)
 app.include_router(enterprise.router, prefix=API_PREFIX)
-app.include_router(enterprise.router, prefix=API_PREFIX)
+app.include_router(ai_intel.router, prefix=API_PREFIX)
 app.include_router(threat_intel.router, prefix=API_PREFIX)
 app.include_router(events_pipeline.router, prefix=API_PREFIX)
 app.include_router(ai_insights.router, prefix=API_PREFIX)

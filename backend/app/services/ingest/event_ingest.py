@@ -11,6 +11,7 @@ from app.services.ai.service import AIService
 from app.services.correlation.service import CorrelationService
 from app.services.dashboard.metrics import get_tenant_stream_ids
 from app.core.config import get_settings
+from app.core.logging import get_logger
 from app.services.detection.anomaly_intelligence import AnomalyIntelligenceService
 from app.services.detection.engine import BotDetectionEngine, EventBatch
 from app.services.detection.realtime_viewbot import get_realtime_viewbot_engine
@@ -28,6 +29,7 @@ ai_service = AIService()
 network_policy = NetworkPolicyEngine()
 anomaly_svc = AnomalyIntelligenceService()
 ingest_settings = get_settings()
+logger = get_logger(__name__)
 
 
 async def process_stream_event(
@@ -130,6 +132,27 @@ async def process_stream_event(
     else:
         meta_anomaly = None
 
+    ai_assessment = None
+    if ingest_settings.ai_intel_enabled:
+        try:
+            from app.ai_intel.orchestrator import get_ai_orchestrator
+
+            ai_assessment = await get_ai_orchestrator().assess_event(
+                db,
+                stream_id=stream.id,
+                tenant_id=tenant_id,
+                event_type=event.event_type,
+                metadata=dict(event.metadata),
+                ip_intel=ip_data,
+                fingerprint_risk=fp_risk,
+                platform_user_id=event.platform_user_id,
+                ip_address=event.ip_address,
+                fingerprint_hash=event.fingerprint_hash,
+            )
+            risk_score = max(risk_score, ai_assessment.risk_score)
+        except Exception as exc:
+            logger.warning("ai_intel_assess_failed", error=str(exc))
+
     rt_assessment = None
     if ingest_settings.viewbot_realtime_enabled:
         rt_engine = get_realtime_viewbot_engine()
@@ -151,6 +174,8 @@ async def process_stream_event(
     meta["network_policy"] = policy.to_dict()
     if meta_anomaly:
         meta["anomaly"] = meta_anomaly
+    if ai_assessment:
+        meta["ai_intel"] = ai_assessment.to_dict()
 
     stream_event = StreamEvent(
         stream_id=stream.id,

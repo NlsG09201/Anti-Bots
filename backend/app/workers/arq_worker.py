@@ -43,10 +43,19 @@ async def shutdown(ctx: dict) -> None:
     logger.info("arq_worker_shutdown")
 
 
+async def ai_train_models_job(ctx: dict) -> Dict[str, Any]:
+    from app.ai_intel.learning.adaptive import AdaptiveLearner
+    from app.ai_intel.training.pipeline import TrainingPipeline
+
+    train_result = await TrainingPipeline().run()
+    tune_result = await AdaptiveLearner().tune_from_feedback()
+    return {"training": train_result, "adaptive": tune_result}
+
+
 class WorkerSettings:
     """Configuración arq — una función, múltiples colas vía _queue_name al encolar."""
 
-    functions = [process_pipeline_event_job]
+    functions = [process_pipeline_event_job, ai_train_models_job]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)

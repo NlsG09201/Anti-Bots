@@ -1,0 +1,23 @@
+# AI training worker + inference API (extends enterprise stack)
+# docker compose -f deploy/enterprise/docker-compose.enterprise.yml -f deploy/enterprise/docker-compose.ai.yml up
+
+services:
+  ai-worker:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: arq app.workers.arq_worker.WorkerSettings
+    env_file:
+      - ../render.import.env
+    environment:
+      AI_INTEL_ENABLED: "true"
+      EVENT_PIPELINE_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ai_models:/app/data/ai_models
+    depends_on:
+      - redis
+      - api
+
+volumes:
+  ai_models:
