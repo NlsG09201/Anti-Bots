@@ -270,6 +270,20 @@ export const api = {
   },
   ips: {
     list: (token: string) => request<SuspiciousIP[]>("/api/v1/ips", {}, token),
+    analyze: (token: string, ip: string, forceRefresh = false) => {
+      if (forceRefresh) {
+        return request<ThreatIntelReport>(
+          `/api/v1/threat-intel/analyze?ip_address=${encodeURIComponent(ip)}&force_refresh=true`,
+          {},
+          token,
+        );
+      }
+      return request<ThreatIntelReport>(
+        `/api/v1/detection/analyze-ip?ip_address=${encodeURIComponent(ip)}`,
+        { method: "POST" },
+        token,
+      );
+    },
   },
   streams: {
     list: (token: string, sync = false) =>
@@ -602,12 +616,22 @@ export interface AdvancedFingerprintResult {
 export interface SuspiciousIP {
   ip_address: string;
   reputation_score: number;
+  risk_score: number;
   is_proxy: boolean;
   is_vpn: boolean;
   is_tor: boolean;
   is_datacenter: boolean;
+  is_residential_proxy: boolean;
+  is_botnet: boolean;
   is_blocked: boolean;
-  country_code: string;
+  country_code: string | null;
+  asn: number | null;
+  asn_organization: string | null;
+  abuse_reports: number;
+  flags: string[];
+  sources: string[];
+  recommended_action: string;
+  analyzed_at: string | null;
 }
 
 export interface DashboardStats {

@@ -246,23 +246,52 @@ async def list_suspicious_ips(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
+    from sqlalchemy import or_
+
     from app.infrastructure.database.models import IPReputation
+
     result = await db.execute(
         select(IPReputation)
-        .where(IPReputation.reputation_score < 40)
+        .where(
+            or_(
+                IPReputation.reputation_score < 40,
+                IPReputation.is_proxy.is_(True),
+                IPReputation.is_vpn.is_(True),
+                IPReputation.is_tor.is_(True),
+                IPReputation.is_datacenter.is_(True),
+                IPReputation.is_blocked.is_(True),
+            )
+        )
         .order_by(IPReputation.reputation_score)
         .limit(100)
     )
-    return [
-        {
-            "ip_address": ip.ip_address,
-            "reputation_score": ip.reputation_score,
-            "is_proxy": ip.is_proxy,
-            "is_vpn": ip.is_vpn,
-            "is_tor": ip.is_tor,
-            "is_datacenter": ip.is_datacenter,
-            "is_blocked": ip.is_blocked,
-            "country_code": ip.country_code,
-        }
-        for ip in result.scalars().all()
-    ]
+    rows = []
+    for ip in result.scalars().all():
+        meta = ip.ip_metadata or {}
+        ti = meta.get("threat_intel") or {}
+        rows.append(
+            {
+                "ip_address": ip.ip_address,
+                "reputation_score": ip.reputation_score,
+                "risk_score": float(ti.get("risk_score", max(0, 100 - ip.reputation_score))),
+                "is_proxy": ip.is_proxy,
+                "is_vpn": ip.is_vpn,
+                "is_tor": ip.is_tor,
+                "is_datacenter": ip.is_datacenter,
+                "is_residential_proxy": bool(
+                    ti.get("is_residential_proxy")
+                    or (ip.is_proxy and not ip.is_vpn and not ip.is_tor and not ip.is_datacenter)
+                ),
+                "is_botnet": bool(ti.get("is_botnet")),
+                "is_blocked": ip.is_blocked,
+                "country_code": ip.country_code,
+                "asn": ip.asn,
+                "asn_organization": ip.asn_org,
+                "abuse_reports": ip.abuse_reports,
+                "flags": list(ti.get("flags") or []),
+                "sources": list(ti.get("sources") or []),
+                "recommended_action": ti.get("recommended_action", "none"),
+                "analyzed_at": ti.get("analyzed_at"),
+            }
+        )
+    return rows
