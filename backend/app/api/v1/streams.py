@@ -39,6 +39,7 @@ from app.services.dashboard.metrics import (
     get_tenant_stream_ids,
 )
 from app.services.detection.engine import BotDetectionEngine, EventBatch
+from app.services.detection.realtime_viewbot import get_realtime_viewbot_engine
 from app.services.mitigation.service import MitigationService
 from app.services.realtime.notify import push_dashboard_realtime
 from app.services.reputation.service import ReputationService
@@ -281,6 +282,29 @@ async def monitor_status(
             "Usuarios en chat (Helix/IRC). Viewers totales en Twitch incluyen quien no escribe. "
             "Ataques por proxy se mitigan bloqueando IPs detectadas en eventos."
         ),
+    }
+
+
+@router.get("/{stream_id}/viewbot/intelligence")
+async def viewbot_intelligence_status(
+    stream_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+    rescan: bool = Query(False, description="Re-analizar sesiones y ventana de eventos"),
+):
+    """Estado del motor inteligente de viewbots: score, clasificación y señales."""
+    stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    engine = get_realtime_viewbot_engine()
+    if rescan and stream.is_live:
+        assessment = await engine.assess_stream_sessions(db, stream.id)
+    else:
+        assessment = await engine.assess_from_window(stream.id)
+    return {
+        "stream_id": str(stream.id),
+        "channel": stream.channel_name,
+        "is_live": stream.is_live,
+        "viewer_count": stream.viewer_count,
+        **assessment.to_dict(),
     }
 
 

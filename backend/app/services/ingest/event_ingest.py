@@ -10,7 +10,10 @@ from app.infrastructure.database.models import AttackType, Stream, StreamEvent
 from app.services.ai.service import AIService
 from app.services.correlation.service import CorrelationService
 from app.services.dashboard.metrics import get_tenant_stream_ids
+from app.core.config import get_settings
 from app.services.detection.engine import BotDetectionEngine, EventBatch
+from app.services.detection.realtime_viewbot import get_realtime_viewbot_engine
+from app.services.detection.realtime_actions import apply_viewbot_assessment
 from app.services.mitigation.enforcement import is_event_blocked
 from app.services.mitigation.service import MitigationService
 from app.services.realtime.notify import push_dashboard_realtime
@@ -20,6 +23,7 @@ from app.services.viewers.session import ViewerSessionService
 
 detection_engine = BotDetectionEngine()
 ai_service = AIService()
+ingest_settings = get_settings()
 
 
 async def process_stream_event(
@@ -81,6 +85,22 @@ async def process_stream_event(
         pattern_score,
     )
 
+    rt_assessment = None
+    if ingest_settings.viewbot_realtime_enabled:
+        rt_engine = get_realtime_viewbot_engine()
+        rt_assessment = await rt_engine.assess_ingest_event(
+            stream.id,
+            event.event_type,
+            ip_data,
+            platform_user_id=event.platform_user_id,
+            platform_username=event.platform_username,
+            ip_address=event.ip_address,
+            fingerprint_hash=event.fingerprint_hash,
+            fingerprint_risk=fp_risk,
+            metadata=dict(event.metadata),
+        )
+        risk_score = max(risk_score, rt_assessment.risk_score)
+
     meta = dict(event.metadata)
     meta["ingest_source"] = source
 
@@ -120,7 +140,29 @@ async def process_stream_event(
     attack_payload = None
     alert_payload = None
 
-    if risk_score >= 50.0:
+    if rt_assessment and rt_assessment.alert_recommended:
+        targets = []
+        uid = (event.platform_user_id or "").strip()
+        if uid.isdigit():
+            targets.append({"type": "user", "value": uid})
+        elif event.platform_username:
+            targets.append({"type": "user_login", "value": event.platform_username})
+        if event.ip_address:
+            targets.append({"type": "ip", "value": event.ip_address})
+        if event.fingerprint_hash:
+            targets.append({"type": "fingerprint", "value": event.fingerprint_hash})
+        attack_payload, alert_payload = await apply_viewbot_assessment(
+            db,
+            stream,
+            tenant_id,
+            rt_assessment,
+            correlation_id=stream_event.correlation_id,
+            source_ips=[event.ip_address] if event.ip_address else [],
+            fingerprints=[event.fingerprint_hash] if event.fingerprint_hash else [],
+            targets=targets or None,
+        )
+
+    if attack_payload is None and risk_score >= 50.0:
         attack_type_map = {
             "viewer_join": AttackType.VIEWBOT,
             "viewer_pulse": AttackType.VIEWBOT,
@@ -228,4 +270,6 @@ async def process_stream_event(
         "is_proxy": ip_data.get("is_proxy", False),
         "is_vpn": ip_data.get("is_vpn", False),
         "is_tor": ip_data.get("is_tor", False),
+        "viewbot_classification": rt_assessment.classification if rt_assessment else "clean",
+        "viewbot_signals": rt_assessment.signals if rt_assessment else {},
     }

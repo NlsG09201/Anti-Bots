@@ -127,6 +127,12 @@ class Settings(BaseSettings):
     background_attack_scan_interval: int = 3
     viewer_load_irc_seconds: float = 35.0
 
+    viewbot_realtime_enabled: bool = True
+    viewbot_window_seconds: int = 120
+    viewbot_alert_threshold: float = 50.0
+    viewbot_auto_block_threshold: float = 85.0
+    viewbot_ml_enabled: bool = True
+
     rate_limit_per_minute: int = 100
     rate_limit_burst: int = 20
     fail2ban_max_attempts: int = 5

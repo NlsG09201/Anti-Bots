@@ -24,6 +24,8 @@ from app.services.monitoring.proxy_intel import (
     collect_proxy_threats,
     merge_attack_proxy_evidence,
 )
+from app.services.detection.realtime_viewbot import get_realtime_viewbot_engine
+from app.services.detection.realtime_actions import apply_viewbot_assessment
 from app.services.detection.viewer_bot_screening import ViewerBotScreeningService
 from app.services.viewers.session import ViewerSessionService
 from app.services.mitigation.service import MitigationService
@@ -390,6 +392,12 @@ class ChannelMonitorService:
         if silent_estimate > 50:
             summary["silent_viewbots_estimate"] = silent_estimate
 
+        rt_engine = get_realtime_viewbot_engine()
+        intelligence = await rt_engine.assess_stream_sessions(
+            self.db, stream.id, chatters_data
+        )
+        summary["viewbot_intelligence"] = intelligence.to_dict()
+
         attack_payload = None
         alert_payload = None
         correlation = CorrelationService(self.db)
@@ -397,8 +405,9 @@ class ChannelMonitorService:
         join_burst = sync_stats["total_synced"] >= 15 and sync_stats["suspected_count"] >= 5
         proxy_attack = proxy_intel["event_count"] >= 3 or len(proxy_intel["proxy_ips"]) >= 2
         bot_invasion = counts["suspected"] >= settings.bot_suspected_attack_threshold
-        if spike or join_burst or proxy_attack or bot_invasion:
-            risk = 72.0 if spike else 65.0
+        intel_attack = intelligence.alert_recommended
+        if spike or join_burst or proxy_attack or bot_invasion or intel_attack:
+            risk = max(intelligence.risk_score, 72.0 if spike else 65.0)
             if len(suspected_usernames) >= 8:
                 risk = min(risk + 10, 95)
             if proxy_attack:
@@ -409,6 +418,7 @@ class ChannelMonitorService:
             evidence: Dict[str, Any] = merge_attack_proxy_evidence(
                 {
                     "monitor_cycle": True,
+                    "viewbot_intelligence": intelligence.to_dict(),
                     "viewer_count": stream.viewer_count,
                     "chatters_sampled": len(chatters_data),
                     "suspected_usernames": suspected_usernames[:30],

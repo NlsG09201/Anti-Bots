@@ -55,6 +55,16 @@ def correlate_all_streams():
         from app.infrastructure.database.models import Stream
         from app.services.correlation.service import CorrelationService
 
+        from app.core.config import get_settings
+        from app.services.detection.realtime_viewbot import get_realtime_viewbot_engine
+        from app.services.detection.realtime_actions import apply_viewbot_assessment
+        from app.services.realtime.notify import push_dashboard_realtime
+        from app.services.dashboard.metrics import get_tenant_stream_ids
+
+        cfg = get_settings()
+        rt_engine = get_realtime_viewbot_engine()
+        actions_taken = 0
+
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Stream).where(Stream.is_live == True))
             streams = result.scalars().all()
@@ -68,8 +78,35 @@ def correlate_all_streams():
                         stream_id=str(stream.id),
                         score=coordinated["coordination_score"],
                     )
+
+                if not cfg.viewbot_realtime_enabled:
+                    continue
+
+                assessment = await rt_engine.assess_stream_sessions(db, stream.id)
+                if not assessment.alert_recommended:
+                    continue
+
+                attack_payload, alert_payload = await apply_viewbot_assessment(
+                    db,
+                    stream,
+                    stream.tenant_id,
+                    assessment,
+                    source_ips=[],
+                    fingerprints=[],
+                )
+                if attack_payload:
+                    actions_taken += 1
+                    tenant_streams = await get_tenant_stream_ids(db, stream.tenant_id)
+                    await push_dashboard_realtime(
+                        db,
+                        stream.tenant_id,
+                        tenant_streams,
+                        alert=alert_payload,
+                        attack=attack_payload,
+                    )
+
             await db.commit()
-        return {"streams_checked": len(streams)}
+        return {"streams_checked": len(streams), "viewbot_actions": actions_taken}
 
     return run_async(_correlate())
 
