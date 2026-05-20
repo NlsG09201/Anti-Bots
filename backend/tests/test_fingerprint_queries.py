@@ -3,21 +3,31 @@
 import pytest
 from uuid import uuid4
 
-from app.infrastructure.database.models import Platform, Stream, StreamEvent, Tenant
+from app.infrastructure.database.models import Platform, Stream, StreamEvent, Tenant, User, UserRole
 from app.services.detection.fingerprint_queries import list_tenant_fingerprints
 
 
 async def _seed_tenant_stream(db_session):
     tenant = Tenant(id=uuid4(), name="Test Org", slug=f"t-{uuid4().hex[:8]}")
+    user = User(
+        id=uuid4(),
+        tenant_id=tenant.id,
+        email=f"fp-{uuid4().hex[:6]}@test.local",
+        username="fptest",
+        hashed_password="x",
+        role=UserRole.ADMIN,
+    )
     stream = Stream(
         id=uuid4(),
         tenant_id=tenant.id,
+        owner_id=user.id,
         platform=Platform.TWITCH,
         external_id="12345",
         channel_name="testchannel",
         is_live=True,
     )
     db_session.add(tenant)
+    db_session.add(user)
     db_session.add(stream)
     await db_session.flush()
     return tenant, stream
