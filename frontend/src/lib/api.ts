@@ -134,7 +134,7 @@ const ACCESS_TOKEN_KEY = "ss_access_token";
 
 let memoryAccessToken: string | null = null;
 
-export function setAccessToken(token: ApiAuthToken | null) {
+export function setAccessToken(token: string | null) {
   memoryAccessToken = token;
   if (typeof window === "undefined") return;
   if (token) {
@@ -161,7 +161,7 @@ export function resetAuthSessionState(): void {
   authFailureInFlight = false;
 }
 
-async function syncAuthTokenToStore(token: ApiAuthToken): Promise<void> {
+async function syncAuthTokenToStore(token: string): Promise<void> {
   setAccessToken(token);
   const { useAuthStore } = await import("@/stores/authStore");
   useAuthStore.getState().setTokens(token);
@@ -234,7 +234,7 @@ export async function fetchCsrfToken(): Promise<void> {
 let bootstrapInFlight: Promise<string | null> | null = null;
 
 /** Validate bearer without triggering login redirect (used during bootstrap). */
-async function probeAccessToken(token: ApiAuthToken): Promise<"valid" | "invalid" | "rate_limited"> {
+async function probeAccessToken(token: string): Promise<"valid" | "invalid" | "rate_limited"> {
   const response = await fetch(`${API_URL}/api/v1/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
     credentials: "include",
@@ -352,7 +352,7 @@ export const api = {
       return request<Attack[]>(`/api/v1/attacks${q ? `?${q}` : ""}`, {}, token);
     },
     mitigate: (
-      token: string,
+      token: ApiAuthToken,
       attackId: string,
       data: { targets?: { type: string; value: string }[]; full_mitigation?: boolean },
     ) =>
@@ -376,7 +376,7 @@ export const api = {
   },
   fingerprints: {
     list: (
-      token: string,
+      token: ApiAuthToken,
       params?: {
         stream_id?: string;
         q?: string;
@@ -535,7 +535,7 @@ export const api = {
         token,
       ),
     blockViewer: (
-      token: string,
+      token: ApiAuthToken,
       streamId: string,
       viewerId: string,
       body: { reason?: string; duration_hours?: number; apply_twitch_ban?: boolean },
@@ -546,7 +546,7 @@ export const api = {
         token,
       ),
     banSuspected: (
-      token: string,
+      token: ApiAuthToken,
       streamId: string,
       params?: { apply_twitch_ban?: boolean; duration_hours?: number },
     ) => {
@@ -673,7 +673,7 @@ export const api = {
         token,
       ),
     feedback: (
-      token: string,
+      token: ApiAuthToken,
       body: {
         stream_id: string;
         was_true_positive: boolean;
@@ -737,7 +737,7 @@ export const api = {
         token,
       ),
     preview: (
-      token: string,
+      token: ApiAuthToken,
       source: "registered_bots" | "channel_flow" | "mixed" = "mixed",
       includeTwitchInsights = true,
     ) =>
@@ -755,7 +755,7 @@ export const api = {
         token,
       ),
     train: (
-      token: string,
+      token: ApiAuthToken,
       opts?: {
         limit?: number;
         source?: "registered_bots" | "channel_flow" | "mixed";
