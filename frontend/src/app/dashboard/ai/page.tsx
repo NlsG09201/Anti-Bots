@@ -87,19 +87,19 @@ export default function AIPredictionsPage() {
 
   const { data: health } = useQuery({
     queryKey: ["ai-health"],
-    queryFn: () => api.aiIntel.health(token),
+    queryFn: () => api.aiIntel.health(token!),
     enabled: !!token,
   });
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["ai-predictions"],
-    queryFn: () => api.aiIntel.predictions(token),
+    queryFn: () => api.aiIntel.predictions(token!),
     enabled: !!token,
     refetchInterval: 20000,
   });
 
   const trainMutation = useMutation({
-    mutationFn: () => api.aiIntel.train(token),
+    mutationFn: () => api.aiIntel.train(token!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai-predictions"] });
       queryClient.invalidateQueries({ queryKey: ["ai-health"] });
@@ -131,7 +131,7 @@ export default function AIPredictionsPage() {
           </button>
           <button
             type="button"
-            disabled={trainMutation.isPending}
+            disabled={!token || trainMutation.isPending}
             onClick={() => trainMutation.mutate()}
             className="flex items-center gap-1 px-3 py-2 text-sm rounded-lg bg-cyber-accent/20 border border-cyber-accent/40 text-cyber-accent cursor-pointer disabled:opacity-50"
           >
