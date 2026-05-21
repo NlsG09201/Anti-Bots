@@ -87,19 +87,19 @@ export default function AIPredictionsPage() {
 
   const { data: health } = useQuery({
     queryKey: ["ai-health"],
-    queryFn: () => api.aiIntel.health(token!),
+    queryFn: () => api.aiIntel.health(token),
     enabled: !!token,
   });
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["ai-predictions"],
-    queryFn: () => api.aiIntel.predictions(token!),
+    queryFn: () => api.aiIntel.predictions(token),
     enabled: !!token,
     refetchInterval: 20000,
   });
 
   const trainMutation = useMutation({
-    mutationFn: () => api.aiIntel.train(token!),
+    mutationFn: () => api.aiIntel.train(token),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai-predictions"] });
       queryClient.invalidateQueries({ queryKey: ["ai-health"] });

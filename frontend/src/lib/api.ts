@@ -3,7 +3,10 @@ import { resolveApiBaseUrl, resolveDirectApiBaseUrl } from "@/lib/runtime-urls";
 // En Vercel: "" → /api/* mismo origen (rewrite a Render). Ignora localhost en el build.
 const API_URL = resolveApiBaseUrl();
 
-export function resolveAuthToken(explicit?: string | null): string | undefined {
+/** Token explícito o de sessionStorage; null/undefined si no hay sesión. */
+export type ApiAuthToken = string | null | undefined;
+
+export function resolveAuthToken(explicit?: ApiAuthToken): string | undefined {
   const trimmed = explicit?.trim();
   const token = (trimmed ? trimmed : getAccessToken()?.trim()) || undefined;
   return token;
@@ -62,7 +65,7 @@ function shouldAttachCsrf(baseUrl?: string): boolean {
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  token?: string,
+  token?: ApiAuthToken,
   baseUrl?: string,
 ): Promise<T> {
   const authToken = resolveAuthToken(token);
@@ -131,7 +134,7 @@ const ACCESS_TOKEN_KEY = "ss_access_token";
 
 let memoryAccessToken: string | null = null;
 
-export function setAccessToken(token: string | null) {
+export function setAccessToken(token: ApiAuthToken | null) {
   memoryAccessToken = token;
   if (typeof window === "undefined") return;
   if (token) {
@@ -158,7 +161,7 @@ export function resetAuthSessionState(): void {
   authFailureInFlight = false;
 }
 
-async function syncAuthTokenToStore(token: string): Promise<void> {
+async function syncAuthTokenToStore(token: ApiAuthToken): Promise<void> {
   setAccessToken(token);
   const { useAuthStore } = await import("@/stores/authStore");
   useAuthStore.getState().setTokens(token);
@@ -231,7 +234,7 @@ export async function fetchCsrfToken(): Promise<void> {
 let bootstrapInFlight: Promise<string | null> | null = null;
 
 /** Validate bearer without triggering login redirect (used during bootstrap). */
-async function probeAccessToken(token: string): Promise<"valid" | "invalid" | "rate_limited"> {
+async function probeAccessToken(token: ApiAuthToken): Promise<"valid" | "invalid" | "rate_limited"> {
   const response = await fetch(`${API_URL}/api/v1/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
     credentials: "include",
@@ -315,11 +318,11 @@ export const api = {
       setAccessToken(data.access_token);
       return data;
     },
-    logout: async (token: string) => {
+    logout: async (token: ApiAuthToken) => {
       await request("/api/v1/auth/logout", { method: "POST" }, token);
       setAccessToken(null);
     },
-    me: (token: string) =>
+    me: (token: ApiAuthToken) =>
       request<{ id: string; email: string; username: string; role: string }>(
         "/api/v1/auth/me",
         {},
@@ -327,13 +330,13 @@ export const api = {
       ),
   },
   dashboard: {
-    stats: (token: string, streamId?: string) =>
+    stats: (token: ApiAuthToken, streamId?: string) =>
       request<DashboardStats>(
         `/api/v1/streams/dashboard/stats${streamId ? `?stream_id=${streamId}` : ""}`,
         {},
         token,
       ),
-    charts: (token: string, streamId?: string) =>
+    charts: (token: ApiAuthToken, streamId?: string) =>
       request<DashboardCharts>(
         `/api/v1/streams/dashboard/charts${streamId ? `?stream_id=${streamId}` : ""}`,
         {},
@@ -341,7 +344,7 @@ export const api = {
       ),
   },
   attacks: {
-    list: (token: string, status?: string, streamId?: string) => {
+    list: (token: ApiAuthToken, status?: string, streamId?: string) => {
       const params = new URLSearchParams();
       if (status) params.set("status", status);
       if (streamId) params.set("stream_id", streamId);
@@ -364,12 +367,12 @@ export const api = {
       }, token),
   },
   alerts: {
-    list: (token: string) => request<Alert[]>("/api/v1/alerts", {}, token),
-    acknowledge: (token: string, alertId: string) =>
+    list: (token: ApiAuthToken) => request<Alert[]>("/api/v1/alerts", {}, token),
+    acknowledge: (token: ApiAuthToken, alertId: string) =>
       request(`/api/v1/alerts/${alertId}/acknowledge`, { method: "PATCH" }, token),
   },
   bans: {
-    list: (token: string) => request<Ban[]>("/api/v1/bans", {}, token),
+    list: (token: ApiAuthToken) => request<Ban[]>("/api/v1/bans", {}, token),
   },
   fingerprints: {
     list: (
@@ -393,7 +396,7 @@ export const api = {
         token,
       );
     },
-    analyzeAdvanced: (token: string, body: object) =>
+    analyzeAdvanced: (token: ApiAuthToken, body: object) =>
       request<AdvancedFingerprintResult>(
         "/api/v1/detection/fingerprint/advanced",
         { method: "POST", body: JSON.stringify(body) },
@@ -401,8 +404,8 @@ export const api = {
       ),
   },
   ips: {
-    list: (token: string) => request<SuspiciousIP[]>("/api/v1/ips", {}, token),
-    analyze: (token: string, ip: string, forceRefresh = false) => {
+    list: (token: ApiAuthToken) => request<SuspiciousIP[]>("/api/v1/ips", {}, token),
+    analyze: (token: ApiAuthToken, ip: string, forceRefresh = false) => {
       if (forceRefresh) {
         return request<ThreatIntelReport>(
           `/api/v1/threat-intel/analyze?ip_address=${encodeURIComponent(ip)}&force_refresh=true`,
@@ -418,26 +421,26 @@ export const api = {
     },
   },
   streams: {
-    list: (token: string, sync = false) =>
+    list: (token: ApiAuthToken, sync = false) =>
       request<Stream[]>(`/api/v1/streams${sync ? "?sync=true" : ""}`, {}, token),
-    watch: (token: string, login: string) =>
+    watch: (token: ApiAuthToken, login: string) =>
       request<Stream>("/api/v1/streams/watch", {
         method: "POST",
         body: JSON.stringify({ login, platform: "twitch" }),
       }, token),
-    unwatch: (token: string, streamId: string) =>
+    unwatch: (token: ApiAuthToken, streamId: string) =>
       request<{ status: string }>(`/api/v1/streams/watch/${streamId}`, { method: "DELETE" }, token),
-    sync: (token: string, streamId: string) =>
+    sync: (token: ApiAuthToken, streamId: string) =>
       request<Stream>(`/api/v1/streams/${streamId}/sync`, { method: "POST" }, token),
-    ingestEvent: (token: string, streamId: string, body: object) =>
+    ingestEvent: (token: ApiAuthToken, streamId: string, body: object) =>
       request<{ event_id: string; risk_score: number; attack_created: boolean }>(
         `/api/v1/streams/${streamId}/events`,
         { method: "POST", body: JSON.stringify(body) },
         token,
       ),
-    viewers: (token: string, streamId: string, filter: "all" | "talking" | "suspected" = "all") =>
+    viewers: (token: ApiAuthToken, streamId: string, filter: "all" | "talking" | "suspected" = "all") =>
       request<Viewer[]>(`/api/v1/streams/${streamId}/viewers?filter=${filter}`, {}, token),
-    screenViewers: (token: string, streamId: string) =>
+    screenViewers: (token: ApiAuthToken, streamId: string) =>
       request<{
         status: string;
         screened: number;
@@ -449,7 +452,7 @@ export const api = {
         { method: "POST" },
         token,
       ),
-    loadFullViewers: (token: string, streamId: string) =>
+    loadFullViewers: (token: ApiAuthToken, streamId: string) =>
       request<{
         status: string;
         message?: string;
@@ -468,7 +471,7 @@ export const api = {
         token,
         resolveDirectApiBaseUrl(),
       ),
-    syncQuick: (token: string, streamId: string) =>
+    syncQuick: (token: ApiAuthToken, streamId: string) =>
       request<{
         status: string;
         viewer_count?: number;
@@ -479,7 +482,7 @@ export const api = {
         note?: string;
         message?: string;
       }>(`/api/v1/streams/${streamId}/sync/quick`, { method: "POST" }, token),
-    monitor: (token: string, streamId: string) =>
+    monitor: (token: ApiAuthToken, streamId: string) =>
       request<{
         status: string;
         chatters_synced?: number;
@@ -492,7 +495,7 @@ export const api = {
         token,
         resolveDirectApiBaseUrl(),
       ),
-    monitorStatus: (token: string, streamId: string) =>
+    monitorStatus: (token: ApiAuthToken, streamId: string) =>
       request<{
         is_live: boolean;
         viewer_count: number;
@@ -508,14 +511,14 @@ export const api = {
         monitor_mode: boolean;
         note: string;
       }>(`/api/v1/streams/${streamId}/monitor/status`, {}, token),
-    channelInvite: (token: string, streamId: string) =>
+    channelInvite: (token: ApiAuthToken, streamId: string) =>
       request<{
         invite_url: string;
         invite_token: string;
         channel_login: string;
         oauth_start_url: string;
       }>(`/api/v1/streams/${streamId}/channel-invite`, { method: "POST" }, token),
-    widgetEmbed: (token: string, streamId: string) =>
+    widgetEmbed: (token: ApiAuthToken, streamId: string) =>
       request<{
         stream: Stream;
         ingest_key: string;
@@ -525,7 +528,7 @@ export const api = {
         obs_browser_source_html: string;
         instructions: string[];
       }>(`/api/v1/streams/${streamId}/widget/embed`, {}, token),
-    widgetRegenerateKey: (token: string, streamId: string) =>
+    widgetRegenerateKey: (token: ApiAuthToken, streamId: string) =>
       request<{ ingest_key: string; status: string }>(
         `/api/v1/streams/${streamId}/widget/key`,
         { method: "POST" },
@@ -569,44 +572,44 @@ export const api = {
     },
   },
   ai: {
-    attackInsight: (token: string, attackId: string) =>
+    attackInsight: (token: ApiAuthToken, attackId: string) =>
       request<AIInsight>(`/api/v1/ai/attacks/${attackId}/insight`, {}, token),
   },
   mfa: {
-    status: (token: string) =>
+    status: (token: ApiAuthToken) =>
       request<{ enabled: boolean; required_for_role: boolean }>("/api/v1/auth/mfa/status", {}, token),
-    setup: (token: string) =>
+    setup: (token: ApiAuthToken) =>
       request<{ secret: string; provisioning_uri: string; qr_code_base64: string }>(
         "/api/v1/auth/mfa/setup",
         { method: "POST" },
         token,
       ),
-    enable: (token: string, code: string) =>
+    enable: (token: ApiAuthToken, code: string) =>
       request("/api/v1/auth/mfa/enable", { method: "POST", body: JSON.stringify({ code }) }, token),
-    disable: (token: string, code: string) =>
+    disable: (token: ApiAuthToken, code: string) =>
       request("/api/v1/auth/mfa/disable", { method: "POST", body: JSON.stringify({ code }) }, token),
   },
   users: {
-    list: (token: string) => request<TenantUser[]>("/api/v1/users", {}, token),
-    updateRole: (token: string, userId: string, role: string) =>
+    list: (token: ApiAuthToken) => request<TenantUser[]>("/api/v1/users", {}, token),
+    updateRole: (token: ApiAuthToken, userId: string, role: string) =>
       request<TenantUser>(`/api/v1/users/${userId}/role`, {
         method: "PATCH",
         body: JSON.stringify({ role }),
       }, token),
-    updateStatus: (token: string, userId: string, isActive: boolean) =>
+    updateStatus: (token: ApiAuthToken, userId: string, isActive: boolean) =>
       request<TenantUser>(`/api/v1/users/${userId}/status`, {
         method: "PATCH",
         body: JSON.stringify({ is_active: isActive }),
       }, token),
   },
   threatIntel: {
-    analyze: (token: string, ip: string, forceRefresh = false) =>
+    analyze: (token: ApiAuthToken, ip: string, forceRefresh = false) =>
       request<ThreatIntelReport>(
         `/api/v1/threat-intel/analyze?ip_address=${encodeURIComponent(ip)}&force_refresh=${forceRefresh}`,
         {},
         token,
       ),
-    analyzeBatch: (token: string, ips: string[]) =>
+    analyzeBatch: (token: ApiAuthToken, ips: string[]) =>
       request<{ results: ThreatIntelReport[]; count: number }>(
         "/api/v1/threat-intel/analyze/batch",
         { method: "POST", body: JSON.stringify({ ip_addresses: ips }) },
@@ -630,7 +633,7 @@ export const api = {
     },
   },
   twitch: {
-    status: (token: string) =>
+    status: (token: ApiAuthToken) =>
       request<{
         connected: boolean;
         configured: boolean;
@@ -638,7 +641,7 @@ export const api = {
         redirect_uri: string;
         channels: { id: string; channel_name: string; external_id: string; is_live: boolean }[];
       }>("/api/v1/integrations/twitch/status", {}, token),
-    setup: (token: string) =>
+    setup: (token: ApiAuthToken) =>
       request<{
         redirect_uri: string;
         client_id_prefix: string;
@@ -647,23 +650,23 @@ export const api = {
         register_at: string;
         hint: string;
       }>("/api/v1/integrations/twitch/setup", {}, token),
-    authorize: (token: string) =>
+    authorize: (token: ApiAuthToken) =>
       request<{ authorization_url: string }>("/api/v1/integrations/twitch/authorize", {}, token),
   },
   aiIntel: {
-    health: (token: string) =>
+    health: (token: ApiAuthToken) =>
       request<{
         status: string;
         models_loaded: string[];
         model_version: string;
         mode: string;
       }>("/api/v1/ai-intel/health", {}, token),
-    predictions: (token: string) =>
+    predictions: (token: ApiAuthToken) =>
       request<{
         predictions: AIPredictionEntry[];
         count: number;
       }>("/api/v1/ai-intel/predictions", {}, token),
-    streamPrediction: (token: string, streamId: string) =>
+    streamPrediction: (token: ApiAuthToken, streamId: string) =>
       request<{ stream_id: string; prediction: AIAssessment | null }>(
         `/api/v1/ai-intel/streams/${streamId}/prediction`,
         {},
@@ -684,7 +687,7 @@ export const api = {
         { method: "POST", body: JSON.stringify(body) },
         token,
       ),
-    train: (token: string) =>
+    train: (token: ApiAuthToken) =>
       request<Record<string, unknown>>(
         "/api/v1/ai-intel/train",
         { method: "POST" },
@@ -692,7 +695,7 @@ export const api = {
       ),
   },
   wekaJ48: {
-    health: (token: string) =>
+    health: (token: ApiAuthToken) =>
       request<{
         enabled: boolean;
         model_loaded: boolean;
@@ -710,7 +713,7 @@ export const api = {
         meta?: Record<string, unknown>;
         model_path?: string;
       }>("/api/v1/ml/weka-j48/health", {}, token),
-    startJvm: (token: string) =>
+    startJvm: (token: ApiAuthToken) =>
       request<{
         ok: boolean;
         jvm_started?: boolean;
@@ -722,7 +725,7 @@ export const api = {
         token,
         resolveDirectApiBaseUrl(),
       ),
-    predictStream: (token: string, streamId: string, limit = 500) =>
+    predictStream: (token: ApiAuthToken, streamId: string, limit = 500) =>
       request<{
         stream_id: string;
         count: number;
