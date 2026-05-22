@@ -42,11 +42,9 @@ async def run_worker() -> None:
     await run_startup_migrations(engine)
 
     if settings.mongodb_uri:
-        from app.threat_intel_engine.mongo_store import ensure_indexes
-        from app.live_intel.mongo_store import ensure_live_intel_indexes
+        from app.infrastructure.mongodb.startup import ensure_all_mongo_indexes_safe
 
-        await ensure_indexes()
-        await ensure_live_intel_indexes()
+        await ensure_all_mongo_indexes_safe()
 
     orch = get_platform_monitor_orchestrator()
     await orch.start()

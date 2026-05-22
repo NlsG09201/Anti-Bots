@@ -35,6 +35,8 @@ En [dashboard.render.com](https://dashboard.render.com):
 
 Sin esto veras: `Variables NO definidas: DATABASE_URL` y **Exited with status 1**.
 
+**MongoDB Atlas (opcional):** si `MONGODB_URI` falla con SSL (`TLSV1_ALERT_INTERNAL_ERROR`), la API **sigue arrancando** (sin persistencia Mongo). Corrige en Atlas: Network Access `0.0.0.0/0`, URI `mongodb+srv://...`, contraseña **URL-encoded**, usuario con permisos readWrite.
+
 ---
 
 ## Paso 2 — Start Command

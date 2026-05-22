@@ -120,15 +120,9 @@ async def lifespan(app: FastAPI):
 
         _cfg = _gs()
         if _cfg.mongodb_uri:
-            from app.threat_intel_engine.mongo_store import ensure_indexes
-            from app.live_intel.mongo_store import ensure_live_intel_indexes
-            from app.integrations.twitchbots_info.mongo_store import (
-                ensure_twitchbots_info_indexes,
-            )
+            from app.infrastructure.mongodb.startup import ensure_all_mongo_indexes_safe
 
-            await ensure_indexes()
-            await ensure_live_intel_indexes()
-            await ensure_twitchbots_info_indexes()
+            await ensure_all_mongo_indexes_safe()
         if _cfg.twitchbots_info_enabled and _cfg.twitchbots_info_cache_warm_on_startup:
             from app.services.twitchbots.verification_service import (
                 get_twitchbots_verification_service,
