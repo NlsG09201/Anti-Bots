@@ -42,7 +42,11 @@ async def startup(ctx: dict) -> None:
     from arq.connections import RedisSettings
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     pool = await create_pool(redis_settings)
-    await pool.enqueue_job("discovery_batch_job", _queue_name=UNIFIED_QUEUE)
+    await pool.enqueue_job(
+        "discovery_batch_job",
+        _queue_name=UNIFIED_QUEUE,
+        _job_id="discovery_init_batch"
+    )
     await pool.close()
 
 
@@ -139,7 +143,8 @@ async def discovery_batch_job(ctx: dict) -> Dict[str, Any]:
     await pool.enqueue_job(
         "discovery_batch_job",
         _queue_name=UNIFIED_QUEUE,
-        _defer_by=60
+        _defer_by=60,
+        _job_id=f"discovery_batch_{int(time.time() / 60) + 1}"
     )
     # Also trigger a health check
     await pool.enqueue_job("health_check_job", _queue_name=UNIFIED_QUEUE)

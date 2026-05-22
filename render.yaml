@@ -27,6 +27,12 @@ services:
         value: "true"
       - key: PLATFORM_MONITOR_RUN_IN_API
         value: "false"
+      - key: EVENT_QUEUE_ENABLED
+        value: "true"
+      - key: PLATFORM_MONITOR_ENABLED
+        value: "true"
+      - key: LIVE_INTEL_ENABLED
+        value: "true"
       # Secrets: Render Dashboard -> Environment -> import deploy/render.import.env
     healthCheckPath: /health
 
@@ -49,6 +55,10 @@ services:
       - key: PLATFORM_MONITOR_RUN_IN_API
         value: "false"
       - key: PLATFORM_MONITOR_ENABLED
+        value: "true"
+      - key: EVENT_QUEUE_ENABLED
+        value: "true"
+      - key: LIVE_INTEL_ENABLED
         value: "true"
       - key: WEKA_J48_ENABLED
         value: "false"

@@ -68,9 +68,23 @@ async def run_worker() -> None:
         await get_live_intel_engine().start()
         logger.info("live_intel_sampler_in_worker")
 
+    # Start ARQ Worker (BullMQ equivalent)
+    from arq.worker import create_worker
+    from app.workers.arq_worker import WorkerSettings
+    
+    worker = create_worker(WorkerSettings)
+    arq_task = asyncio.create_task(worker.main())
+    logger.info("arq_worker_started_in_background")
+
     await _shutdown.wait()
 
     logger.info("platform_monitor_worker_shutting_down")
+    # Cancel arq task
+    arq_task.cancel()
+    try:
+        await arq_task
+    except asyncio.CancelledError:
+        pass
     if settings.platform_health_enabled:
         from app.services.platform_health.engine import get_platform_health_engine
 

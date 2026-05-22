@@ -31,7 +31,8 @@ from app.services.platforms.registry import get_platform_adapter
 logger = get_logger(__name__)
 settings = get_settings()
 
-DISCOVERY_QUEUE = "ss:queue:discovery"
+from app.events.queue import UNIFIED_QUEUE
+DISCOVERY_QUEUE = UNIFIED_QUEUE
 
 
 class LiveDiscoveryEngine:
