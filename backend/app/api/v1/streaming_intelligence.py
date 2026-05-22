@@ -25,17 +25,30 @@ async def intelligence_overview(
     current_user: AnalystUser,
 ) -> Dict[str, Any]:
     from app.core.config import get_settings
+    from app.core.logging import get_logger
 
+    logger = get_logger(__name__)
     engine = get_threat_intel_engine()
     cfg = get_settings()
     if not engine.enabled:
         return {"enabled": False, "message": "THREAT_INTEL_ENGINE_ENABLED=false"}
-    data = await engine.overview(current_user.tenant_id)
-    return {
-        "enabled": True,
-        "mongodb": bool(cfg.mongodb_uri),
-        **data,
-    }
+    try:
+        data = await engine.overview(current_user.tenant_id)
+        return {
+            "enabled": True,
+            "mongodb": bool(cfg.mongodb_uri),
+            **data,
+        }
+    except Exception as exc:
+        logger.exception(
+            "threat_intel_overview_failed",
+            tenant_id=str(current_user.tenant_id),
+            error=str(exc)[:200],
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Threat intelligence overview unavailable",
+        ) from exc
 
 
 @router.get("/streams/{stream_id}")

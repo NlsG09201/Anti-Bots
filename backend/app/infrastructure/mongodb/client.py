@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -24,8 +25,14 @@ async def get_mongo_db() -> Optional[Any]:
     try:
         from motor.motor_asyncio import AsyncIOMotorClient
 
-        _client = AsyncIOMotorClient(uri, maxPoolSize=20)
-        _db = _client.get_default_database()
+        _client = AsyncIOMotorClient(
+            uri,
+            maxPoolSize=20,
+            serverSelectionTimeoutMS=5000,
+        )
+        parsed = urlparse(uri)
+        db_name = (parsed.path or "").strip("/") or "streamshield"
+        _db = _client[db_name]
         return _db
     except Exception as exc:
         logger.warning("mongodb_unavailable", error=str(exc))

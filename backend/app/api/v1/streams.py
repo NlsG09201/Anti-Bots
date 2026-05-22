@@ -96,6 +96,29 @@ async def watch_channel(
     if not login:
         raise ValidationError("login requerido")
 
+    try:
+        return await _watch_channel_impl(data, current_user, db, login)
+    except (ValidationError, NotFoundError):
+        raise
+    except Exception as exc:
+        logger.exception(
+            "watch_channel_failed",
+            platform=data.platform.value,
+            login=login,
+            error=str(exc)[:200],
+        )
+        raise ValidationError(
+            f"No se pudo añadir el canal ({data.platform.value}): "
+            f"{str(exc)[:120]}"
+        ) from exc
+
+
+async def _watch_channel_impl(
+    data: StreamWatchRequest,
+    current_user: CurrentUser,
+    db: AsyncSession,
+    login: str,
+) -> StreamResponse:
     if data.platform != Platform.TWITCH:
         slug = login.lower()
         result = await db.execute(
@@ -135,7 +158,11 @@ async def watch_channel(
         if data.platform == Platform.KICK:
             from app.services.monitoring.kick_live import resolve_kick_chatroom
 
-            cid = await resolve_kick_chatroom(slug)
+            try:
+                cid = await resolve_kick_chatroom(slug)
+            except Exception as exc:
+                logger.debug("kick_chatroom_watch_skip", slug=slug, error=str(exc)[:100])
+                cid = None
             if cid:
                 meta = dict(stream.settings or {})
                 meta["kick_chatroom_id"] = cid

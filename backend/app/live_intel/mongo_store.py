@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from app.core.logging import get_logger
 from app.infrastructure.mongodb.client import get_mongo_db
+from app.live_intel.serialize import sanitize_mongo_doc
 
 logger = get_logger(__name__)
 
@@ -117,12 +118,20 @@ class LiveIntelMongoStore:
             }
         )
 
-    async def list_snapshots(self, tenant_id: str) -> List[Dict[str, Any]]:
+    async def list_snapshots(self, tenant_id: str, *, limit: int = 50) -> List[Dict[str, Any]]:
         db = await get_mongo_db()
         if db is None:
             return []
-        cursor = db[COL_SNAPSHOTS].find({"tenant_id": tenant_id})
-        return [dict(d) async for d in cursor]
+        try:
+            cursor = db[COL_SNAPSHOTS].find({"tenant_id": tenant_id}).limit(limit)
+            return [sanitize_mongo_doc(dict(d)) async for d in cursor]
+        except Exception as exc:
+            logger.warning(
+                "live_intel_list_snapshots_failed",
+                tenant_id=tenant_id,
+                error=str(exc)[:150],
+            )
+            return []
 
     async def get_history(
         self,

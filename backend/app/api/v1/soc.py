@@ -2,16 +2,18 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AnalystUser
 from app.infrastructure.database.session import get_db
 from app.services.dashboard.metrics import compute_dashboard_stats, get_tenant_stream_ids
 from app.services.dashboard.soc_metrics import compute_soc_overview, recent_live_feed
+from app.core.logging import get_logger
 from app.services.monitoring.orchestrator import get_platform_monitor_orchestrator
 from app.services.realtime.notify import push_dashboard_realtime
 
+logger = get_logger(__name__)
 router = APIRouter(prefix="/soc", tags=["SOC"])
 
 
@@ -20,10 +22,21 @@ async def soc_overview(
     current_user: AnalystUser,
     db: AsyncSession = Depends(get_db),
 ):
-    stream_ids = await get_tenant_stream_ids(db, current_user.tenant_id)
-    stats = await compute_dashboard_stats(db, current_user.tenant_id, stream_ids)
-    overview = await compute_soc_overview(db, current_user.tenant_id, stream_ids)
-    return {"stats": stats, "soc": overview}
+    try:
+        stream_ids = await get_tenant_stream_ids(db, current_user.tenant_id)
+        stats = await compute_dashboard_stats(db, current_user.tenant_id, stream_ids)
+        overview = await compute_soc_overview(db, current_user.tenant_id, stream_ids)
+        return {"stats": stats, "soc": overview}
+    except Exception as exc:
+        logger.exception(
+            "soc_overview_failed",
+            tenant_id=str(current_user.tenant_id),
+            error=str(exc)[:200],
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="SOC overview unavailable",
+        ) from exc
 
 
 @router.get("/feed")

@@ -36,6 +36,16 @@ async def get_redis() -> redis.Redis:
     return _pool
 
 
+async def optional_get_redis() -> Optional[redis.Redis]:
+    """Redis client when configured; None otherwise (never raises)."""
+    if not redis_is_configured():
+        return None
+    try:
+        return await get_redis()
+    except Exception:
+        return None
+
+
 async def close_redis() -> None:
     global _pool
     if _pool:

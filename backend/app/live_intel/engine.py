@@ -13,7 +13,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.realtime import publish_realtime
-from app.infrastructure.cache.redis_client import get_redis
+from app.infrastructure.cache.redis_client import optional_get_redis
 from app.infrastructure.database.models import Stream
 from app.infrastructure.database.session import AsyncSessionLocal
 from app.live_intel.analyzer import LiveIntelAnalyzer
@@ -237,16 +237,47 @@ class LiveIntelEngine:
                     )
             await db.commit()
 
-    async def get_overview(self, tenant_id: UUID) -> LiveIntelOverview:
+    async def get_overview(
+        self, tenant_id: UUID, *, refresh: bool = False
+    ) -> LiveIntelOverview:
         tid = str(tenant_id)
-        await self.reconcile_tenant(tenant_id)
+        try:
+            return await self._build_overview(tenant_id, tid, refresh=refresh)
+        except Exception as exc:
+            logger.warning(
+                "live_intel_get_overview_failed",
+                tenant_id=tid,
+                error=str(exc)[:200],
+            )
+            return LiveIntelOverview(tenant_id=tid)
+
+    async def _build_overview(
+        self, tenant_id: UUID, tid: str, *, refresh: bool
+    ) -> LiveIntelOverview:
+        if refresh:
+            try:
+                await self.reconcile_tenant(tenant_id)
+            except Exception as exc:
+                logger.warning(
+                    "live_intel_reconcile_failed",
+                    tenant_id=tid,
+                    error=str(exc)[:200],
+                )
         snaps = [
             s
             for s in self._snapshots.values()
             if s.tenant_id == tid and s.is_live
         ]
         if not snaps:
-            docs = await self._store.list_snapshots(tid)
+            try:
+                docs = await self._store.list_snapshots(tid)
+            except Exception as exc:
+                logger.warning(
+                    "live_intel_overview_snapshots_failed",
+                    tenant_id=tid,
+                    error=str(exc)[:150],
+                )
+                docs = []
             for d in docs:
                 if d.get("is_live"):
                     try:
@@ -309,14 +340,21 @@ class LiveIntelEngine:
         return heat
 
     async def _cache_overview(self, tenant_id: str, overview: LiveIntelOverview) -> None:
-        redis = await get_redis()
+        redis = await optional_get_redis()
         if not redis:
             return
-        await redis.setex(
-            f"{REDIS_CACHE_PREFIX}{tenant_id}",
-            CACHE_TTL,
-            json.dumps(overview.model_dump(), default=str),
-        )
+        try:
+            await redis.setex(
+                f"{REDIS_CACHE_PREFIX}{tenant_id}",
+                CACHE_TTL,
+                json.dumps(overview.model_dump(), default=str),
+            )
+        except Exception as exc:
+            logger.debug(
+                "live_intel_cache_skip",
+                tenant_id=tenant_id,
+                error=str(exc)[:120],
+            )
 
     async def _broadcast_tenant(self, tenant_id: str) -> None:
         snaps = [

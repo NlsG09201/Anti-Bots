@@ -14,6 +14,7 @@ from app.api.dependencies import AnalystUser, get_db
 from app.infrastructure.database.models import Stream
 from app.live_intel.engine import get_live_intel_engine, is_competitive_stream
 from app.live_intel.mongo_store import LiveIntelMongoStore
+from app.live_intel.serialize import overview_to_api_dict
 
 router = APIRouter(prefix="/live-intelligence", tags=["Live Stream Intelligence"])
 
@@ -23,12 +24,31 @@ class CompareRequest(BaseModel):
 
 
 @router.get("/overview")
-async def live_intel_overview(current_user: AnalystUser) -> Dict[str, Any]:
+async def live_intel_overview(
+    current_user: AnalystUser,
+    refresh: bool = Query(False, description="Sync live status from platforms (slow)"),
+) -> Dict[str, Any]:
+    from app.core.logging import get_logger
+
+    logger = get_logger(__name__)
     engine = get_live_intel_engine()
     if not engine.enabled:
         return {"enabled": False}
-    overview = await engine.get_overview(current_user.tenant_id)
-    return {"enabled": True, "overview": overview.model_dump()}
+    try:
+        overview = await engine.get_overview(
+            current_user.tenant_id, refresh=refresh
+        )
+        return {"enabled": True, "overview": overview_to_api_dict(overview)}
+    except Exception as exc:
+        logger.exception(
+            "live_intel_overview_failed",
+            tenant_id=str(current_user.tenant_id),
+            error=str(exc)[:200],
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Live intelligence overview unavailable",
+        ) from exc
 
 
 @router.get("/streams")
@@ -36,24 +56,43 @@ async def list_monitored_streams(
     current_user: AnalystUser,
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
-    result = await db.execute(
-        select(Stream).where(Stream.tenant_id == current_user.tenant_id)
-    )
-    streams = [s for s in result.scalars().all() if is_competitive_stream(s)]
+    from app.core.logging import get_logger
+
+    logger = get_logger(__name__)
+    try:
+        result = await db.execute(
+            select(Stream).where(Stream.tenant_id == current_user.tenant_id)
+        )
+        streams = [s for s in result.scalars().all() if is_competitive_stream(s)]
+    except Exception as exc:
+        logger.exception(
+            "live_intel_streams_list_failed",
+            tenant_id=str(current_user.tenant_id),
+            error=str(exc)[:200],
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Could not load monitored streams",
+        ) from exc
     engine = get_live_intel_engine()
     out = []
     for s in streams:
         sid = str(s.id)
         snap = engine.get_snapshot(sid)
+        try:
+            snap_payload = snap.model_dump(mode="json") if snap else None
+        except Exception:
+            snap_payload = None
+        platform = s.platform.value if hasattr(s.platform, "value") else str(s.platform)
         out.append(
             {
                 "stream_id": sid,
                 "channel_name": s.channel_name,
-                "platform": s.platform.value,
+                "platform": platform,
                 "is_live": s.is_live,
                 "viewer_count": s.viewer_count,
                 "competitive_intel": bool((s.settings or {}).get("competitive_intel")),
-                "snapshot": snap.model_dump() if snap else None,
+                "snapshot": snap_payload,
             }
         )
     return {"streams": out, "count": len(out)}

@@ -133,8 +133,18 @@ class KickLiveMonitor:
 
 
 async def resolve_kick_chatroom(slug: str) -> Optional[int]:
-    client = KickAPIClient()
-    channel = await client.get_channel(slug.lower())
-    chatroom = channel.get("chatroom") or {}
-    cid = chatroom.get("id")
-    return int(cid) if cid else None
+    try:
+        client = KickAPIClient()
+        channel = await client.get_channel(slug.lower())
+        if not channel or not isinstance(channel, dict):
+            return None
+        chatroom = channel.get("chatroom") or {}
+        cid = chatroom.get("id")
+        return int(cid) if cid else None
+    except Exception as exc:
+        logger.debug(
+            "kick_chatroom_resolve_failed",
+            slug=slug,
+            error=str(exc)[:120],
+        )
+        return None
