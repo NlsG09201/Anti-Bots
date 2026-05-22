@@ -371,6 +371,40 @@ export const api = {
         max_streams: number;
       }>("/api/v1/soc/monitors/status", {}, token),
   },
+  streamingIntelligence: {
+    overview: (token: ApiAuthToken) =>
+      request<ThreatIntelOverviewResponse>("/api/v1/streaming-intelligence/overview", {}, token),
+    stream: (token: ApiAuthToken, streamId: string) =>
+      request<ThreatIntelStreamResponse>(
+        `/api/v1/streaming-intelligence/streams/${streamId}`,
+        {},
+        token,
+      ),
+    engagement: (token: ApiAuthToken, streamId: string) =>
+      request<{ stream_id: string; engagement: EngagementMetrics; source: string }>(
+        `/api/v1/streaming-intelligence/streams/${streamId}/engagement`,
+        {},
+        token,
+      ),
+    graph: (token: ApiAuthToken, streamId: string) =>
+      request<{ stream_id: string; graph: ThreatGraphSnapshot }>(
+        `/api/v1/streaming-intelligence/streams/${streamId}/graph`,
+        {},
+        token,
+      ),
+    topEntities: (token: ApiAuthToken, limit = 50) =>
+      request<{ entities: ThreatEntitySummary[]; count: number }>(
+        `/api/v1/streaming-intelligence/entities/top?limit=${limit}`,
+        {},
+        token,
+      ),
+    crossPlatform: (token: ApiAuthToken, username: string) =>
+      request<{ username: string; matches: CrossPlatformMatch[] }>(
+        `/api/v1/streaming-intelligence/cross-platform?username=${encodeURIComponent(username)}`,
+        {},
+        token,
+      ),
+  },
   attacks: {
     list: (token: ApiAuthToken, status?: string, streamId?: string) => {
       const params = new URLSearchParams();
@@ -1029,6 +1063,93 @@ export interface SocOverview {
     active_attacks: number;
   };
   updated_at: string;
+}
+
+export interface EngagementMetrics {
+  stream_id: string;
+  viewers_total: number;
+  viewers_suspected: number;
+  viewers_real_estimate: number;
+  engagement_percent: number;
+  active_chatters: number;
+  unique_chatters: number;
+  messages_per_minute: number;
+  viewer_to_chat_ratio: number;
+  engagement_health_score: number;
+  growth_anomaly: boolean;
+  lexical_diversity: number;
+  synthetic_engagement_score: number;
+  updated_at?: string;
+}
+
+export interface ThreatGraphNode {
+  id: string;
+  label: string;
+  threat_score: number;
+  bot_probability: number;
+  platform?: string;
+  cluster_id?: number;
+}
+
+export interface ThreatGraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+  relation: string;
+}
+
+export interface ThreatGraphSnapshot {
+  stream_id: string;
+  nodes: ThreatGraphNode[];
+  edges: ThreatGraphEdge[];
+  bot_clusters: string[][];
+  coordination_score: number;
+}
+
+export interface ThreatIntelAssessment {
+  entity_key?: string;
+  bot_probability: number;
+  attack_severity: number;
+  coordination_score: number;
+  spam_probability: number;
+  raid_likelihood: number;
+  flags: string[];
+  ai_insights: string[];
+  engagement?: EngagementMetrics;
+  graph?: ThreatGraphSnapshot;
+  cross_platform_matches?: CrossPlatformMatch[];
+}
+
+export interface ThreatEntitySummary {
+  entity_key: string;
+  username?: string;
+  platform?: string;
+  threat_score: number;
+  trust_score?: number;
+  bot_probability: number;
+  engagement_score?: number;
+  flags: string[];
+}
+
+export interface ThreatIntelOverviewResponse {
+  enabled: boolean;
+  message?: string;
+  global?: { entities: number; high_threat: number; cross_platform: number };
+  top_threats?: ThreatEntitySummary[];
+}
+
+export interface ThreatIntelStreamResponse {
+  stream_id: string;
+  cached?: { updated_at: number; assessment: Record<string, unknown> };
+  engagement?: EngagementMetrics;
+  graph_edge_count: number;
+}
+
+export interface CrossPlatformMatch {
+  canonical_username: string;
+  platforms: string[];
+  entity_keys: string[];
+  multi_platform: boolean;
 }
 
 export interface SocLiveFeedEvent {

@@ -20,6 +20,7 @@ from app.api.v1 import (
     security,
     streams,
     threat_intel,
+    streaming_intelligence,
     twitch_integration,
     kick_integration,
     youtube_integration,
@@ -115,6 +116,10 @@ async def lifespan(app: FastAPI):
         from app.integrations.twitchinsights.bot_database import get_twitch_insights_db
 
         _cfg = _gs()
+        if _cfg.mongodb_uri:
+            from app.threat_intel_engine.mongo_store import ensure_indexes
+
+            await ensure_indexes()
         if _cfg.twitch_insights_enabled:
             asyncio.create_task(get_twitch_insights_db().ensure_loaded())
         if (
@@ -231,6 +236,7 @@ app.include_router(soc.router, prefix=API_PREFIX)
 app.include_router(ai_intel.router, prefix=API_PREFIX)
 app.include_router(weka_ml.router, prefix=API_PREFIX)
 app.include_router(threat_intel.router, prefix=API_PREFIX)
+app.include_router(streaming_intelligence.router, prefix=API_PREFIX)
 app.include_router(events_pipeline.router, prefix=API_PREFIX)
 app.include_router(ai_insights.router, prefix=API_PREFIX)
 app.include_router(webhooks.router, prefix=API_PREFIX)

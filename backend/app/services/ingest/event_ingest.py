@@ -177,6 +177,26 @@ async def process_stream_event(
     if ai_assessment:
         meta["ai_intel"] = ai_assessment.to_dict()
 
+    ti_assessment = None
+    if ingest_settings.threat_intel_engine_enabled:
+        try:
+            from app.threat_intel_engine import get_threat_intel_engine
+
+            ti_meta = dict(meta)
+            ti_assessment = await get_threat_intel_engine().process_event(
+                db,
+                tenant_id=tenant_id,
+                stream_id=stream.id,
+                platform=stream.platform.value,
+                event_type=event.event_type,
+                metadata=ti_meta,
+                skip_ai=True,
+            )
+            if ti_assessment:
+                meta["threat_intel"] = ti_assessment.to_dict()
+        except Exception as exc:
+            logger.warning("threat_intel_engine_failed", error=str(exc))
+
     stream_event = StreamEvent(
         stream_id=stream.id,
         event_type=event.event_type,
@@ -348,4 +368,5 @@ async def process_stream_event(
         "is_tor": ip_data.get("is_tor", False),
         "viewbot_classification": rt_assessment.classification if rt_assessment else "clean",
         "viewbot_signals": rt_assessment.signals if rt_assessment else {},
+        "threat_intel": ti_assessment.to_dict() if ti_assessment else None,
     }

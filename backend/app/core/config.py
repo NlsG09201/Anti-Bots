@@ -150,6 +150,7 @@ class Settings(BaseSettings):
     ai_model_path: str = "data/ai_models"
     ai_retrain_interval_hours: int = 24
     mongodb_uri: str = ""
+    threat_intel_engine_enabled: bool = True
 
     twitch_insights_enabled: bool = True
     twitch_insights_cache_hours: int = 6

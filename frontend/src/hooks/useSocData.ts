@@ -74,6 +74,11 @@ export function useSocData() {
         const socPayload = d.soc as SocOverview | undefined;
         if (socPayload?.platforms) setLiveSoc(socPayload);
       }
+      if (msg.type === "threat_intel_update" && msg.data) {
+        queryClient.invalidateQueries({ queryKey: ["ti-overview"] });
+        queryClient.invalidateQueries({ queryKey: ["ti-engagement"] });
+        queryClient.invalidateQueries({ queryKey: ["ti-graph"] });
+      }
       if (
         msg.type === "stream_event" ||
         msg.type === "suspicious_event" ||
