@@ -24,6 +24,7 @@ from app.api.v1 import (
     live_intelligence,
     twitchbots_soc,
     platform_health,
+    viewer_flow,
     twitch_integration,
     kick_integration,
     youtube_integration,
@@ -175,6 +176,11 @@ async def lifespan(app: FastAPI):
             _ph.set_process_label("api")
             asyncio.create_task(_ph.start())
             logger.info("platform_health_engine_in_api")
+        if _cfg.viewer_flow_enabled:
+            from app.viewer_flow import get_viewer_flow_engine
+
+            asyncio.create_task(get_viewer_flow_engine().start())
+            logger.info("viewer_flow_engine_in_api")
         from app.workers.pipeline_consumer import start_pipeline_consumer
         from app.workers.realtime_subscriber import start_realtime_subscriber
 
@@ -274,6 +280,7 @@ app.include_router(streaming_intelligence.router, prefix=API_PREFIX)
 app.include_router(live_intelligence.router, prefix=API_PREFIX)
 app.include_router(twitchbots_soc.router, prefix=API_PREFIX)
 app.include_router(platform_health.router, prefix=API_PREFIX)
+app.include_router(viewer_flow.router, prefix=API_PREFIX)
 app.include_router(events_pipeline.router, prefix=API_PREFIX)
 app.include_router(ai_insights.router, prefix=API_PREFIX)
 app.include_router(webhooks.router, prefix=API_PREFIX)

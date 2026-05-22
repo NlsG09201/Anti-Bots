@@ -129,6 +129,16 @@ class YouTubeLiveMonitor:
                         is_live=stream.is_live,
                         latency_ms=latency_ms,
                     )
+                    from app.viewer_flow import get_viewer_flow_engine
+
+                    await get_viewer_flow_engine().record_viewer_pulse(
+                        tenant_id=str(stream.tenant_id),
+                        stream_id=self.stream_id,
+                        platform=Platform.YOUTUBE,
+                        channel_name=stream.channel_name,
+                        viewer_count=stream.viewer_count,
+                        is_live=stream.is_live,
+                    )
                     await db.commit()
             except asyncio.CancelledError:
                 raise

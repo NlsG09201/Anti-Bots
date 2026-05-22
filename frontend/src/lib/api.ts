@@ -343,6 +343,28 @@ export const api = {
         token,
       ),
   },
+  viewerFlow: {
+    overview: (token: ApiAuthToken) =>
+      request<ViewerFlowOverview>("/api/v1/viewer-flow/overview", {}, token),
+    stream: (token: ApiAuthToken, streamId: string) =>
+      request<ViewerFlowStreamSnapshot & { enabled?: boolean }>(
+        `/api/v1/viewer-flow/streams/${streamId}`,
+        {},
+        token,
+      ),
+    scan: (token: ApiAuthToken, streamId: string) =>
+      request<{ ok: boolean; sync: Record<string, unknown>; flow: unknown }>(
+        `/api/v1/viewer-flow/scan/${streamId}`,
+        { method: "POST" },
+        token,
+      ),
+    crossPlatform: (token: ApiAuthToken, username: string) =>
+      request<{ username: string; cross_platform_hits: number; coordinated_risk: boolean }>(
+        `/api/v1/viewer-flow/cross-platform?username=${encodeURIComponent(username)}`,
+        {},
+        token,
+      ),
+  },
   platformHealth: {
     overview: (token: ApiAuthToken) =>
       request<PlatformHealthOverview>("/api/v1/platform-health/overview", {}, token),
@@ -1179,6 +1201,73 @@ export interface SocOverview {
     active_attacks: number;
   };
   updated_at: string;
+}
+
+export interface ViewerFlowMetrics {
+  stream_id: string;
+  platform: "kick" | "youtube" | "tiktok";
+  channel_name?: string;
+  is_live?: boolean;
+  viewers_current?: number;
+  viewers_per_minute?: number;
+  viewers_new_estimated?: number;
+  viewers_lost_estimated?: number;
+  messages_per_minute?: number;
+  follows_per_minute?: number;
+  engagement_ratio?: number;
+  growth_velocity?: number;
+  suspicious_growth_score?: number;
+  bot_probability?: number;
+  trust_score?: number;
+  threat_score?: number;
+  raid_likelihood?: number;
+  suspicious_score?: number;
+  active_chatters?: number;
+  silent_viewers_estimated?: number;
+  ai_flags?: string[];
+  updated_at?: string;
+}
+
+export interface ViewerFlowTimelinePoint {
+  ts: string;
+  kind: string;
+  label: string;
+  value?: number;
+  username?: string | null;
+  severity?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SuspiciousViewerFlowRow {
+  username: string;
+  platform_user_id?: string | null;
+  platform: string;
+  stream_id: string;
+  bot_probability?: number;
+  suspicious_score: number;
+  trust_score?: number;
+  reasons: string[];
+  message_count?: number;
+  is_silent?: boolean;
+  cross_platform_hits?: number;
+}
+
+export interface ViewerFlowStreamSnapshot {
+  metrics: ViewerFlowMetrics;
+  timeline: ViewerFlowTimelinePoint[];
+  suspicious_viewers: SuspiciousViewerFlowRow[];
+  viewer_history: { t?: string; count?: number }[];
+}
+
+export interface ViewerFlowOverview {
+  enabled: boolean;
+  message?: string;
+  tenant_id?: string;
+  streams?: ViewerFlowMetrics[];
+  global_threat_score?: number;
+  active_non_twitch?: number;
+  total_suspicious?: number;
+  attack_feed?: ViewerFlowTimelinePoint[];
 }
 
 export interface PlatformHealthSystem {

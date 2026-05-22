@@ -56,6 +56,11 @@ async def run_worker() -> None:
         he.set_process_label("worker")
         await he.start()
         logger.info("platform_health_engine_in_worker")
+    if settings.viewer_flow_enabled:
+        from app.viewer_flow import get_viewer_flow_engine
+
+        await get_viewer_flow_engine().start()
+        logger.info("viewer_flow_engine_in_worker")
 
     if settings.live_intel_enabled:
         from app.live_intel import get_live_intel_engine
@@ -70,6 +75,10 @@ async def run_worker() -> None:
         from app.services.platform_health.engine import get_platform_health_engine
 
         await get_platform_health_engine().stop()
+    if settings.viewer_flow_enabled:
+        from app.viewer_flow import get_viewer_flow_engine
+
+        await get_viewer_flow_engine().stop()
     await orch.stop()
     if settings.live_intel_enabled:
         from app.live_intel import get_live_intel_engine

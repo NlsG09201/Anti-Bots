@@ -83,6 +83,17 @@ async def emit_platform_event(
         event_type,
         username=platform_username,
     )
+    from app.viewer_flow import get_viewer_flow_engine
+
+    await get_viewer_flow_engine().record_platform_event(
+        tenant_id=str(stream.tenant_id),
+        stream_id=str(stream.id),
+        platform=stream.platform,
+        channel_name=stream.channel_name,
+        event_type=event_type,
+        username=platform_username,
+        platform_user_id=platform_user_id,
+    )
     meta = dict(metadata or {})
     meta["platform"] = stream.platform.value
     meta["channel"] = stream.channel_name

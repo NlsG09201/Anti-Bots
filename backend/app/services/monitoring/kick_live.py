@@ -94,6 +94,16 @@ class KickLiveMonitor:
                         is_live=live.is_live,
                         latency_ms=latency_ms,
                     )
+                    from app.viewer_flow import get_viewer_flow_engine
+
+                    await get_viewer_flow_engine().record_viewer_pulse(
+                        tenant_id=str(stream.tenant_id),
+                        stream_id=self.stream_id,
+                        platform=Platform.KICK,
+                        channel_name=stream.channel_name,
+                        viewer_count=live.viewer_count,
+                        is_live=live.is_live,
+                    )
                     if live.is_live and live.viewer_count - prev >= 80:
                         await emit_platform_event(
                             db,

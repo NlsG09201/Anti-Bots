@@ -25,10 +25,12 @@ async def ensure_all_mongo_indexes_safe() -> bool:
         from app.integrations.twitchbots_info.mongo_store import (
             ensure_twitchbots_info_indexes,
         )
+        from app.viewer_flow.mongo_store import ensure_viewer_flow_indexes
 
         await ensure_indexes()
         await ensure_live_intel_indexes()
         await ensure_twitchbots_info_indexes()
+        await ensure_viewer_flow_indexes()
         logger.info("mongodb_startup_indexes_ok")
         return True
     except Exception as exc:
