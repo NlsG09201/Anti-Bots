@@ -48,3 +48,15 @@ def fingerprint_collision_key(stream_id: UUID | str, fp_hash: str) -> str:
 
 def platform_sync_lock(platform: str, stream_id: UUID | str) -> str:
     return f"lock:sync:{platform}:{stream_id}"
+
+
+def live_discovery_key(platform: str, channel: str) -> str:
+    return f"discovery:live:{platform}:{channel.lower()}"
+
+
+def live_metrics_key(stream_id: UUID | str) -> str:
+    return f"metrics:live:{stream_id}"
+
+
+def live_heartbeat_key(stream_id: UUID | str) -> str:
+    return f"hb:live:{stream_id}"

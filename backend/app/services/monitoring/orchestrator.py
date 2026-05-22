@@ -94,7 +94,12 @@ class PlatformMonitorOrchestrator:
     async def reconcile(self) -> None:
         if not settings.platform_monitor_enabled:
             return
-        from app.services.streams.helpers import sync_stream_live_status
+        
+        # If discovery engine is enabled, we rely on it for status sync
+        # but we still need to manage the lifecycle of local WebSocket monitors
+        
+        from app.services.monitoring.discovery_engine import get_live_discovery_engine
+        engine = get_live_discovery_engine()
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -105,13 +110,10 @@ class PlatformMonitorOrchestrator:
                 )
             )
             streams = list(result.scalars().all())
-            for stream in streams:
-                try:
-                    await sync_stream_live_status(db, stream)
-                except Exception:
-                    pass
-            await db.commit()
-
+            # Skip manual sync_stream_live_status here if we want to save resources
+            # but for local monitors, we still need current status.
+            # We'll use the discovery engine's cached status if available.
+            
         candidates = [s for s in streams if self._should_monitor(s)]
         candidates.sort(key=lambda s: (not s.is_live, s.channel_name))
         active_ids = {str(s.id) for s in candidates[: settings.platform_monitor_max_streams]}

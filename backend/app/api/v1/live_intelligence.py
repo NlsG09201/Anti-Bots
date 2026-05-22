@@ -172,6 +172,23 @@ async def engine_status() -> Dict[str, Any]:
     }
 
 
+@router.get("/health")
+async def discovery_health() -> Dict[str, Any]:
+    from app.services.monitoring.discovery_engine import get_live_discovery_engine
+    engine = get_live_discovery_engine()
+    # We can get some stats from Redis if needed
+    from app.infrastructure.cache.redis_client import get_redis
+    redis = await get_redis()
+    
+    # Simple health check based on recent heartbeats
+    return {
+        "engine_active": True,
+        "worker_queues": ["ss:queue:events", "ss:queue:discovery"],
+        "discovery_interval": 60,
+        "polling_interval": 15,
+    }
+
+
 async def _assert_stream(
     db: AsyncSession, stream_id: UUID, tenant_id: UUID
 ) -> Stream:

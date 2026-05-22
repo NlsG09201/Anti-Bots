@@ -37,6 +37,13 @@ async def process_pipeline_event_job(
 
 async def startup(ctx: dict) -> None:
     logger.info("arq_worker_startup", queues=list(QUEUE_BY_CATEGORY.values()))
+    # Schedule discovery batch every minute
+    from arq import create_pool
+    from arq.connections import RedisSettings
+    redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
+    pool = await create_pool(redis_settings)
+    await pool.enqueue_job("discovery_batch_job", _queue_name=UNIFIED_QUEUE)
+    await pool.close()
 
 
 async def shutdown(ctx: dict) -> None:
@@ -119,6 +126,86 @@ async def weka_j48_train_job(
     return result
 
 
+async def discovery_batch_job(ctx: dict) -> Dict[str, Any]:
+    from app.services.monitoring.discovery_engine import get_live_discovery_engine
+
+    count = await get_live_discovery_engine().enqueue_discovery_batch()
+    
+    # Reschedule in 60 seconds
+    from arq import create_pool
+    from arq.connections import RedisSettings
+    redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
+    pool = await create_pool(redis_settings)
+    await pool.enqueue_job(
+        "discovery_batch_job",
+        _queue_name=UNIFIED_QUEUE,
+        _defer_by=60
+    )
+    # Also trigger a health check
+    await pool.enqueue_job("health_check_job", _queue_name=UNIFIED_QUEUE)
+    await pool.close()
+    
+    return {"enqueued": count}
+
+
+async def check_stream_status_job(ctx: dict, stream_id: str) -> Dict[str, Any]:
+    from app.services.monitoring.discovery_engine import get_live_discovery_engine
+
+    return await get_live_discovery_engine().check_stream_status(stream_id)
+
+
+async def poll_stream_metrics_job(ctx: dict, stream_id: str) -> Dict[str, Any]:
+    from app.services.monitoring.discovery_engine import get_live_discovery_engine
+
+    result = await get_live_discovery_engine().poll_metrics(stream_id)
+    
+    # If still live, reschedule in 15 seconds
+    if result.get("viewers") is not None:
+        from arq import create_pool
+        from arq.connections import RedisSettings
+        redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
+        pool = await create_pool(redis_settings)
+        await pool.enqueue_job(
+            "poll_stream_metrics_job",
+            stream_id,
+            _queue_name=UNIFIED_QUEUE,
+            _defer_by=15
+        )
+        await pool.close()
+    
+    return result
+
+
+async def validate_stream_ai_job(ctx: dict, stream_id: str) -> Dict[str, Any]:
+    from app.ai_intel.orchestrator import get_ai_orchestrator
+    from app.infrastructure.database.session import AsyncSessionLocal
+    from app.infrastructure.database.models import Stream
+    from uuid import UUID
+
+    async with AsyncSessionLocal() as db:
+        stream = await db.get(Stream, UUID(stream_id))
+        if not stream:
+            return {"error": "stream_not_found"}
+
+        ai = get_ai_orchestrator()
+        # Simple AI validation logic: check if metrics are frozen or suspicious
+        is_valid = True
+        reason = "metrics_look_normal"
+
+        # Example check: if viewers > 0 but no chat activity (simplified)
+        if stream.viewer_count > 100 and not stream.is_live:
+            is_valid = False
+            reason = "high_viewers_but_offline_status"
+
+        return {"stream_id": stream_id, "is_valid": is_valid, "reason": reason}
+
+
+async def health_check_job(ctx: dict) -> Dict[str, Any]:
+    from app.services.monitoring.discovery_engine import get_live_discovery_engine
+
+    return await get_live_discovery_engine().run_health_check()
+
+
 class WorkerSettings:
     """Configuración arq — una función, múltiples colas vía _queue_name al encolar."""
 
@@ -128,6 +215,11 @@ class WorkerSettings:
         weka_j48_train_job,
         twitchbots_verify_batch_job,
         platform_health_audit_job,
+        check_stream_status_job,
+        poll_stream_metrics_job,
+        validate_stream_ai_job,
+        discovery_batch_job,
+        health_check_job,
     ]
     on_startup = startup
     on_shutdown = shutdown

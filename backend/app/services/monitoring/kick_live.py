@@ -65,6 +65,8 @@ class KickLiveMonitor:
         adapter = get_platform_adapter(Platform.KICK)
         while self._running:
             try:
+                import time
+                t0 = time.perf_counter()
                 async with AsyncSessionLocal() as db:
                     result = await db.execute(
                         select(Stream).where(Stream.id == UUID(self.stream_id))
@@ -89,6 +91,13 @@ class KickLiveMonitor:
                     meta["last_platform_poll"] = datetime.now(timezone.utc).isoformat()
                     stream.settings = meta
                     latency_ms = (time.perf_counter() - t0) * 1000.0
+
+                    # Update Redis heartbeat
+                    from app.infrastructure.cache.redis_client import get_redis
+                    from app.infrastructure.cache.redis_schema import live_heartbeat_key
+                    redis = await get_redis()
+                    await redis.set(live_heartbeat_key(self.stream_id), "1", ex=45)
+
                     self._health.record_poll(
                         viewer_count=live.viewer_count,
                         is_live=live.is_live,
