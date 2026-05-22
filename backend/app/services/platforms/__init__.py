@@ -1,4 +1,4 @@
-"""Multi-platform adapters (Twitch, Kick, YouTube)."""
+"""Multi-platform adapters (Twitch, Kick, YouTube, TikTok)."""
 
 from app.services.platforms.base import PlatformAdapter, ViewerSnapshot
 from app.services.platforms.registry import get_platform_adapter

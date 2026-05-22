@@ -8,6 +8,8 @@ import { SuspiciousViewers } from "@/components/soc/SuspiciousViewers";
 import { ThreatTimeline } from "@/components/soc/ThreatTimeline";
 import { AlertsPanel } from "@/components/soc/AlertsPanel";
 import { AdminPanel } from "@/components/soc/AdminPanel";
+import { LiveEventFeed } from "@/components/soc/LiveEventFeed";
+import { PlatformSocPanel } from "@/components/soc/PlatformSocPanel";
 import { Badge } from "@/components/ui/badge";
 import { useSocData } from "@/hooks/useSocData";
 import { cn } from "@/lib/utils";
@@ -25,6 +27,9 @@ export default function SocDashboardPage() {
     mapThreats,
     threatTimeline,
     connected,
+    displaySoc,
+    socFeedEvents,
+    liveEvents,
   } = useSocData();
 
   return (
@@ -41,8 +46,8 @@ export default function SocDashboardPage() {
               </h1>
             </div>
             <p className="text-cyber-muted text-sm max-w-xl">
-              Monitoreo en tiempo real: ataques, viewers sospechosos, threat intel y alertas.
-              WebSocket + graficos actualizados cada 10-15s.
+              Monitoreo SOC en tiempo real: Kick, YouTube Live y TikTok Live. Deteccion de bots,
+              raids, followbotting y spam con WebSocket y analisis IA.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -65,6 +70,8 @@ export default function SocDashboardPage() {
 
       <MetricsGrid stats={displayStats} security={security} />
 
+      <PlatformSocPanel soc={displaySoc} />
+
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         <div className="xl:col-span-8 space-y-6">
           <div className="rounded-xl border border-cyber-border/80 bg-cyber-surface/40 p-4 backdrop-blur-sm">
@@ -86,7 +93,8 @@ export default function SocDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-6">
+          <LiveEventFeed events={socFeedEvents} liveEvents={liveEvents} />
           <AlertsPanel alerts={displayAlerts} />
         </div>
         <AdminPanel security={security} />

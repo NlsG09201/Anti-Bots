@@ -343,6 +343,34 @@ export const api = {
         token,
       ),
   },
+  soc: {
+    overview: (token: ApiAuthToken) =>
+      request<{ stats: DashboardStats; soc: SocOverview }>(
+        "/api/v1/soc/overview",
+        {},
+        token,
+      ),
+    feed: (token: ApiAuthToken, limit = 50) =>
+      request<{ events: SocLiveFeedEvent[] }>(
+        `/api/v1/soc/feed?limit=${limit}`,
+        {},
+        token,
+      ),
+    refresh: (token: ApiAuthToken) =>
+      request<{ ok: boolean; soc: SocOverview }>(
+        "/api/v1/soc/refresh",
+        { method: "POST" },
+        token,
+      ),
+    monitorsStatus: (token: ApiAuthToken) =>
+      request<{
+        enabled: boolean;
+        running: boolean;
+        active_monitors: string[];
+        count: number;
+        max_streams: number;
+      }>("/api/v1/soc/monitors/status", {}, token),
+  },
   attacks: {
     list: (token: ApiAuthToken, status?: string, streamId?: string) => {
       const params = new URLSearchParams();
@@ -423,10 +451,14 @@ export const api = {
   streams: {
     list: (token: ApiAuthToken, sync = false) =>
       request<Stream[]>(`/api/v1/streams${sync ? "?sync=true" : ""}`, {}, token),
-    watch: (token: ApiAuthToken, login: string) =>
+    watch: (
+      token: ApiAuthToken,
+      login: string,
+      platform: "twitch" | "kick" | "youtube" | "tiktok" = "twitch",
+    ) =>
       request<Stream>("/api/v1/streams/watch", {
         method: "POST",
-        body: JSON.stringify({ login, platform: "twitch" }),
+        body: JSON.stringify({ login, platform }),
       }, token),
     unwatch: (token: ApiAuthToken, streamId: string) =>
       request<{ status: string }>(`/api/v1/streams/watch/${streamId}`, { method: "DELETE" }, token),
@@ -928,6 +960,37 @@ export interface DashboardCharts {
   timeline: { time: string; attacks: number; mitigated: number }[];
   heatmap: { hour: string; risk: number; events: number }[];
   updated_at: string;
+}
+
+export interface SocPlatformMetrics {
+  live_streams: number;
+  viewers: number;
+  suspected: number;
+  events_1h: number;
+  active_attacks: number;
+}
+
+export interface SocOverview {
+  platforms: Record<string, SocPlatformMetrics>;
+  threat_score: number;
+  threat_level: "low" | "medium" | "high" | "critical";
+  global: {
+    live_viewers: number;
+    suspected_bots: number;
+    active_attacks: number;
+  };
+  updated_at: string;
+}
+
+export interface SocLiveFeedEvent {
+  id: string;
+  platform: string;
+  channel_name: string;
+  event_type: string;
+  platform_username?: string;
+  risk_score: number;
+  created_at: string;
+  is_proxy?: boolean;
 }
 
 export interface AIInsight {

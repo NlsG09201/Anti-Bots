@@ -33,6 +33,9 @@ EVENT_TYPE_TO_CATEGORY: Dict[str, EventCategory] = {
     "widget_ping": EventCategory.CONNECTION,
     "stream.online": EventCategory.CONNECTION,
     "stream.offline": EventCategory.CONNECTION,
+    "gift": EventCategory.MESSAGE,
+    "viewer_spike": EventCategory.SUSPICIOUS,
+    "raid": EventCategory.SUSPICIOUS,
     "suspicious": EventCategory.SUSPICIOUS,
     "security_flag": EventCategory.SUSPICIOUS,
 }

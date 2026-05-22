@@ -36,6 +36,7 @@ class Platform(str, enum.Enum):
     TWITCH = "twitch"
     KICK = "kick"
     YOUTUBE = "youtube"
+    TIKTOK = "tiktok"
 
 
 class AttackType(str, enum.Enum):

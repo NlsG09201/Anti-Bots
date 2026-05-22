@@ -65,6 +65,24 @@ startup_checks_passed
 
 ---
 
+## SOC multi-plataforma (Kick / YouTube / TikTok)
+
+Variables recomendadas en Render:
+
+| Variable | Uso |
+|----------|-----|
+| `REDIS_URL` | Upstash `rediss://` — pub/sub WebSocket + cola eventos |
+| `YOUTUBE_API_KEY` | Live chat + viewers YouTube Data API v3 |
+| `PLATFORM_MONITOR_ENABLED` | `true` — monitores en el proceso API (max 12 streams) |
+| `PLATFORM_MONITOR_MAX_STREAMS` | Límite RAM/CPU en free tier (default `12`) |
+| `TIKTOK_SESSION_ID` | Opcional si TikTok bloquea conexiones |
+
+En el dashboard: **Channels** → plataforma Kick/YouTube/TikTok → slug del canal → **Escanear** cuando esté LIVE.
+
+Endpoints SOC: `GET /api/v1/soc/overview`, `GET /api/v1/soc/feed`.
+
+---
+
 ## Paso 4 — Probar API
 
 ```powershell

@@ -239,8 +239,11 @@ async def process_stream_event(
         attack_type_map = {
             "viewer_join": AttackType.VIEWBOT,
             "viewer_pulse": AttackType.VIEWBOT,
+            "viewer_spike": AttackType.VIEWBOT,
             "follow": AttackType.FOLLOWBOT,
             "chat_message": AttackType.SPAM,
+            "gift": AttackType.FAKE_ENGAGEMENT,
+            "raid": AttackType.CHAT_RAID,
         }
         attack_type = attack_type_map.get(event.event_type, AttackType.COORDINATED)
         evidence: Dict[str, Any] = {

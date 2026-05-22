@@ -15,6 +15,7 @@ function ChannelsContent() {
   const token = accessToken!;
   const queryClient = useQueryClient();
   const [login, setLogin] = useState("");
+  const [platform, setPlatform] = useState<"twitch" | "kick" | "youtube" | "tiktok">("kick");
   const [message, setMessage] = useState("");
   const [scanningId, setScanningId] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState("");
@@ -38,7 +39,7 @@ function ChannelsContent() {
   });
 
   const watchMutation = useMutation({
-    mutationFn: () => api.streams.watch(token, login.trim()),
+    mutationFn: () => api.streams.watch(token, login.trim(), platform),
     onSuccess: () => {
       setMessage(`Canal @${login} en monitoreo. Abre Viewers y pulsa Escanear cuando este en vivo.`);
       setLogin("");
@@ -108,16 +109,38 @@ function ChannelsContent() {
       <div className="cyber-card">
         <h2 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
           <Plus size={16} className="text-cyber-accent" />
-          Monitorear canal de Twitch
+          Monitorear canal en vivo
         </h2>
         <p className="text-xs text-cyber-muted mb-4">
-          Cuando el canal este LIVE, el servidor escanea el chat (~30s) y detecta picos de viewers.
-          Bloqueo en canales ajenos = lista negra local; en tu canal OAuth tambien aplica en Twitch.
+          Kick, YouTube Live y TikTok Live usan monitores en tiempo real (WebSocket/polling).
+          Twitch mantiene IRC + Helix. El SOC detecta bots, raids y spam automaticamente.
         </p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {(["kick", "youtube", "tiktok", "twitch"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPlatform(p)}
+              className={`px-3 py-1.5 rounded-lg text-xs uppercase tracking-wide border ${
+                platform === p
+                  ? "border-cyber-accent/60 bg-cyber-accent/15 text-cyber-accent"
+                  : "border-cyber-border text-cyber-muted"
+              }`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-wrap gap-2">
           <input
             type="text"
-            placeholder="login del canal, ej. ibai"
+            placeholder={
+              platform === "youtube"
+                ? "nombre del canal YouTube"
+                : platform === "tiktok"
+                  ? "usuario TikTok, ej. usuario"
+                  : "slug del canal, ej. xqc"
+            }
             value={login}
             onChange={(e) => setLogin(e.target.value)}
             className="flex-1 min-w-[200px] bg-cyber-bg border border-cyber-border rounded-lg px-3 py-2 text-sm text-white"

@@ -24,7 +24,7 @@ async def list_platform_capabilities(_user: AnalystUser):
     from app.infrastructure.database.models import Platform
 
     items = []
-    for platform in (Platform.TWITCH, Platform.KICK, Platform.YOUTUBE):
+    for platform in (Platform.TWITCH, Platform.KICK, Platform.YOUTUBE, Platform.TIKTOK):
         adapter = get_platform_adapter(platform)
         items.append({
             "platform": platform.value,

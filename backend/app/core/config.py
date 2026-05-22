@@ -105,6 +105,15 @@ class Settings(BaseSettings):
     youtube_redirect_uri: str = ""
     youtube_api_key: str = ""
 
+    tiktok_session_id: str = ""
+
+    platform_monitor_enabled: bool = True
+    platform_monitor_poll_seconds: int = 30
+    platform_monitor_max_streams: int = 12
+    platform_monitor_reconnect_max_seconds: int = 120
+    kick_pusher_app_key: str = "32cbd69e8b950bf76579"
+    kick_pusher_cluster: str = "us2"
+
     discord_webhook_url: str = ""
     cloudflare_api_token: str = ""
     cloudflare_zone_id: str = ""

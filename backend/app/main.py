@@ -14,6 +14,7 @@ from app.api.v1 import (
     detection,
     ai_intel,
     enterprise,
+    soc,
     events_pipeline,
     mfa,
     security,
@@ -69,13 +70,25 @@ async def _background_channel_monitor() -> None:
                 result = await db.execute(select(Stream))
                 streams = [
                     s for s in result.scalars().all()
-                    if s.is_live and (stream_monitor_mode(s) or s.oauth_token_encrypted)
+                    if s.is_live
+                    and (
+                        stream_monitor_mode(s)
+                        or s.oauth_token_encrypted
+                        or s.platform.value in ("kick", "youtube", "tiktok")
+                    )
                 ]
                 if streams:
                     stream = streams[idx % len(streams)]
                     idx += 1
                     monitor = ChannelMonitorService(db)
-                    if idx % scan_every == 0:
+                    if stream.platform.value in ("kick", "youtube", "tiktok"):
+                        from app.services.platforms.sync_service import PlatformSyncService
+                        from app.services.streams.helpers import sync_stream_live_status
+
+                        stream = await sync_stream_live_status(db, stream)
+                        if stream.is_live:
+                            await PlatformSyncService(db).sync_viewers(stream)
+                    elif idx % scan_every == 0:
                         await monitor.run_cycle(stream, stream.tenant_id, irc_duration=45.0)
                     else:
                         await monitor.run_quick_sync(stream, stream.tenant_id)
@@ -93,6 +106,9 @@ async def lifespan(app: FastAPI):
     monitor_task = None
     try:
         await init_database(engine)
+        from app.infrastructure.database.migrations import run_startup_migrations
+
+        await run_startup_migrations(engine)
         from app.core.config import get_settings as _gs
         from app.integrations.twitchinsights.bot_database import get_twitch_insights_db
 
@@ -115,6 +131,15 @@ async def lifespan(app: FastAPI):
                 ),
             )
         monitor_task = asyncio.create_task(_background_channel_monitor())
+        platform_monitor_task = None
+        from app.core.config import get_settings as _gs2
+
+        if _gs2().platform_monitor_enabled:
+            from app.services.monitoring.orchestrator import get_platform_monitor_orchestrator
+
+            platform_monitor_task = asyncio.create_task(
+                get_platform_monitor_orchestrator().start()
+            )
         from app.workers.pipeline_consumer import start_pipeline_consumer
         from app.workers.realtime_subscriber import start_realtime_subscriber
 
@@ -134,6 +159,9 @@ async def lifespan(app: FastAPI):
             await monitor_task
         except asyncio.CancelledError:
             pass
+    from app.services.monitoring.orchestrator import get_platform_monitor_orchestrator
+
+    await get_platform_monitor_orchestrator().stop()
     from app.workers.pipeline_consumer import stop_pipeline_consumer
     from app.workers.realtime_subscriber import stop_realtime_subscriber
 
@@ -187,6 +215,7 @@ app.include_router(attacks.router, prefix=API_PREFIX)
 app.include_router(detection.router, prefix=API_PREFIX)
 app.include_router(security.router, prefix=API_PREFIX)
 app.include_router(enterprise.router, prefix=API_PREFIX)
+app.include_router(soc.router, prefix=API_PREFIX)
 app.include_router(ai_intel.router, prefix=API_PREFIX)
 app.include_router(weka_ml.router, prefix=API_PREFIX)
 app.include_router(threat_intel.router, prefix=API_PREFIX)

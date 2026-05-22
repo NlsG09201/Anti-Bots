@@ -7,6 +7,7 @@ from app.core.config import get_settings
 from app.api.websocket.manager import ws_manager
 from app.events.realtime import publish_realtime
 from app.services.dashboard.metrics import compute_dashboard_charts, compute_dashboard_stats
+from app.services.dashboard.soc_metrics import compute_soc_overview
 
 _notify_settings = get_settings()
 
@@ -22,7 +23,8 @@ async def push_dashboard_realtime(
     tid = str(tenant_id)
     stats = await compute_dashboard_stats(db, tenant_id, stream_ids)
     charts = await compute_dashboard_charts(db, stream_ids or [], hours=24)
-    payload = {**stats, "charts": charts}
+    soc = await compute_soc_overview(db, tenant_id, stream_ids or [])
+    payload = {**stats, "charts": charts, "soc": soc}
 
     if _notify_settings.event_realtime_pubsub_enabled:
         await publish_realtime(tid, "stats_update", payload)

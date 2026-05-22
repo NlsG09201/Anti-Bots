@@ -23,7 +23,7 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-    CREATE TYPE platform AS ENUM ('twitch', 'kick', 'youtube');
+    CREATE TYPE platform AS ENUM ('twitch', 'kick', 'youtube', 'tiktok');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 

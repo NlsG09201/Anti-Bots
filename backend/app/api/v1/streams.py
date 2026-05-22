@@ -91,9 +91,56 @@ async def watch_channel(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Monitoreo de otro canal (solo lectura en Twitch; ideal para pruebas reales)."""
+    """Monitoreo de canal externo (Twitch, Kick, YouTube Live, TikTok Live)."""
+    login = data.login.strip().lstrip("@")
+    if not login:
+        raise ValidationError("login requerido")
+
     if data.platform != Platform.TWITCH:
-        raise ValidationError("Solo Twitch está soportado para monitoreo externo")
+        slug = login.lower()
+        result = await db.execute(
+            select(Stream).where(
+                Stream.tenant_id == current_user.tenant_id,
+                Stream.platform == data.platform,
+                Stream.channel_name.ilike(slug),
+            )
+        )
+        stream = result.scalar_one_or_none()
+        meta_base = {
+            "monitor_mode": True,
+            "soc_monitor": True,
+            "auto_mitigate": False,
+            "login": slug,
+            "is_owned": False,
+            "force_monitor": True,
+        }
+        if stream:
+            meta = dict(stream.settings or {})
+            meta.update(meta_base)
+            stream.settings = meta
+            stream.channel_name = login
+        else:
+            stream = Stream(
+                tenant_id=current_user.tenant_id,
+                owner_id=current_user.id,
+                platform=data.platform,
+                external_id=slug,
+                channel_name=login,
+                settings=meta_base,
+            )
+            db.add(stream)
+        await db.flush()
+        stream = await sync_stream_live_status(db, stream)
+        if data.platform == Platform.KICK:
+            from app.services.monitoring.kick_live import resolve_kick_chatroom
+
+            cid = await resolve_kick_chatroom(slug)
+            if cid:
+                meta = dict(stream.settings or {})
+                meta["kick_chatroom_id"] = cid
+                stream.settings = meta
+                await db.flush()
+        return _as_stream_response(stream)
 
     helix = TwitchHelixClient()
     if not helix.configured:
@@ -229,7 +276,7 @@ async def quick_sync_stream(
     from app.infrastructure.database.models import Platform
     from app.services.platforms.sync_service import PlatformSyncService
 
-    if stream.platform in (Platform.KICK, Platform.YOUTUBE):
+    if stream.platform in (Platform.KICK, Platform.YOUTUBE, Platform.TIKTOK):
         summary = await PlatformSyncService(db).sync_viewers(stream)
     else:
         summary = await ChannelMonitorService(db).run_quick_sync(
@@ -244,13 +291,38 @@ async def run_channel_monitor(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Escaneo en vivo: chat IRC o Helix chatters + deteccion de ataque."""
+    """Escaneo en vivo: Twitch IRC/Helix o sync multi-plataforma + deteccion."""
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
     if not stream.is_live:
         stream = await sync_stream_live_status(db, stream)
     if not stream.is_live:
         return {"status": "offline", "message": "El canal no esta en vivo"}
     try:
+        if stream.platform in (Platform.KICK, Platform.YOUTUBE, Platform.TIKTOK):
+            from app.services.platforms.sync_service import PlatformSyncService
+            from app.services.detection.anomaly_intelligence import AnomalyIntelligenceService
+
+            sync_summary = await PlatformSyncService(db).sync_viewers(stream)
+            anomaly = AnomalyIntelligenceService()
+            assessment = await anomaly.assess_window(
+                str(stream.id),
+                joins_per_minute=float(sync_summary.get("chatters_synced", 0)),
+                unique_ip_ratio=0.5,
+                proxy_ratio=0.0,
+                fingerprint_collision_ratio=0.0,
+                chat_participation_ratio=0.6,
+            )
+            summary = {
+                "status": "ok",
+                "sync_mode": "platform_live",
+                **sync_summary,
+                "anomaly": assessment.to_dict(),
+            }
+            tenant_streams = await get_tenant_stream_ids(db, current_user.tenant_id)
+            await push_dashboard_realtime(db, current_user.tenant_id, tenant_streams)
+            await db.commit()
+            return summary
+
         irc_seconds = min(45.0, float(settings.viewer_load_irc_seconds))
         summary = await ChannelMonitorService(db).run_cycle(
             stream,

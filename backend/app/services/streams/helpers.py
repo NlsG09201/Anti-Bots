@@ -35,6 +35,30 @@ def stream_to_response_dict(stream: Stream) -> Dict[str, Any]:
 
 
 async def sync_stream_live_status(db: AsyncSession, stream: Stream) -> Stream:
+    if stream.platform.value in ("kick", "youtube", "tiktok"):
+        from app.services.platforms.registry import get_platform_adapter
+
+        adapter = get_platform_adapter(stream.platform)
+        try:
+            live = await adapter.fetch_live_status(stream)
+        except Exception:
+            return stream
+        prev_count = stream.viewer_count
+        stream.is_live = live.is_live
+        stream.viewer_count = live.viewer_count
+        if live.external_live_id:
+            stream.external_id = live.external_live_id
+        meta = dict(stream.settings or {})
+        meta["last_sync_title"] = live.title
+        if live.is_live and live.viewer_count - prev_count >= 50:
+            meta["viewer_spike"] = {
+                "from": prev_count,
+                "to": live.viewer_count,
+            }
+        stream.settings = meta
+        await db.flush()
+        return stream
+
     if stream.platform.value != "twitch":
         return stream
     client = TwitchHelixClient()

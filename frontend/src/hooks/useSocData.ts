@@ -8,6 +8,8 @@ import {
   type Attack,
   type DashboardCharts,
   type DashboardStats,
+  type SocOverview,
+  type SocLiveFeedEvent,
   type SecurityDashboard,
   type SuspiciousIP,
 } from "@/lib/api";
@@ -42,8 +44,9 @@ export function useSocData() {
   const [liveCharts, setLiveCharts] = useState<DashboardCharts | null>(null);
   const [liveAlerts, setLiveAlerts] = useState<Alert[]>([]);
   const [liveEvents, setLiveEvents] = useState<
-    { time: string; label: string; risk: number }[]
+    { time: string; label: string; risk: number; platform?: string }[]
   >([]);
+  const [liveSoc, setLiveSoc] = useState<SocOverview | null>(null);
 
   const onWsMessage = useCallback(
     (msg: { type: string; data?: Record<string, unknown> }) => {
@@ -68,8 +71,14 @@ export function useSocData() {
           mitigations_applied: Number(d.mitigations_applied ?? 0),
         });
         if (chartsPayload?.timeline) setLiveCharts(chartsPayload);
+        const socPayload = d.soc as SocOverview | undefined;
+        if (socPayload?.platforms) setLiveSoc(socPayload);
       }
-      if (msg.type === "stream_event" || msg.type === "suspicious_event") {
+      if (
+        msg.type === "stream_event" ||
+        msg.type === "suspicious_event" ||
+        msg.type === "live_feed"
+      ) {
         const d = msg.data || {};
         setLiveEvents((prev) =>
           [
@@ -77,6 +86,7 @@ export function useSocData() {
               time: new Date().toLocaleTimeString(),
               label: String(d.event_type || msg.type),
               risk: Number(d.risk_score ?? 0),
+              platform: d.platform ? String(d.platform) : undefined,
             },
             ...prev,
           ].slice(0, 40),
@@ -132,6 +142,20 @@ export function useSocData() {
     queryKey: ["streams"],
     queryFn: () => api.streams.list(accessToken!),
     enabled: !!accessToken,
+  });
+
+  const { data: socOverview } = useQuery({
+    queryKey: ["soc-overview"],
+    queryFn: () => api.soc.overview(accessToken!),
+    enabled: !!accessToken,
+    refetchInterval: 15000,
+  });
+
+  const { data: socFeed } = useQuery({
+    queryKey: ["soc-feed"],
+    queryFn: () => api.soc.feed(accessToken!, 50),
+    enabled: !!accessToken,
+    refetchInterval: 12000,
   });
 
   const liveStream = useMemo(
@@ -237,6 +261,9 @@ export function useSocData() {
     }));
   }, [security]);
 
+  const displaySoc = liveSoc ?? socOverview?.soc ?? null;
+  const socFeedEvents: SocLiveFeedEvent[] = socFeed?.events ?? [];
+
   return {
     displayStats,
     timeline,
@@ -252,6 +279,8 @@ export function useSocData() {
     mapThreats,
     threatTimeline,
     liveEvents,
+    displaySoc,
+    socFeedEvents,
     connected,
   };
 }
