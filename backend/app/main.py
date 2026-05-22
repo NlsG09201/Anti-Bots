@@ -22,6 +22,7 @@ from app.api.v1 import (
     threat_intel,
     streaming_intelligence,
     live_intelligence,
+    twitchbots_soc,
     twitch_integration,
     kick_integration,
     youtube_integration,
@@ -120,9 +121,23 @@ async def lifespan(app: FastAPI):
         if _cfg.mongodb_uri:
             from app.threat_intel_engine.mongo_store import ensure_indexes
             from app.live_intel.mongo_store import ensure_live_intel_indexes
+            from app.integrations.twitchbots_info.mongo_store import (
+                ensure_twitchbots_info_indexes,
+            )
 
             await ensure_indexes()
             await ensure_live_intel_indexes()
+            await ensure_twitchbots_info_indexes()
+        if _cfg.twitchbots_info_enabled and _cfg.twitchbots_info_cache_warm_on_startup:
+            from app.services.twitchbots.verification_service import (
+                get_twitchbots_verification_service,
+            )
+
+            try:
+                warmed = await get_twitchbots_verification_service().warm_cache_sample()
+                logger.info("twitchbots_info_cache_warmed", count=warmed)
+            except Exception as exc:
+                logger.warning("twitchbots_info_warm_failed", error=str(exc)[:120])
         if _cfg.twitch_insights_enabled:
             asyncio.create_task(get_twitch_insights_db().ensure_loaded())
         if (
@@ -251,6 +266,7 @@ app.include_router(weka_ml.router, prefix=API_PREFIX)
 app.include_router(threat_intel.router, prefix=API_PREFIX)
 app.include_router(streaming_intelligence.router, prefix=API_PREFIX)
 app.include_router(live_intelligence.router, prefix=API_PREFIX)
+app.include_router(twitchbots_soc.router, prefix=API_PREFIX)
 app.include_router(events_pipeline.router, prefix=API_PREFIX)
 app.include_router(ai_insights.router, prefix=API_PREFIX)
 app.include_router(webhooks.router, prefix=API_PREFIX)

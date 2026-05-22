@@ -10,8 +10,10 @@ import { AlertsPanel } from "@/components/soc/AlertsPanel";
 import { AdminPanel } from "@/components/soc/AdminPanel";
 import { LiveEventFeed } from "@/components/soc/LiveEventFeed";
 import { PlatformSocPanel } from "@/components/soc/PlatformSocPanel";
+import { KnownBotsPanel } from "@/components/soc/KnownBotsPanel";
 import { Badge } from "@/components/ui/badge";
 import { useSocData } from "@/hooks/useSocData";
+import { useTwitchBotsSoc } from "@/hooks/useTwitchBotsSoc";
 import { cn } from "@/lib/utils";
 
 export default function SocDashboardPage() {
@@ -31,6 +33,8 @@ export default function SocDashboardPage() {
     socFeedEvents,
     liveEvents,
   } = useSocData();
+  const { overview: tbiOverview, detections: tbiDetections, loading: tbiLoading } =
+    useTwitchBotsSoc();
 
   return (
     <div className="space-y-6 -m-2">
@@ -71,6 +75,12 @@ export default function SocDashboardPage() {
       <MetricsGrid stats={displayStats} security={security} />
 
       <PlatformSocPanel soc={displaySoc} />
+
+      <KnownBotsPanel
+        overview={tbiOverview}
+        detections={tbiDetections}
+        loading={tbiLoading}
+      />
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         <div className="xl:col-span-8 space-y-6">

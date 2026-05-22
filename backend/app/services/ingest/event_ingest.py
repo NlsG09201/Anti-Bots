@@ -56,6 +56,23 @@ async def process_stream_event(
         except Exception:
             pass
 
+    tbi_result = None
+    if ingest_settings.twitchbots_info_enabled:
+        try:
+            from app.services.twitchbots.verification_service import (
+                get_twitchbots_verification_service,
+            )
+
+            tbi_result = await get_twitchbots_verification_service().verify_ingest_user(
+                tenant_id=str(tenant_id),
+                stream_id=str(stream.id),
+                event_type=event.event_type,
+                username=event.platform_username,
+                platform_user_id=event.platform_user_id,
+            )
+        except Exception as exc:
+            logger.warning("twitchbots_ingest_verify_failed", error=str(exc)[:120])
+
     blocked = await is_event_blocked(
         mitigation,
         stream.id,
@@ -122,6 +139,8 @@ async def process_stream_event(
         pattern_score,
         policy.risk_score,
     )
+    if tbi_result and tbi_result.is_known_bot:
+        risk_score = max(risk_score, float(tbi_result.reputation.suspicious_score))
 
     if event.event_type == "viewer_join":
         anomaly = await anomaly_svc.assess_window(
@@ -149,12 +168,18 @@ async def process_stream_event(
         try:
             from app.ai_intel.orchestrator import get_ai_orchestrator
 
+            ai_meta = dict(event.metadata)
+            if tbi_result and tbi_result.is_known_bot:
+                ai_meta["known_public_bot"] = True
+                ai_meta["twitchbots_info"] = tbi_result.to_verdict_dict().get(
+                    "twitchbots_info", {}
+                )
             ai_assessment = await get_ai_orchestrator().assess_event(
                 db,
                 stream_id=stream.id,
                 tenant_id=tenant_id,
                 event_type=event.event_type,
-                metadata=dict(event.metadata),
+                metadata=ai_meta,
                 ip_intel=ip_data,
                 fingerprint_risk=fp_risk,
                 platform_user_id=event.platform_user_id,
@@ -184,6 +209,9 @@ async def process_stream_event(
     meta = dict(event.metadata)
     meta["ingest_source"] = source
     meta["network_policy"] = policy.to_dict()
+    if tbi_result:
+        meta["twitchbots_info"] = tbi_result.to_verdict_dict().get("twitchbots_info", {})
+        meta["known_public_bot"] = tbi_result.is_known_bot
     if meta_anomaly:
         meta["anomaly"] = meta_anomaly
     if ai_assessment:

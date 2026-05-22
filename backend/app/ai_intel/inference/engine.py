@@ -87,11 +87,18 @@ class InferenceEngine:
             "coordination": round(coordination_score, 4),
         }
 
+        known_public = float(vector.extra.get("known_public_bot", 0))
+        if known_public > 0:
+            bot_p = max(bot_p, 0.92)
+            viewbot_p = max(viewbot_p, 0.35)
+            contributions["twitchbots_info"] = 1.0
+
         attack_probability = min(
             1.0,
             max(anomaly_p, bot_p, raid_p, viewbot_p, auto_p) * 0.85
             + coordination_score * 0.15
-            + reputation_penalty * 0.1,
+            + reputation_penalty * 0.1
+            + known_public * 0.12,
         )
 
         risk_score = min(

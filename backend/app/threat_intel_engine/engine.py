@@ -82,10 +82,16 @@ class ThreatIntelligenceEngine:
             ip_address=str(ip) if ip else None,
         )
 
+        known_tbi = bool(metadata.get("known_public_bot"))
+        tbi_meta = metadata.get("twitchbots_info")
+        if not isinstance(tbi_meta, dict):
+            tbi_meta = {}
+
         suspected = bool(
             metadata.get("is_bot")
             or metadata.get("suspected")
             or metadata.get("risk_score", 0) >= 60
+            or known_tbi
         )
 
         et = (event_type or "").lower()
@@ -105,6 +111,8 @@ class ThreatIntelligenceEngine:
                     chat_analysis=chat_analysis,
                     ip=ip,
                     fp=fp,
+                    known_twitchbots=known_tbi,
+                    tbi_meta=tbi_meta,
                 )
         elif et in ("viewer_join", "join", "viewer", "presence"):
             vc = metadata.get("viewer_count")
@@ -115,11 +123,27 @@ class ThreatIntelligenceEngine:
                 viewer_count=int(vc) if vc is not None else None,
             )
             await self._update_entity(
-                tid, ekey, platform, username, ip=ip, fp=fp, suspected=suspected
+                tid,
+                ekey,
+                platform,
+                username,
+                ip=ip,
+                fp=fp,
+                suspected=suspected,
+                known_twitchbots=known_tbi,
+                tbi_meta=tbi_meta,
             )
-        elif et in ("follow", "subscription"):
+        elif et in ("follow", "subscription", "raid"):
             await self._update_entity(
-                tid, ekey, platform, username, follow_burst=True, ip=ip, fp=fp
+                tid,
+                ekey,
+                platform,
+                username,
+                follow_burst=True,
+                ip=ip,
+                fp=fp,
+                known_twitchbots=known_tbi,
+                tbi_meta=tbi_meta,
             )
 
         sess = self._session_entities.setdefault(sid, set())
@@ -274,6 +298,8 @@ class ThreatIntelligenceEngine:
         fp: Optional[str] = None,
         suspected: bool = False,
         follow_burst: bool = False,
+        known_twitchbots: bool = False,
+        tbi_meta: Optional[Dict[str, Any]] = None,
     ) -> None:
         existing = await self._store.get_entity(tenant_id, ekey) or {}
         threat = float(existing.get("threat_score", 0))
@@ -293,6 +319,12 @@ class ThreatIntelligenceEngine:
         if follow_burst:
             threat = min(100, threat + 4)
             bot_p = min(1.0, bot_p + 0.05)
+        if known_twitchbots:
+            threat = min(100, threat + 22)
+            trust = max(0, trust - 35)
+            bot_p = min(1.0, max(bot_p, 0.88))
+            if "known_twitchbots_info" not in flags:
+                flags.append("known_twitchbots_info")
         if chat_analysis:
             spam_p = max(spam_p, float(chat_analysis.get("spam_probability", 0)))
             synth = float(chat_analysis.get("synthetic_chat_score", 0))
@@ -316,6 +348,15 @@ class ThreatIntelligenceEngine:
             "coordination_score": round(coord, 4),
             "flags": flags[-20:],
         }
+        if known_twitchbots and tbi_meta:
+            patch["bot_known_score"] = float(tbi_meta.get("bot_known_score", 100))
+            patch["suspicious_score"] = float(
+                tbi_meta.get("suspicious_score", _settings.twitchbots_info_known_bot_risk_score)
+            )
+            patch["bot_type"] = tbi_meta.get("bot_type")
+            patch["source_detection"] = tbi_meta.get(
+                "source_detection", "twitchbots_info"
+            )
         if ip:
             patch["ip_hash"] = hash_value(str(ip), "ip")
         if fp:

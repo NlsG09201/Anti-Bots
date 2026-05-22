@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.infrastructure.database.models import Stream
 from app.core.logging import get_logger
 from app.integrations.twitch.chat_filters import TWITCH_CHAT_BOTS, is_valid_chatter_username
 from app.integrations.twitchinsights.bot_database import (
@@ -16,6 +17,7 @@ from app.integrations.twitchinsights.bot_database import (
     TwitchInsightsBotRecord,
     get_twitch_insights_db,
 )
+from app.services.twitchbots.verification_service import get_twitchbots_verification_service
 from app.services.viewers.session import ViewerSessionService
 
 logger = get_logger(__name__)
@@ -59,16 +61,33 @@ class ViewerBotScreeningService:
                 "flagged": 0,
                 "twitch_insights_matched": 0,
                 "twitch_insights_db_size": 0,
+                "twitchbots_info_matched": 0,
             }
+
+        stream = await db.get(Stream, stream_id)
+        tenant_id = str(stream.tenant_id) if stream else ""
 
         insights_db = get_twitch_insights_db()
         await insights_db.ensure_loaded()
 
-        verdicts = await self.analyze_usernames(channel_name, usernames)
+        tbi_map: Dict[str, Any] = {}
+        tbi_svc = get_twitchbots_verification_service()
+        if tbi_svc.enabled and tenant_id:
+            tbi_results = await tbi_svc.verify_batch(
+                tenant_id,
+                [{"username": u} for u in usernames],
+                stream_id=str(stream_id),
+            )
+            tbi_map = {k: v.to_verdict_dict() for k, v in tbi_results.items()}
+
+        verdicts = await self.analyze_usernames(
+            channel_name, usernames, tbi_verdicts=tbi_map
+        )
         viewer_svc = ViewerSessionService(db)
         sessions = await viewer_svc.list_active(stream_id, chat_only=True, limit=500)
         flagged = 0
         insights_matched = 0
+        tbi_matched = 0
 
         for session in sessions:
             uname = session.platform_username or ""
@@ -80,6 +99,8 @@ class ViewerBotScreeningService:
             session.behavior_metrics = metrics
             if verdict.get("source") == "twitch_insights":
                 insights_matched += 1
+            if verdict.get("source") == "twitchbots_info":
+                tbi_matched += 1
             if verdict.get("is_malicious"):
                 session.is_suspected_bot = True
                 session.risk_score = max(session.risk_score, float(verdict.get("risk_score", 55)))
@@ -91,23 +112,42 @@ class ViewerBotScreeningService:
             "flagged": flagged,
             "twitch_insights_matched": insights_matched,
             "twitch_insights_db_size": insights_db.size,
+            "twitchbots_info_matched": tbi_matched,
         }
 
     async def analyze_usernames(
         self,
         channel_name: str,
         usernames: List[str],
+        *,
+        tbi_verdicts: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Devuelve dict keyed by lowercase username."""
         insights_db = get_twitch_insights_db()
         await insights_db.ensure_loaded()
+        tbi_verdicts = tbi_verdicts or {}
 
         results: Dict[str, Dict[str, Any]] = {}
         needs_ai: List[str] = []
 
         for name in usernames:
-            local = self._local_verdict(name, insights_db.lookup(name))
             key = name.lower()
+            tbi_v = tbi_verdicts.get(key)
+            if tbi_v and tbi_v.get("is_malicious"):
+                if key in TWITCH_CHAT_BOTS:
+                    results[key] = {
+                        **tbi_v,
+                        "is_malicious": False,
+                        "risk_score": min(18.0, float(tbi_v.get("risk_score", 18))),
+                        "risk_description": (
+                            "Bot de chat legitimo catalogado en TwitchBots.info "
+                            "(excluido de viewbotting)."
+                        ),
+                    }
+                else:
+                    results[key] = tbi_v
+                continue
+            local = self._local_verdict(name, insights_db.lookup(name))
             results[key] = local
             if local.get("needs_ai") and len(needs_ai) < 40:
                 needs_ai.append(name)
@@ -234,9 +274,9 @@ class ViewerBotScreeningService:
         prompt = (
             f"Canal Twitch: {channel_name}. Usuarios actualmente en el chat:\n"
             f"{', '.join(usernames[:40])}\n\n"
-            "Usa como referencia la base comunitaria Twitch Insights "
-            f"({TI_ATTRIBUTION}), que cataloga ~{insights_db_size} cuentas conocidas de "
-            "viewbots en listas de espectadores desde 2018. Compara patrones de nombres, "
+            "Usa como referencia Twitch Insights "
+            f"({TI_ATTRIBUTION}, ~{insights_db_size} cuentas) y el directorio publico "
+            "TwitchBots.info (bots de chat/moderacion catalogados). Compara patrones de nombres, "
             "viewbots, followbots y cuentas compradas. NO marques viewers normales ni mods.\n"
             "Responde JSON: {\"users\": [{\"username\": \"...\", \"is_malicious\": bool, "
             "\"risk_score\": 0-100, \"risk_description\": \"una frase en español\"}]}"

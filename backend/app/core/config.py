@@ -159,6 +159,20 @@ class Settings(BaseSettings):
     twitch_insights_enabled: bool = True
     twitch_insights_cache_hours: int = 6
 
+    twitchbots_info_enabled: bool = True
+    twitchbots_info_base_url: str = "https://api.twitchbots.info/v2"
+    twitchbots_info_verify_on_ingest: bool = True
+    twitchbots_info_queue_enabled: bool = True
+    twitchbots_info_known_bot_risk_score: float = 94.0
+    twitchbots_info_cache_ttl_hit: int = 604800
+    twitchbots_info_cache_ttl_miss: int = 3600
+    twitchbots_info_username_cache_ttl: int = 86400
+    twitchbots_info_rate_limit_rps: float = 8.0
+    twitchbots_info_batch_size: int = 100
+    twitchbots_info_request_timeout: float = 12.0
+    twitchbots_info_max_retries: int = 3
+    twitchbots_info_cache_warm_on_startup: bool = True
+
     auto_twitch_ban_enabled: bool = True
     bot_suspected_attack_threshold: int = 5
     background_attack_scan_interval: int = 3

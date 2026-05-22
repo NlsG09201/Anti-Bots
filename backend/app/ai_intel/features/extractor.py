@@ -130,6 +130,12 @@ class FeatureExtractor:
         unique_ip = float(meta.get("unique_ip_ratio", win.get("unique_ip_ratio", 1.0)))
         asn_div = float(meta.get("asn_diversity", win.get("asn_diversity", 1.0)))
 
+        extra: Dict[str, float] = {}
+        if meta.get("known_public_bot") or (meta.get("twitchbots_info") or {}).get(
+            "is_known_bot"
+        ):
+            extra["known_public_bot"] = 1.0
+
         return StreamFeatureVector(
             joins_per_minute=joins,
             viewer_growth_rate=viewer_growth,
@@ -147,4 +153,5 @@ class FeatureExtractor:
             cross_stream_activity=cross,
             unique_ip_ratio=unique_ip,
             asn_diversity=asn_div,
+            extra=extra,
         )

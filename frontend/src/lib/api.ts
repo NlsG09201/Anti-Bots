@@ -343,6 +343,49 @@ export const api = {
         token,
       ),
   },
+  twitchbots: {
+    overview: (token: ApiAuthToken) =>
+      request<TwitchBotsOverview>("/api/v1/twitchbots/overview", {}, token),
+    detections: (token: ApiAuthToken, limit = 40) =>
+      request<{ enabled: boolean; detections: TwitchBotsDetection[]; count: number }>(
+        `/api/v1/twitchbots/detections?limit=${limit}`,
+        {},
+        token,
+      ),
+    verify: (
+      token: ApiAuthToken,
+      body: { username?: string; platform_user_id?: string; stream_id?: string },
+    ) =>
+      request<{ result: Record<string, unknown>; verdict: Record<string, unknown> }>(
+        "/api/v1/twitchbots/verify",
+        { method: "POST", body: JSON.stringify(body) },
+        token,
+      ),
+    verifyBatch: (
+      token: ApiAuthToken,
+      users: { username?: string; platform_user_id?: string }[],
+      streamId?: string,
+      applySessions = false,
+    ) =>
+      request<{
+        status: string;
+        verified?: number;
+        known_bots?: number;
+        job_id?: string;
+        count?: number;
+      }>(
+        "/api/v1/twitchbots/verify/batch",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            users,
+            stream_id: streamId,
+            apply_sessions: applySessions,
+          }),
+        },
+        token,
+      ),
+  },
   soc: {
     overview: (token: ApiAuthToken) =>
       request<{ stats: DashboardStats; soc: SocOverview }>(
@@ -1108,6 +1151,27 @@ export interface SocOverview {
     active_attacks: number;
   };
   updated_at: string;
+}
+
+export interface TwitchBotsOverview {
+  enabled: boolean;
+  mongodb?: boolean;
+  message?: string;
+  known_bots_detected?: number;
+  total_verifications?: number;
+  global_profiles_cached?: number;
+  top_bot_types?: { bot_type: string; count: number }[];
+  updated_at?: string;
+}
+
+export interface TwitchBotsDetection {
+  username: string;
+  twitch_id?: string;
+  bot_type?: string;
+  threat_level: "low" | "medium" | "high" | "critical";
+  suspicious_score: number;
+  stream_id?: string;
+  detected_at?: string;
 }
 
 export interface LiveStreamSnapshot {
