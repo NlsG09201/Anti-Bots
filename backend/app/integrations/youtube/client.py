@@ -85,9 +85,54 @@ class YouTubeLiveClient:
                 "polling_interval_ms": data.get("pollingIntervalMillis", 5000),
             }
 
-    async def search_live_by_channel(self, channel_query: str) -> Optional[Dict[str, Any]]:
-        """Find active live video for a channel name or handle."""
+    async def get_channel_id_by_handle(self, handle: str) -> Optional[str]:
+        """Resolve a handle (@username) to a channelId."""
         async with httpx.AsyncClient(timeout=15.0) as client:
+            # First try direct search
+            response = await client.get(
+                f"{self.BASE_URL}/search",
+                headers=self._headers(),
+                params=self._params({
+                    "part": "snippet",
+                    "q": handle,
+                    "type": "channel",
+                    "maxResults": 1,
+                }),
+            )
+            if response.status_code == 200:
+                items = response.json().get("items", [])
+                if items:
+                    return items[0]["id"]["channelId"]
+        return None
+
+    async def search_live_by_channel(self, channel_query: str) -> Optional[Dict[str, Any]]:
+        """Find active live video for a channel name or handle with improved accuracy."""
+        handle = channel_query if channel_query.startswith("@") else None
+        channel_id = None
+        
+        if handle:
+            channel_id = await self.get_channel_id_by_handle(handle)
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # Strategy 1: Search by channelId if resolved
+            if channel_id:
+                response = await client.get(
+                    f"{self.BASE_URL}/search",
+                    headers=self._headers(),
+                    params=self._params({
+                        "part": "snippet",
+                        "channelId": channel_id,
+                        "eventType": "live",
+                        "type": "video",
+                        "maxResults": 1,
+                    }),
+                )
+                if response.status_code == 200:
+                    items = response.json().get("items", [])
+                    if items:
+                        return await self._format_live_result(items[0])
+
+            # Strategy 2: Generic search with q=query
             response = await client.get(
                 f"{self.BASE_URL}/search",
                 headers=self._headers(),
@@ -99,21 +144,24 @@ class YouTubeLiveClient:
                     "maxResults": 1,
                 }),
             )
-            if response.status_code != 200:
-                return None
-            items = response.json().get("items", [])
-            if not items:
-                return None
-            video_id = items[0]["id"]["videoId"]
-            stats = await self.get_video_statistics(video_id)
-            return {
-                "id": video_id,
-                "snippet": items[0].get("snippet", {}),
-                "statistics": {
-                    "concurrentViewers": stats.get("concurrent_viewers", 0),
-                    "viewCount": stats.get("viewer_count", 0),
-                },
-            }
+            if response.status_code == 200:
+                items = response.json().get("items", [])
+                if items:
+                    return await self._format_live_result(items[0])
+
+        return None
+
+    async def _format_live_result(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        video_id = item["id"]["videoId"]
+        stats = await self.get_video_statistics(video_id)
+        return {
+            "id": video_id,
+            "snippet": item.get("snippet", {}),
+            "statistics": {
+                "concurrentViewers": stats.get("concurrent_viewers", 0),
+                "viewCount": stats.get("viewer_count", 0),
+            },
+        }
 
     async def list_live_chat_messages(
         self, video_id: str, max_results: int = 200

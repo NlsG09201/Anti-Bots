@@ -74,12 +74,25 @@ class LiveDiscoveryEngine:
         logger.info("discovery_batch_enqueued", count=count)
         return count
 
-    async def check_stream_status(self, stream_id: str) -> Dict[str, Any]:
+    async def check_stream_status(self, stream_id: str, force: bool = False) -> Dict[str, Any]:
         """Perform a robust check of a stream's live status using Validation Engine."""
         from app.services.monitoring.validation_engine import get_stream_validation_engine
         validator = get_stream_validation_engine()
 
-        is_live, reason = await validator.validate_live_status(stream_id)
+        if force:
+            # Bypass validation engine's internal retry/cache
+            validator._offline_attempts[stream_id] = 0
+            async with AsyncSessionLocal() as db:
+                stream = await db.get(Stream, UUID(stream_id))
+                if stream:
+                    adapter = get_platform_adapter(stream.platform)
+                    live = await adapter.fetch_live_status(stream)
+                    is_live = live.is_live
+                    reason = "forced_sync"
+                else:
+                    return {"error": "stream_not_found"}
+        else:
+            is_live, reason = await validator.validate_live_status(stream_id)
 
         async with AsyncSessionLocal() as db:
             stream = await db.get(Stream, UUID(stream_id))

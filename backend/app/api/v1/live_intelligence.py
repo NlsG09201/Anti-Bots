@@ -161,6 +161,31 @@ async def recent_anomalies(
     return {"anomalies": items, "count": len(items)}
 
 
+@router.post("/streams/{stream_id}/sync")
+async def force_sync_stream(
+    stream_id: UUID,
+    current_user: AnalystUser,
+) -> Dict[str, Any]:
+    """Force an immediate live status check for a specific stream."""
+    from app.services.monitoring.discovery_engine import get_live_discovery_engine
+    engine = get_live_discovery_engine()
+    
+    # Verify stream belongs to tenant
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Stream).where(
+                Stream.id == stream_id,
+                Stream.tenant_id == current_user.tenant_id
+            )
+        )
+        stream = result.scalar_one_or_none()
+        if not stream:
+            raise HTTPException(status_code=404, detail="Stream not found")
+
+    result = await engine.check_stream_status(str(stream_id), force=True)
+    return result
+
+
 @router.get("/health-monitor")
 async def get_health_monitor(current_user: AnalystUser) -> Dict[str, Any]:
     from app.services.monitoring.health_engine import get_health_monitoring_engine

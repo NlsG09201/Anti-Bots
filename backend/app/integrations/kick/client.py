@@ -15,23 +15,56 @@ class KickAPIClient:
 
     def __init__(self, access_token: Optional[str] = None):
         self.access_token = access_token
-        self.headers = {"Accept": "application/json"}
+        self.headers = {
+            "Accept": "application/json",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://kick.com/",
+        }
         if access_token:
             self.headers["Authorization"] = f"Bearer {access_token}"
 
     async def get_channel(self, slug: str) -> Dict[str, Any]:
         """Fetch channel data with aggressive retry and bypass cache if possible."""
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
             # We add a timestamp to bypass potential CDN caching
             url = f"{self.BASE_URL}/channels/{slug}?_t={int(time.time())}"
-            response = await client.get(url, headers=self.headers)
-            if response.status_code == 404:
-                # Try v1 if v2 fails
+            try:
+                response = await client.get(url, headers=self.headers)
+                if response.status_code == 200:
+                    return response.json()
+                
+                # Fallback to v1 if v2 fails or returns 404/403
                 url_v1 = f"https://kick.com/api/v1/channels/{slug}"
                 response = await client.get(url_v1, headers=self.headers)
+                response.raise_for_status()
+                return response.json()
+            except Exception as exc:
+                logger.debug("kick_get_channel_failed", slug=slug, error=str(exc))
+                # Final attempt: try public frontend data if API fails (scraping)
+                return await self._scrape_channel_data(slug)
+
+    async def _scrape_channel_data(self, slug: str) -> Dict[str, Any]:
+        """Last resort scraping of Kick frontend data."""
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            url = f"https://kick.com/{slug}"
+            response = await client.get(url, headers=self.headers)
+            if response.status_code != 200:
+                raise Exception(f"Failed to scrape Kick channel {slug}")
             
-            response.raise_for_status()
-            return response.json()
+            # Look for window.app data or similar in the HTML
+            import re
+            match = re.search(r'window\.app\s*=\s*({.*?});', response.text)
+            if match:
+                try:
+                    import json
+                    return json.loads(match.group(1))
+                except:
+                    pass
+            raise Exception(f"Could not find app data for Kick channel {slug}")
 
     async def get_livestream(self, slug: str) -> Optional[Dict[str, Any]]:
         """Determine if a channel is live with fallback logic."""

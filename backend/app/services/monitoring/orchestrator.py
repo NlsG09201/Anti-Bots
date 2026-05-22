@@ -103,14 +103,8 @@ class PlatformMonitorOrchestrator:
         if not settings.platform_monitor_enabled:
             return
         
-        from app.services.monitoring.discovery_engine import get_live_discovery_engine
-        from app.services.monitoring.validation_engine import get_stream_validation_engine
-        
-        engine = get_live_discovery_engine()
-        validator = get_stream_validation_engine()
-
         async with AsyncSessionLocal() as db:
-            # Only select streams that are marked as live or force_monitor
+            # We trust the 'is_live' status in the DB, which is updated by the DiscoveryEngine
             result = await db.execute(
                 select(Stream).where(
                     Stream.platform.in_(
@@ -122,12 +116,8 @@ class PlatformMonitorOrchestrator:
             
         candidates = []
         for s in streams:
-            if self._should_monitor(s):
-                # Double check live status if not force_monitor
-                if not (s.settings or {}).get("force_monitor"):
-                    is_live, _ = await validator.validate_live_status(str(s.id))
-                    if not is_live:
-                        continue
+            # If the DB says it's live, we monitor it. No more redundant API calls here.
+            if self._should_monitor(s) and (s.is_live or (s.settings or {}).get("force_monitor")):
                 candidates.append(s)
 
         candidates.sort(key=lambda s: (not s.is_live, s.channel_name))
