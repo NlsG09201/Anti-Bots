@@ -168,3 +168,20 @@ Con API key `rnd_...` de Render:
 ```
 
 No uses `1` como clave; debe empezar por `rnd_`.
+
+---
+
+## Threat Intelligence Engine (MongoDB + Redis)
+
+Para la base global de amenazas, engagement health y grafos:
+
+| Variable | Servicio | Notas |
+|----------|----------|-------|
+| `MONGODB_URI` | API + worker | Atlas connection string (`mongodb+srv://...`) |
+| `REDIS_URL` | API + worker | Upstash TLS URL (pub/sub TI + SOC) |
+| `THREAT_INTEL_ENGINE_ENABLED` | API | `true` (default) |
+
+Colecciones MongoDB (auto-index en startup): `threat_entities`, `cross_platform_links`, `engagement_metrics`, `chat_patterns`, `ai_predictions`, `graph_edges`.
+
+API: `/api/v1/streaming-intelligence/*`  
+Dashboard: `/dashboard/threat-intelligence` (Cytoscape + engagement en vivo vía WebSocket `threat_intel_update`).

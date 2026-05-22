@@ -183,6 +183,14 @@ async def process_stream_event(
             from app.threat_intel_engine import get_threat_intel_engine
 
             ti_meta = dict(meta)
+            if event.platform_username:
+                ti_meta.setdefault("username", event.platform_username)
+            if event.platform_user_id:
+                ti_meta.setdefault("user_id", event.platform_user_id)
+            if event.ip_address:
+                ti_meta.setdefault("ip_address", event.ip_address)
+            if event.fingerprint_hash:
+                ti_meta.setdefault("fingerprint_hash", event.fingerprint_hash)
             ti_assessment = await get_threat_intel_engine().process_event(
                 db,
                 tenant_id=tenant_id,
