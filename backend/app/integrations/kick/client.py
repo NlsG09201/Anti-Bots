@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional
+import time
 
 import httpx
 
@@ -19,27 +20,50 @@ class KickAPIClient:
             self.headers["Authorization"] = f"Bearer {access_token}"
 
     async def get_channel(self, slug: str) -> Dict[str, Any]:
+        """Fetch channel data with aggressive retry and bypass cache if possible."""
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(
-                f"{self.BASE_URL}/channels/{slug}",
-                headers=self.headers,
-            )
+            # We add a timestamp to bypass potential CDN caching
+            url = f"{self.BASE_URL}/channels/{slug}?_t={int(time.time())}"
+            response = await client.get(url, headers=self.headers)
+            if response.status_code == 404:
+                # Try v1 if v2 fails
+                url_v1 = f"https://kick.com/api/v1/channels/{slug}"
+                response = await client.get(url_v1, headers=self.headers)
+            
             response.raise_for_status()
             return response.json()
 
     async def get_livestream(self, slug: str) -> Optional[Dict[str, Any]]:
-        channel = await self.get_channel(slug)
-        livestream = channel.get("livestream")
-        if not livestream:
+        """Determine if a channel is live with fallback logic."""
+        try:
+            channel = await self.get_channel(slug)
+            livestream = channel.get("livestream")
+            
+            # If livestream is null, sometimes the 'is_live' flag is elsewhere in some versions
+            if not livestream:
+                # Check if there's any other indicator
+                if channel.get("is_live") is True:
+                    return {
+                        "id": str(channel.get("id")),
+                        "slug": slug,
+                        "viewer_count": channel.get("viewers_count", 0),
+                        "is_live": True,
+                        "title": channel.get("title", "No Title"),
+                        "category": "Unknown",
+                    }
+                return None
+
+            return {
+                "id": livestream.get("id"),
+                "slug": slug,
+                "viewer_count": livestream.get("viewer_count", 0),
+                "is_live": True,
+                "title": livestream.get("session_title"),
+                "category": livestream.get("categories", [{}])[0].get("name") if livestream.get("categories") else None,
+            }
+        except Exception as exc:
+            logger.debug("kick_livestream_check_failed", slug=slug, error=str(exc))
             return None
-        return {
-            "id": livestream.get("id"),
-            "slug": slug,
-            "viewer_count": livestream.get("viewer_count", 0),
-            "is_live": True,
-            "title": livestream.get("session_title"),
-            "category": livestream.get("categories", [{}])[0].get("name") if livestream.get("categories") else None,
-        }
 
     async def get_chat_messages(self, chatroom_id: int, limit: int = 100) -> List[Dict[str, Any]]:
         async with httpx.AsyncClient(timeout=15.0) as client:

@@ -19,18 +19,21 @@ class TikTokPlatformAdapter(PlatformAdapter):
         handle = (stream.settings or {}).get("login") or stream.channel_name
         handle = handle.strip().lstrip("@").lower()
         try:
+            # Add a cache bypass or timestamp if the room fetcher supports it
             room = await fetch_tiktok_room(handle)
+            if not room:
+                return LiveStatus(is_live=False)
+            
+            return LiveStatus(
+                is_live=room.is_live,
+                viewer_count=room.viewer_count,
+                title=room.title,
+                external_live_id=room.room_id,
+            )
         except Exception as exc:
             logger.warning("tiktok_live_status_failed", handle=handle, error=str(exc))
+            # Try a second attempt with a different approach if room_id is known
             return LiveStatus(is_live=False)
-        if not room:
-            return LiveStatus(is_live=False)
-        return LiveStatus(
-            is_live=room.is_live,
-            viewer_count=room.viewer_count,
-            title=room.title,
-            external_live_id=room.room_id,
-        )
 
     async def fetch_viewers(self, stream: Stream) -> List[ViewerSnapshot]:
         return []

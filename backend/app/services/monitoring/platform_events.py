@@ -105,6 +105,12 @@ async def emit_platform_event(
         metadata=meta,
     )
 
+    # Update last event timestamp in Redis for AI validation
+    from app.infrastructure.cache.redis_client import get_redis
+    import time
+    redis = await get_redis()
+    await redis.set(f"health:last_event_ts:{stream.id}", str(time.time()), ex=3600)
+
     try:
         result = await ingest_event(
             db,

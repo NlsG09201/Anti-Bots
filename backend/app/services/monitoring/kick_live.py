@@ -29,6 +29,7 @@ class KickLiveMonitor:
         self._pusher: Optional[KickPusherClient] = None
         self._poll_task: Optional[asyncio.Task] = None
         self._pusher_task: Optional[asyncio.Task] = None
+        self._watchdog_task: Optional[asyncio.Task] = None
         self._running = False
 
     async def _on_pusher(self, raw_event: str, data: dict) -> None:
@@ -76,11 +77,38 @@ class KickLiveMonitor:
                         self._running = False
                         break
                     live = await adapter.fetch_live_status(stream)
+                    
+                    # Robust validation before stopping
+                    if not live.is_live:
+                        from app.services.monitoring.validation_engine import get_stream_validation_engine
+                        validator = get_stream_validation_engine()
+                        is_still_live, reason = await validator.validate_live_status(self.stream_id)
+                        if not is_still_live:
+                            await emit_platform_event(
+                                db,
+                                stream,
+                                event_type="stream.offline",
+                                metadata={"reason": reason},
+                            )
+                            self._running = False
+                            await db.commit()
+                            break
+                        else:
+                            live.is_live = True
+                            logger.info("kick_validation_prevented_offline", stream_id=self.stream_id, reason=reason)
+
+                    # Update Redis heartbeat
+                    from app.infrastructure.cache.redis_client import get_redis
+                    from app.infrastructure.cache.redis_schema import live_heartbeat_key
+                    redis = await get_redis()
+                    await redis.set(live_heartbeat_key(self.stream_id), "1", ex=45)
+
                     prev = stream.viewer_count
                     stream.is_live = live.is_live
                     stream.viewer_count = live.viewer_count
                     if live.external_live_id:
                         stream.external_id = live.external_live_id
+
                     meta = dict(stream.settings or {})
                     history = list(meta.get("viewer_history", []))[-71:]
                     history.append({
@@ -90,13 +118,15 @@ class KickLiveMonitor:
                     meta["viewer_history"] = history
                     meta["last_platform_poll"] = datetime.now(timezone.utc).isoformat()
                     stream.settings = meta
+                    
+                    import time
                     latency_ms = (time.perf_counter() - t0) * 1000.0
-
-                    # Update Redis heartbeat
-                    from app.infrastructure.cache.redis_client import get_redis
-                    from app.infrastructure.cache.redis_schema import live_heartbeat_key
-                    redis = await get_redis()
-                    await redis.set(live_heartbeat_key(self.stream_id), "1", ex=45)
+                    
+                    # Update Health Monitoring Engine
+                    from app.services.monitoring.health_engine import get_health_monitoring_engine
+                    health_engine = get_health_monitoring_engine()
+                    await health_engine.record_heartbeat(self.stream_id, "kick")
+                    await health_engine.record_latency(self.stream_id, latency_ms)
 
                     self._health.record_poll(
                         viewer_count=live.viewer_count,
@@ -126,14 +156,23 @@ class KickLiveMonitor:
                                 ),
                             },
                         )
+
                     if not live.is_live:
-                        await emit_platform_event(
-                            db,
-                            stream,
-                            event_type="stream.offline",
-                            metadata={},
-                        )
-                        self._running = False
+                        from app.services.monitoring.validation_engine import get_stream_validation_engine
+                        validator = get_stream_validation_engine()
+                        is_still_live, reason = await validator.validate_live_status(self.stream_id)
+                        if not is_still_live:
+                            await emit_platform_event(
+                                db,
+                                stream,
+                                event_type="stream.offline",
+                                metadata={"reason": reason},
+                            )
+                            self._running = False
+                        else:
+                            live.is_live = True
+                            logger.info("kick_validation_prevented_offline", stream_id=self.stream_id, reason=reason)
+
                     await db.commit()
             except asyncio.CancelledError:
                 raise
@@ -142,7 +181,22 @@ class KickLiveMonitor:
                 logger.warning("kick_poll_error", slug=self.slug, error=str(exc)[:200])
             await asyncio.sleep(25)
 
+    async def _watchdog(self) -> None:
+        """Watchdog to ensure tasks are alive."""
+        while self._running:
+            if self._pusher_task and self._pusher_task.done():
+                logger.warning("kick_pusher_died_restarting", slug=self.slug)
+                self._pusher_task = asyncio.create_task(self._pusher.run())
+
+            if self._poll_task and self._poll_task.done():
+                logger.warning("kick_poll_died_restarting", slug=self.slug)
+                self._poll_task = asyncio.create_task(self._poll_viewers())
+
+            await asyncio.sleep(60)
+
     async def start(self) -> None:
+        if self._running:
+            return
         self._running = True
         self._pusher = KickPusherClient(
             self.chatroom_id,
@@ -152,6 +206,8 @@ class KickLiveMonitor:
         )
         self._pusher_task = asyncio.create_task(self._pusher.run())
         self._poll_task = asyncio.create_task(self._poll_viewers())
+        self._watchdog_task = asyncio.create_task(self._watchdog())
+        logger.info("kick_monitor_started", slug=self.slug)
 
     async def stop(self) -> None:
         self._running = False
@@ -159,13 +215,14 @@ class KickLiveMonitor:
         drop_tracker(self.stream_id)
         if self._pusher:
             await self._pusher.stop()
-        for task in (self._pusher_task, self._poll_task):
+        for task in (self._pusher_task, self._poll_task, self._watchdog_task):
             if task and not task.done():
                 task.cancel()
                 try:
                     await task
                 except asyncio.CancelledError:
                     pass
+        logger.info("kick_monitor_stopped", slug=self.slug)
 
 
 async def resolve_kick_chatroom(slug: str) -> Optional[int]:

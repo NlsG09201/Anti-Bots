@@ -28,6 +28,7 @@ class TikTokLiveMonitor:
         self._webcast: Optional[TikTokWebcastMonitor] = None
         self._webcast_task: Optional[asyncio.Task] = None
         self._poll_task: Optional[asyncio.Task] = None
+        self._watchdog_task: Optional[asyncio.Task] = None
         self._running = False
 
     async def _on_webcast(self, raw_event: str, data: dict) -> None:
@@ -76,17 +77,49 @@ class TikTokLiveMonitor:
                         self._running = False
                         break
                     if not room:
-                        await asyncio.sleep(30)
-                        continue
+                        # Validation before giving up
+                        from app.services.monitoring.validation_engine import get_stream_validation_engine
+                        validator = get_stream_validation_engine()
+                        is_still_live, reason = await validator.validate_live_status(self.stream_id)
+                        if not is_still_live:
+                            await emit_platform_event(
+                                db,
+                                stream,
+                                event_type="stream.offline",
+                                metadata={"reason": "room_missing_and_validation_failed"},
+                            )
+                            self._running = False
+                            await db.commit()
+                            break
+                        else:
+                            await asyncio.sleep(15)
+                            continue
+
+                    # Update Redis heartbeat
+                    from app.infrastructure.cache.redis_client import get_redis
+                    from app.infrastructure.cache.redis_schema import live_heartbeat_key
+                    redis = await get_redis()
+                    await redis.set(live_heartbeat_key(self.stream_id), "1", ex=45)
+
                     prev = stream.viewer_count
                     stream.is_live = room.is_live
                     stream.viewer_count = room.viewer_count
+                    
                     if room.room_id:
                         stream.external_id = room.room_id
                     meta = dict(stream.settings or {})
                     meta["last_platform_poll"] = datetime.now(timezone.utc).isoformat()
                     stream.settings = meta
+                    
+                    import time
                     latency_ms = (time.perf_counter() - t0) * 1000.0
+                    
+                    # Update Health Monitoring Engine
+                    from app.services.monitoring.health_engine import get_health_monitoring_engine
+                    health_engine = get_health_monitoring_engine()
+                    await health_engine.record_heartbeat(self.stream_id, "tiktok")
+                    await health_engine.record_latency(self.stream_id, latency_ms)
+
                     self._health.record_poll(
                         viewer_count=room.viewer_count,
                         is_live=room.is_live,
@@ -112,14 +145,23 @@ class TikTokLiveMonitor:
                                 "to": room.viewer_count,
                             },
                         )
+
                     if not room.is_live:
-                        await emit_platform_event(
-                            db,
-                            stream,
-                            event_type="stream.offline",
-                            metadata={},
-                        )
-                        self._running = False
+                        from app.services.monitoring.validation_engine import get_stream_validation_engine
+                        validator = get_stream_validation_engine()
+                        is_still_live, reason = await validator.validate_live_status(self.stream_id)
+                        if not is_still_live:
+                            await emit_platform_event(
+                                db,
+                                stream,
+                                event_type="stream.offline",
+                                metadata={"reason": reason},
+                            )
+                            self._running = False
+                        else:
+                            room.is_live = True
+                            logger.info("tiktok_validation_prevented_offline", stream_id=self.stream_id, reason=reason)
+
                     await db.commit()
             except asyncio.CancelledError:
                 raise
@@ -133,7 +175,20 @@ class TikTokLiveMonitor:
                 break
             await asyncio.sleep(30)
 
+    async def _watchdog(self) -> None:
+        """Watchdog for TikTok tasks."""
+        while self._running:
+            if self._poll_task and self._poll_task.done():
+                logger.warning("tiktok_poll_died_restarting", unique_id=self.unique_id)
+                self._poll_task = asyncio.create_task(self._poll_room())
+            if self._webcast_task and self._webcast_task.done():
+                logger.warning("tiktok_webcast_died_restarting", unique_id=self.unique_id)
+                self._webcast_task = asyncio.create_task(self._webcast.run())
+            await asyncio.sleep(60)
+
     async def start(self) -> None:
+        if self._running:
+            return
         self._running = True
         room = await fetch_tiktok_room(self.unique_id)
         if not room or not room.is_live:
@@ -141,6 +196,7 @@ class TikTokLiveMonitor:
         self._webcast = TikTokWebcastMonitor(self.unique_id, on_event=self._on_webcast)
         self._webcast_task = asyncio.create_task(self._webcast.run())
         self._poll_task = asyncio.create_task(self._poll_room())
+        self._watchdog_task = asyncio.create_task(self._watchdog())
 
     async def stop(self) -> None:
         self._running = False
@@ -148,7 +204,7 @@ class TikTokLiveMonitor:
         drop_tracker(self.stream_id)
         if self._webcast:
             await self._webcast.stop()
-        for task in (self._webcast_task, self._poll_task):
+        for task in (self._webcast_task, self._poll_task, self._watchdog_task):
             if task and not task.done():
                 task.cancel()
                 try:

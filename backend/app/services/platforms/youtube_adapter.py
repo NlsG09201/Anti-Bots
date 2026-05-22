@@ -26,34 +26,35 @@ class YouTubePlatformAdapter(PlatformAdapter):
     async def fetch_live_status(self, stream: Stream) -> LiveStatus:
         client = await self._client(stream)
         try:
-            if stream.oauth_token_encrypted and stream.external_id:
-                live = await client.get_live_broadcasts(stream.external_id)
-                if live:
-                    vid = live[0]["video_id"]
+            # 1. Try search by channel name (most reliable for external streamers)
+            live = await client.search_live_by_channel(stream.channel_name)
+            
+            # 2. If search fails, try oauth broadcasts if we have them
+            if not live and stream.oauth_token_encrypted and stream.external_id:
+                broadcasts = await client.get_live_broadcasts(stream.external_id)
+                if broadcasts:
+                    vid = broadcasts[0]["video_id"]
                     stats = await client.get_video_statistics(vid)
                     return LiveStatus(
                         is_live=True,
-                        viewer_count=int(
-                            stats.get("concurrent_viewers")
-                            or stats.get("viewer_count")
-                            or 0
-                        ),
-                        title=live[0].get("title"),
+                        viewer_count=int(stats.get("concurrent_viewers") or 0),
+                        title=broadcasts[0].get("title"),
                         external_live_id=vid,
                     )
-            live = await client.search_live_by_channel(stream.channel_name)
+            
+            if not live:
+                return LiveStatus(is_live=False)
+            
+            stats = live.get("statistics") or {}
+            return LiveStatus(
+                is_live=True,
+                viewer_count=int(stats.get("concurrentViewers") or stats.get("viewCount") or 0),
+                title=live.get("snippet", {}).get("title"),
+                external_live_id=live.get("id"),
+            )
         except Exception as exc:
             logger.warning("youtube_live_failed", channel=stream.channel_name, error=str(exc))
             return LiveStatus(is_live=False)
-        if not live:
-            return LiveStatus(is_live=False)
-        stats = live.get("statistics") or {}
-        return LiveStatus(
-            is_live=True,
-            viewer_count=int(stats.get("concurrentViewers") or stats.get("viewCount") or 0),
-            title=live.get("snippet", {}).get("title"),
-            external_live_id=live.get("id"),
-        )
 
     async def fetch_viewers(self, stream: Stream) -> List[ViewerSnapshot]:
         client = await self._client(stream)

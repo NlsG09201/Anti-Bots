@@ -75,65 +75,66 @@ class LiveDiscoveryEngine:
         return count
 
     async def check_stream_status(self, stream_id: str) -> Dict[str, Any]:
-        """Perform a robust check of a stream's live status."""
+        """Perform a robust check of a stream's live status using Validation Engine."""
+        from app.services.monitoring.validation_engine import get_stream_validation_engine
+        validator = get_stream_validation_engine()
+
+        is_live, reason = await validator.validate_live_status(stream_id)
+
         async with AsyncSessionLocal() as db:
             stream = await db.get(Stream, UUID(stream_id))
             if not stream:
                 return {"error": "stream_not_found"}
 
-            adapter = get_platform_adapter(stream.platform)
-            try:
-                live = await adapter.fetch_live_status(stream)
-            except Exception as exc:
-                logger.warning("discovery_check_failed", stream_id=stream_id, error=str(exc))
-                return {"error": str(exc)}
-
-            # Update DB status
             was_live = stream.is_live
-            stream.is_live = live.is_live
-            stream.viewer_count = live.viewer_count
-            if live.external_live_id:
-                stream.external_id = live.external_live_id
+            stream.is_live = is_live
             
-            meta = dict(stream.settings or {})
-            meta["last_discovery_check"] = datetime.now(timezone.utc).isoformat()
-            meta["last_sync_title"] = live.title
-            stream.settings = meta
+            # If confirmed live, update metrics
+            if is_live:
+                adapter = get_platform_adapter(stream.platform)
+                try:
+                    live = await adapter.fetch_live_status(stream)
+                    stream.viewer_count = live.viewer_count
+                    if live.external_live_id:
+                        stream.external_id = live.external_live_id
+                    
+                    meta = dict(stream.settings or {})
+                    meta["last_discovery_check"] = datetime.now(timezone.utc).isoformat()
+                    meta["last_sync_title"] = live.title
+                    meta["validation_reason"] = reason
+                    stream.settings = meta
+                except Exception:
+                    pass
+            else:
+                meta = dict(stream.settings or {})
+                meta["last_discovery_check"] = datetime.now(timezone.utc).isoformat()
+                meta["validation_reason"] = reason
+                stream.settings = meta
             
             await db.commit()
 
-            # Update Redis Cache
+            # Update Redis Cache for fast access
             redis = await get_redis()
             cache_key = live_discovery_key(stream.platform.value, stream.channel_name)
             await redis.set(
                 cache_key,
                 json.dumps({
-                    "is_live": live.is_live,
-                    "viewers": live.viewer_count,
-                    "title": live.title,
-                    "updated_at": time.time()
+                    "is_live": is_live,
+                    "viewers": stream.viewer_count,
+                    "updated_at": time.time(),
+                    "reason": reason
                 }),
                 ex=300
             )
 
-            if live.is_live:
-                # If live, ensure monitoring is active
+            if is_live:
                 await self.ensure_monitoring(stream_id)
-                
-                # IA Validation if requested or if status is ambiguous
-                if meta.get("require_ai_validation") or (live.is_live and live.viewer_count == 0):
-                    pool = await self._get_pool()
-                    await pool.enqueue_job(
-                        "validate_stream_ai_job",
-                        stream_id,
-                        _queue_name=DISCOVERY_QUEUE
-                    )
-
+            
             return {
                 "stream_id": stream_id,
-                "is_live": live.is_live,
-                "viewers": live.viewer_count,
-                "was_live": was_live
+                "is_live": is_live,
+                "was_live": was_live,
+                "reason": reason
             }
 
     async def ensure_monitoring(self, stream_id: str):
@@ -212,21 +213,28 @@ class LiveDiscoveryEngine:
             return metrics_data
 
     async def sync_viewers_with_discovery(self, stream_id: str) -> Dict[str, Any]:
-        """Trigger a fresh discovery poll and sync with Viewer Flow."""
-        status = await self.check_stream_status(stream_id)
-        if status.get("error"):
-            return {"error": status["error"]}
+        """Trigger a fresh discovery poll and sync with Viewer Flow, using Validation Engine."""
+        from app.services.monitoring.validation_engine import get_stream_validation_engine
+        validator = get_stream_validation_engine()
         
-        # Also poll metrics immediately to get fresh viewer count
+        is_live, reason = await validator.validate_live_status(stream_id)
+        if not is_live:
+            return {"is_live": False, "reason": reason}
+        
+        # If live, poll metrics immediately to get fresh viewer count
         metrics = await self.poll_metrics(stream_id)
         return {
-            "is_live": status.get("is_live", False),
+            "is_live": True,
             "viewer_count": metrics.get("viewers", 0),
-            "updated_at": metrics.get("ts")
+            "updated_at": metrics.get("ts"),
+            "reason": reason
         }
 
     async def run_health_check(self) -> Dict[str, Any]:
-        """Check for stale streams and dead monitors."""
+        """Comprehensive health check for all platform monitoring components."""
+        from app.services.monitoring.health_engine import get_health_monitoring_engine
+        health = get_health_monitoring_engine()
+        
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(Stream).where(
@@ -236,28 +244,19 @@ class LiveDiscoveryEngine:
             )
             live_streams = result.scalars().all()
 
-        redis = await get_redis()
-        stale_count = 0
-        restarted_count = 0
-        
+        results = []
         for stream in live_streams:
-            sid = str(stream.id)
-            hb = await redis.get(live_heartbeat_key(sid))
-            if not hb:
-                # No heartbeat in 45s -> monitor might be dead or stream ended
-                stale_count += 1
-                logger.warning("stale_stream_detected", stream_id=sid, channel=stream.channel_name)
-                
-                # Try one more check
-                status = await self.check_stream_status(sid)
-                if status.get("is_live"):
-                    # Still live but no heartbeat -> restart polling
-                    await self.ensure_monitoring(sid)
-                    restarted_count += 1
+            h = await health.get_stream_health(str(stream.id))
+            results.append(h)
+            
+            # If a stream is "online" but has many errors, record it
+            if h["is_healthy"] and h["error_count"] > 10:
+                logger.warning("stream_high_error_rate", stream_id=stream.id, errors=h["error_count"])
 
         return {
-            "stale_detected": stale_count,
-            "restarted": restarted_count
+            "monitored_streams": len(results),
+            "healthy_count": sum(1 for r in results if r["is_healthy"]),
+            "streams": results
         }
 
 

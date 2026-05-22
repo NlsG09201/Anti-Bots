@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, List
 from uuid import UUID
 
@@ -160,32 +161,38 @@ async def recent_anomalies(
     return {"anomalies": items, "count": len(items)}
 
 
-@router.get("/status")
-async def engine_status() -> Dict[str, Any]:
-    engine = get_live_intel_engine()
-    return {
-        "enabled": engine.enabled,
-        "running": engine._running,
-        "cached_snapshots": len(
-            [k for k in engine._snapshots]
-        ),
-    }
-
-
-@router.get("/health")
-async def discovery_health() -> Dict[str, Any]:
-    from app.services.monitoring.discovery_engine import get_live_discovery_engine
-    engine = get_live_discovery_engine()
-    # We can get some stats from Redis if needed
-    from app.infrastructure.cache.redis_client import get_redis
-    redis = await get_redis()
+@router.get("/health-monitor")
+async def get_health_monitor(current_user: AnalystUser) -> Dict[str, Any]:
+    from app.services.monitoring.health_engine import get_health_monitoring_engine
+    health = get_health_monitoring_engine()
     
-    # Simple health check based on recent heartbeats
+    from app.infrastructure.database.session import AsyncSessionLocal
+    from app.infrastructure.database.models import Stream
+    from sqlalchemy import select
+    
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Stream).where(
+                Stream.tenant_id == current_user.tenant_id,
+                Stream.is_live == True
+            )
+        )
+        live_streams = result.scalars().all()
+        
+    streams_health = []
+    for s in live_streams:
+        h = await health.get_stream_health(str(s.id))
+        streams_health.append({
+            "id": s.id,
+            "channel": s.channel_name,
+            "platform": s.platform.value,
+            **h
+        })
+        
     return {
-        "engine_active": True,
-        "worker_queues": ["ss:queue:events", "ss:queue:discovery"],
-        "discovery_interval": 60,
-        "polling_interval": 15,
+        "timestamp": time.time(),
+        "streams": streams_health,
+        "platform_status": await health.get_global_status()
     }
 
 

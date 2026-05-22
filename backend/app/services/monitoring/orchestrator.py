@@ -44,7 +44,15 @@ class PlatformMonitorOrchestrator:
     async def _start_monitor(self, stream: Stream) -> None:
         sid = str(stream.id)
         if sid in self._monitors:
-            return
+            # Check if monitor task is still alive
+            monitor = self._monitors[sid]
+            # Simple check for Kick monitor pusher task
+            if hasattr(monitor, "_pusher_task") and monitor._pusher_task and monitor._pusher_task.done():
+                 logger.warning("monitor_task_dead_restarting", stream_id=sid)
+                 await self._stop_monitor(sid)
+            else:
+                return
+
         slug = (stream.settings or {}).get("login") or stream.channel_name
         slug = slug.strip().lstrip("@").lower()
 
@@ -95,13 +103,14 @@ class PlatformMonitorOrchestrator:
         if not settings.platform_monitor_enabled:
             return
         
-        # If discovery engine is enabled, we rely on it for status sync
-        # but we still need to manage the lifecycle of local WebSocket monitors
-        
         from app.services.monitoring.discovery_engine import get_live_discovery_engine
+        from app.services.monitoring.validation_engine import get_stream_validation_engine
+        
         engine = get_live_discovery_engine()
+        validator = get_stream_validation_engine()
 
         async with AsyncSessionLocal() as db:
+            # Only select streams that are marked as live or force_monitor
             result = await db.execute(
                 select(Stream).where(
                     Stream.platform.in_(
@@ -110,11 +119,17 @@ class PlatformMonitorOrchestrator:
                 )
             )
             streams = list(result.scalars().all())
-            # Skip manual sync_stream_live_status here if we want to save resources
-            # but for local monitors, we still need current status.
-            # We'll use the discovery engine's cached status if available.
             
-        candidates = [s for s in streams if self._should_monitor(s)]
+        candidates = []
+        for s in streams:
+            if self._should_monitor(s):
+                # Double check live status if not force_monitor
+                if not (s.settings or {}).get("force_monitor"):
+                    is_live, _ = await validator.validate_live_status(str(s.id))
+                    if not is_live:
+                        continue
+                candidates.append(s)
+
         candidates.sort(key=lambda s: (not s.is_live, s.channel_name))
         active_ids = {str(s.id) for s in candidates[: settings.platform_monitor_max_streams]}
 

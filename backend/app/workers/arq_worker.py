@@ -42,11 +42,8 @@ async def startup(ctx: dict) -> None:
     from arq.connections import RedisSettings
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     pool = await create_pool(redis_settings)
-    await pool.enqueue_job(
-        "discovery_batch_job",
-        _queue_name=UNIFIED_QUEUE,
-        _job_id="discovery_init_batch"
-    )
+    await pool.enqueue_job("discovery_batch_job", _queue_name=UNIFIED_QUEUE, _job_id="discovery_init_batch")
+    await pool.enqueue_job("reconnect_monitors_job", _queue_name=UNIFIED_QUEUE, _job_id="reconnect_init")
     await pool.close()
 
 
@@ -211,6 +208,58 @@ async def health_check_job(ctx: dict) -> Dict[str, Any]:
     return await get_live_discovery_engine().run_health_check()
 
 
+async def reconnect_monitors_job(ctx: dict) -> Dict[str, Any]:
+    """Checks for stale monitors and restarts them."""
+    from app.services.monitoring.orchestrator import get_platform_monitor_orchestrator
+    from app.infrastructure.cache.redis_client import get_redis
+    from app.infrastructure.cache.redis_schema import live_heartbeat_key
+    from app.infrastructure.database.session import AsyncSessionLocal
+    from app.infrastructure.database.models import Stream
+    from sqlalchemy import select
+    from uuid import UUID
+    import time
+    
+    orch = get_platform_monitor_orchestrator()
+    redis = await get_redis()
+    
+    reconnected = 0
+    
+    async with AsyncSessionLocal() as db:
+        # Get all streams that should be monitored
+        result = await db.execute(
+            select(Stream).where(
+                Stream.is_live == True,
+                Stream.platform.in_(["kick", "youtube", "tiktok"])
+            )
+        )
+        streams = result.scalars().all()
+        
+        for stream in streams:
+            sid = str(stream.id)
+            hb = await redis.get(live_heartbeat_key(sid))
+            
+            # If no heartbeat in 90 seconds but DB says live, restart monitor
+            if not hb or (time.time() - float(hb)) > 90:
+                logger.warning("monitor_stale_restarting", stream_id=sid, channel=stream.channel_name)
+                await orch._start_monitor(stream)
+                reconnected += 1
+    
+    # Reschedule in 30 seconds
+    from arq import create_pool
+    from arq.connections import RedisSettings
+    redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
+    pool = await create_pool(redis_settings)
+    await pool.enqueue_job(
+        "reconnect_monitors_job",
+        _queue_name=UNIFIED_QUEUE,
+        _defer_by=30,
+        _job_id=f"reconnect_batch_{int(time.time() / 30) + 1}"
+    )
+    await pool.close()
+    
+    return {"reconnected": reconnected}
+
+
 class WorkerSettings:
     """Configuración arq — una función, múltiples colas vía _queue_name al encolar."""
 
@@ -225,6 +274,7 @@ class WorkerSettings:
         validate_stream_ai_job,
         discovery_batch_job,
         health_check_job,
+        reconnect_monitors_job,
     ]
     on_startup = startup
     on_shutdown = shutdown
