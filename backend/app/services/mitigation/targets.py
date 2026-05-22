@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infrastructure.database.models import Attack, ViewerSession
+from app.infrastructure.database.models import Attack, StreamEvent, ViewerSession
 from app.services.monitoring.proxy_intel import collect_proxy_threats
 from app.services.viewers.session import CHAT_IP_PLACEHOLDER, is_chat_presence_session
 
@@ -123,6 +123,39 @@ async def build_mitigation_targets_from_attack(
         )
 
     return dedupe_targets(targets)[:max_targets]
+
+
+async def build_targets_from_recent_events(
+    db: AsyncSession,
+    stream_id: UUID,
+    *,
+    limit: int = 80,
+    min_risk: float = 45.0,
+) -> List[Dict[str, str]]:
+    """Fallback: IPs/usuarios de eventos recientes del canal."""
+    result = await db.execute(
+        select(StreamEvent)
+        .where(
+            StreamEvent.stream_id == stream_id,
+            StreamEvent.risk_score >= min_risk,
+        )
+        .order_by(StreamEvent.created_at.desc())
+        .limit(limit)
+    )
+    targets: List[Dict[str, str]] = []
+    for ev in result.scalars().all():
+        if ev.ip_address and ev.ip_address != CHAT_IP_PLACEHOLDER:
+            if ev.is_proxy or ev.is_vpn or ev.is_datacenter or ev.risk_score >= 60:
+                targets.append({"type": "ip", "value": ev.ip_address.strip()})
+        if ev.fingerprint_hash:
+            targets.append({"type": "fingerprint", "value": ev.fingerprint_hash.strip()})
+        uid = (ev.platform_user_id or "").strip()
+        login = (ev.platform_username or "").strip()
+        if uid.isdigit():
+            targets.append({"type": "user", "value": uid})
+        elif login:
+            targets.append({"type": "user_login", "value": login})
+    return dedupe_targets(targets)
 
 
 async def suspected_sessions_snapshot(

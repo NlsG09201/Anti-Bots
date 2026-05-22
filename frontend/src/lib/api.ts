@@ -466,6 +466,8 @@ export const api = {
         bans_created: number;
         targets: number;
         full_mitigation?: boolean;
+        acknowledge_only?: boolean;
+        message?: string | null;
       }>(`/api/v1/attacks/${attackId}/mitigate`, {
         method: "POST",
         body: JSON.stringify(data),

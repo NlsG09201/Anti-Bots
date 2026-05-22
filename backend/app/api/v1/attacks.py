@@ -12,7 +12,12 @@ from app.infrastructure.database.models import Alert, Attack, Ban, Stream
 from app.infrastructure.database.session import get_db
 from app.services.mitigation.service import MitigationService
 from app.services.correlation.service import CorrelationService
-from app.services.mitigation.targets import build_mitigation_targets_from_attack
+from app.services.mitigation.targets import (
+    build_mitigation_targets_from_attack,
+    build_targets_from_recent_events,
+)
+from app.services.streams.helpers import stream_monitor_mode
+from app.infrastructure.database.models import MitigationAction
 
 router = APIRouter(tags=["Attacks & Security"])
 
@@ -94,13 +99,27 @@ async def mitigate_attack(
                     targets.append({"type": "fingerprint", "value": fp})
 
     if not targets:
-        raise ValidationError(
-            "No hay objetivos para mitigar. Escanea el chat, conecta OAuth del streamer "
-            "o espera eventos con IPs de proxy."
-        )
+        targets = await build_targets_from_recent_events(db, attack.stream_id)
+
+    acknowledge_only = False
+    if not targets:
+        meta = stream.settings or {}
+        if stream_monitor_mode(stream) or meta.get("soc_monitor") or meta.get("competitive_intel"):
+            acknowledge_only = True
+            targets = []
+        else:
+            raise ValidationError(
+                "No hay objetivos para mitigar. Ejecuta un escaneo del chat, conecta OAuth del "
+                "streamer o espera eventos con IPs/usuarios sospechosos en el canal."
+            )
 
     mitigation = MitigationService(db)
-    action = data.action or mitigation.determine_action(attack.risk_score, attack.attack_type.value)
+    if acknowledge_only:
+        action = MitigationAction.NONE
+    else:
+        action = data.action or mitigation.determine_action(
+            attack.risk_score, attack.attack_type.value
+        )
     evidence_payload = dict(attack.evidence or {})
     evidence_payload["risk_score"] = attack.risk_score
 
@@ -125,6 +144,12 @@ async def mitigate_attack(
         "targets": len(targets),
         "twitch_bans_applied": twitch_bans,
         "full_mitigation": data.full_mitigation,
+        "acknowledge_only": acknowledge_only,
+        "message": (
+            "Ataque cerrado en modo observación (sin bans en plataforma: no se detectaron objetivos)."
+            if acknowledge_only
+            else None
+        ),
     }
 
 

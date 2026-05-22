@@ -283,7 +283,7 @@ class BlockViewerRequest(BaseModel):
 
 
 class MitigationTarget(BaseModel):
-    type: str = Field(..., pattern="^(user|ip|fingerprint|asn)$")
+    type: str = Field(..., pattern="^(user|user_login|ip|fingerprint|asn)$")
     value: str = Field(..., min_length=1, max_length=255)
 
 

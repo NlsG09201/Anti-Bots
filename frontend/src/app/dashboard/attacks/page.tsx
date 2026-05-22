@@ -40,14 +40,28 @@ function AttacksContent() {
         ...suspected
           .filter((u) => u?.trim())
           .slice(0, 10)
-          .map((u) => ({ type: "user" as const, value: String(u).trim() })),
+          .map((u) => ({ type: "user_login" as const, value: String(u).trim() })),
       ];
       return api.attacks.mitigate(accessToken!, attack.id, { targets });
     },
-    onSuccess: (res: { bans_created?: number; targets?: number; full_mitigation?: boolean }) => {
-      setMessage(
-        `Mitigado: ${res.targets ?? 0} objetivos${res.full_mitigation ? " (completo: usuarios + proxy IPs)" : ""}`,
-      );
+    onSuccess: (res: {
+      bans_created?: number;
+      targets?: number;
+      full_mitigation?: boolean;
+      acknowledge_only?: boolean;
+      message?: string | null;
+    }) => {
+      if (res.message) {
+        setMessage(res.message);
+      } else if (res.acknowledge_only) {
+        setMessage(
+          `Ataque cerrado (modo observación): ${res.bans_created ?? 0} bans locales, sin objetivos en plataforma.`,
+        );
+      } else {
+        setMessage(
+          `Mitigado: ${res.bans_created ?? 0} bans · ${res.targets ?? 0} objetivos${res.full_mitigation ? " (mitigación completa)" : ""}`,
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ["attacks-all"] });
       queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
     },
