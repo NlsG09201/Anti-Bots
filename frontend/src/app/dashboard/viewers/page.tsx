@@ -564,7 +564,10 @@ function ViewersContent() {
                         {(v.behavior_metrics?.ai_verdict as { source?: string })?.source ===
                         "twitch_insights"
                           ? "Viewbot (Twitch Insights)"
-                          : "Bot / malicioso"}
+                          : (v.behavior_metrics?.ai_verdict as { source?: string })?.source ===
+                              "twitchbots_info"
+                            ? "Bot conocido (TwitchBots.info)"
+                            : "Bot / malicioso"}
                       </span>
                       <span
                         className="text-cyber-muted text-[10px] line-clamp-2"

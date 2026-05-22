@@ -81,6 +81,19 @@ En el dashboard: **Channels** → plataforma Kick/YouTube/TikTok → slug del ca
 
 Endpoints SOC: `GET /api/v1/soc/overview`, `GET /api/v1/soc/feed`.
 
+### TwitchBots.info (directorio publico de bots)
+
+| Variable | Uso |
+|----------|-----|
+| `TWITCHBOTS_INFO_ENABLED` | `true` — verificacion contra api.twitchbots.info/v2 |
+| `TWITCHBOTS_INFO_VERIFY_ON_INGEST` | Verificar cada viewer al ingestar |
+| `TWITCHBOTS_INFO_QUEUE_ENABLED` | Lotes grandes via worker arq (`REDIS_URL` requerido) |
+| `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Resolver username → Twitch ID (Helix) |
+
+Endpoints: `GET /api/v1/twitchbots/overview`, `GET /api/v1/twitchbots/detections`, `POST /api/v1/twitchbots/verify`, `POST /api/v1/twitchbots/verify/batch`.
+
+Panel en **SOC Command** → *Bots conocidos (TwitchBots.info)*. Evento WebSocket: `twitchbots_detection`.
+
 ### Worker dedicado (`anti-bots-platform-monitor`)
 
 El Blueprint `render.yaml` define un **background worker** con `Dockerfile.worker` (sin JVM Weka).
