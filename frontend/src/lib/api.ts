@@ -343,6 +343,34 @@ export const api = {
         token,
       ),
   },
+  platformHealth: {
+    overview: (token: ApiAuthToken) =>
+      request<PlatformHealthOverview>("/api/v1/platform-health/overview", {}, token),
+    streams: (token: ApiAuthToken) =>
+      request<{ enabled: boolean; streams: PlatformHealthStream[]; count: number }>(
+        "/api/v1/platform-health/streams",
+        {},
+        token,
+      ),
+    integrations: (token: ApiAuthToken) =>
+      request<{ enabled: boolean; integrations: IntegrationProbe[] }>(
+        "/api/v1/platform-health/integrations",
+        {},
+        token,
+      ),
+    audit: (token: ApiAuthToken) =>
+      request<PlatformHealthOverview>(
+        "/api/v1/platform-health/audit",
+        { method: "POST" },
+        token,
+      ),
+    monitorsStatus: (token: ApiAuthToken) =>
+      request<PlatformMonitorHealthStatus>(
+        "/api/v1/platform-health/monitors/status",
+        {},
+        token,
+      ),
+  },
   twitchbots: {
     overview: (token: ApiAuthToken) =>
       request<TwitchBotsOverview>("/api/v1/twitchbots/overview", {}, token),
@@ -1151,6 +1179,72 @@ export interface SocOverview {
     active_attacks: number;
   };
   updated_at: string;
+}
+
+export interface PlatformHealthSystem {
+  redis_ok?: boolean;
+  redis_latency_ms?: number | null;
+  realtime_pubsub_ok?: boolean;
+  worker_alive?: boolean;
+  worker_last_seen?: string | null;
+  orchestrator_running?: boolean;
+  active_monitors?: number;
+  api_process?: string;
+}
+
+export interface IntegrationProbe {
+  platform: "kick" | "youtube" | "tiktok";
+  ok: boolean;
+  latency_ms?: number | null;
+  circuit_state?: string;
+  message?: string;
+  checked_at?: string;
+}
+
+export interface PlatformHealthStream {
+  stream_id: string;
+  platform: "kick" | "youtube" | "tiktok";
+  channel_name?: string;
+  slug?: string;
+  status: string;
+  is_live?: boolean;
+  viewer_count?: number;
+  messages_per_min?: number;
+  viewers_per_min?: number;
+  events_total?: number;
+  last_poll_at?: string | null;
+  last_event_at?: string | null;
+  socket_connected?: boolean;
+  socket_transport?: string;
+  reconnect_count?: number;
+  error_count?: number;
+  ai_anomaly_score?: number;
+  ai_flags?: string[];
+  uptime_seconds?: number;
+}
+
+export interface PlatformHealthOverview {
+  enabled: boolean;
+  message?: string;
+  system?: PlatformHealthSystem;
+  integrations?: IntegrationProbe[];
+  streams?: PlatformHealthStream[];
+  issues?: { message?: string; flag?: string; at?: string; severity?: string }[];
+  summary?: Record<string, number>;
+  updated_at?: string;
+}
+
+export interface PlatformMonitorHealthStatus {
+  enabled: boolean;
+  health_enabled?: boolean;
+  running: boolean;
+  active_monitors: string[];
+  count: number;
+  max_streams: number;
+  worker_alive?: boolean;
+  worker_last_seen?: string | null;
+  redis_ok?: boolean;
+  redis_latency_ms?: number | null;
 }
 
 export interface TwitchBotsOverview {

@@ -13,6 +13,7 @@ from app.core.logging import get_logger
 from app.integrations.youtube.client import YouTubeLiveClient
 from app.infrastructure.database.models import Platform, Stream
 from app.services.monitoring.platform_events import emit_platform_event, normalize_platform_event
+from app.services.platform_health.registry import drop_tracker, get_or_create_tracker
 from app.services.platforms.registry import get_platform_adapter
 
 logger = get_logger(__name__)
@@ -23,6 +24,10 @@ class YouTubeLiveMonitor:
         self.stream_id = stream_id
         self.channel_query = channel_query
         self.video_id = video_id
+        self._health = get_or_create_tracker(
+            stream_id, "youtube", channel_query, slug=channel_query
+        )
+        self._health.record_socket(True, "poll")
         self._task: Optional[asyncio.Task] = None
         self._running = False
         self._page_token: Optional[str] = None
@@ -38,6 +43,9 @@ class YouTubeLiveMonitor:
 
         while self._running:
             try:
+                import time
+
+                t0 = time.perf_counter()
                 async with AsyncSessionLocal() as db:
                     result = await db.execute(
                         select(Stream).where(Stream.id == UUID(self.stream_id))
@@ -110,14 +118,22 @@ class YouTubeLiveMonitor:
                                     platform_username=username,
                                     metadata=meta,
                                 )
+                                self._health.record_event(et)
 
                     meta = dict(stream.settings or {})
                     meta["last_platform_poll"] = datetime.now(timezone.utc).isoformat()
                     stream.settings = meta
+                    latency_ms = (time.perf_counter() - t0) * 1000.0
+                    self._health.record_poll(
+                        viewer_count=stream.viewer_count,
+                        is_live=stream.is_live,
+                        latency_ms=latency_ms,
+                    )
                     await db.commit()
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                self._health.record_error(str(exc))
                 logger.warning(
                     "youtube_monitor_error",
                     channel=self.channel_query,
@@ -131,6 +147,8 @@ class YouTubeLiveMonitor:
 
     async def stop(self) -> None:
         self._running = False
+        self._health.record_socket(False, "poll")
+        drop_tracker(self.stream_id)
         if self._task and not self._task.done():
             self._task.cancel()
             try:

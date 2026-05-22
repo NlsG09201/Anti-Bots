@@ -23,6 +23,7 @@ from app.api.v1 import (
     streaming_intelligence,
     live_intelligence,
     twitchbots_soc,
+    platform_health,
     twitch_integration,
     kick_integration,
     youtube_integration,
@@ -173,6 +174,13 @@ async def lifespan(app: FastAPI):
             logger.info("platform_monitors_in_api_process")
         elif cfg_mon.platform_monitor_worker_mode_resolved:
             logger.info("platform_monitor_worker_mode_skip_api_orchestrator")
+        if cfg_mon.platform_health_enabled:
+            from app.services.platform_health.engine import get_platform_health_engine
+
+            _ph = get_platform_health_engine()
+            _ph.set_process_label("api")
+            asyncio.create_task(_ph.start())
+            logger.info("platform_health_engine_in_api")
         from app.workers.pipeline_consumer import start_pipeline_consumer
         from app.workers.realtime_subscriber import start_realtime_subscriber
 
@@ -198,6 +206,10 @@ async def lifespan(app: FastAPI):
             await monitor_task
         except asyncio.CancelledError:
             pass
+    if _cfg.platform_health_enabled:
+        from app.services.platform_health.engine import get_platform_health_engine
+
+        await get_platform_health_engine().stop()
     from app.services.monitoring.orchestrator import get_platform_monitor_orchestrator
 
     await get_platform_monitor_orchestrator().stop()
@@ -267,6 +279,7 @@ app.include_router(threat_intel.router, prefix=API_PREFIX)
 app.include_router(streaming_intelligence.router, prefix=API_PREFIX)
 app.include_router(live_intelligence.router, prefix=API_PREFIX)
 app.include_router(twitchbots_soc.router, prefix=API_PREFIX)
+app.include_router(platform_health.router, prefix=API_PREFIX)
 app.include_router(events_pipeline.router, prefix=API_PREFIX)
 app.include_router(ai_insights.router, prefix=API_PREFIX)
 app.include_router(webhooks.router, prefix=API_PREFIX)

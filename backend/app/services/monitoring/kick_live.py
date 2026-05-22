@@ -14,6 +14,7 @@ from app.integrations.kick.client import KickAPIClient
 from app.integrations.kick.pusher_ws import KickPusherClient
 from app.infrastructure.database.models import Platform, Stream
 from app.services.monitoring.platform_events import emit_platform_event, normalize_platform_event
+from app.services.platform_health.registry import drop_tracker, get_or_create_tracker
 from app.services.platforms.registry import get_platform_adapter
 
 logger = get_logger(__name__)
@@ -24,6 +25,7 @@ class KickLiveMonitor:
         self.stream_id = stream_id
         self.slug = slug
         self.chatroom_id = chatroom_id
+        self._health = get_or_create_tracker(stream_id, "kick", slug, slug=slug)
         self._pusher: Optional[KickPusherClient] = None
         self._poll_task: Optional[asyncio.Task] = None
         self._pusher_task: Optional[asyncio.Task] = None
@@ -36,6 +38,7 @@ class KickLiveMonitor:
         event_type, uid, username, meta = normalize_platform_event(
             Platform.KICK, raw_event, data
         )
+        self._health.record_event(event_type)
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(Stream).where(Stream.id == UUID(self.stream_id))
@@ -85,6 +88,12 @@ class KickLiveMonitor:
                     meta["viewer_history"] = history
                     meta["last_platform_poll"] = datetime.now(timezone.utc).isoformat()
                     stream.settings = meta
+                    latency_ms = (time.perf_counter() - t0) * 1000.0
+                    self._health.record_poll(
+                        viewer_count=live.viewer_count,
+                        is_live=live.is_live,
+                        latency_ms=latency_ms,
+                    )
                     if live.is_live and live.viewer_count - prev >= 80:
                         await emit_platform_event(
                             db,
@@ -110,17 +119,25 @@ class KickLiveMonitor:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                self._health.record_error(str(exc))
                 logger.warning("kick_poll_error", slug=self.slug, error=str(exc)[:200])
             await asyncio.sleep(25)
 
     async def start(self) -> None:
         self._running = True
-        self._pusher = KickPusherClient(self.chatroom_id, on_event=self._on_pusher)
+        self._pusher = KickPusherClient(
+            self.chatroom_id,
+            on_event=self._on_pusher,
+            on_connected=lambda: self._health.record_socket(True, "pusher"),
+            on_reconnect=lambda: self._health.record_reconnect(),
+        )
         self._pusher_task = asyncio.create_task(self._pusher.run())
         self._poll_task = asyncio.create_task(self._poll_viewers())
 
     async def stop(self) -> None:
         self._running = False
+        self._health.record_socket(False, "pusher")
+        drop_tracker(self.stream_id)
         if self._pusher:
             await self._pusher.stop()
         for task in (self._pusher_task, self._poll_task):

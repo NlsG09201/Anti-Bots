@@ -13,6 +13,7 @@ from app.core.logging import get_logger
 from app.integrations.tiktok.webcast import TikTokWebcastMonitor, fetch_tiktok_room
 from app.infrastructure.database.models import Platform, Stream
 from app.services.monitoring.platform_events import emit_platform_event, normalize_platform_event
+from app.services.platform_health.registry import drop_tracker, get_or_create_tracker
 
 logger = get_logger(__name__)
 
@@ -21,6 +22,9 @@ class TikTokLiveMonitor:
     def __init__(self, stream_id: str, unique_id: str) -> None:
         self.stream_id = stream_id
         self.unique_id = unique_id.strip().lstrip("@").lower()
+        self._health = get_or_create_tracker(
+            stream_id, "tiktok", self.unique_id, slug=self.unique_id
+        )
         self._webcast: Optional[TikTokWebcastMonitor] = None
         self._webcast_task: Optional[asyncio.Task] = None
         self._poll_task: Optional[asyncio.Task] = None
@@ -32,6 +36,11 @@ class TikTokLiveMonitor:
         event_type, uid, username, meta = normalize_platform_event(
             Platform.TIKTOK, raw_event, data
         )
+        self._health.record_event(event_type)
+        if event_type == "connection":
+            self._health.record_socket(True, "webcast")
+        elif event_type == "stream.offline":
+            self._health.record_socket(False, "webcast")
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(Stream).where(Stream.id == UUID(self.stream_id))
@@ -54,6 +63,9 @@ class TikTokLiveMonitor:
 
         while self._running:
             try:
+                import time
+
+                t0 = time.perf_counter()
                 room = await fetch_tiktok_room(self.unique_id)
                 async with AsyncSessionLocal() as db:
                     result = await db.execute(
@@ -74,6 +86,12 @@ class TikTokLiveMonitor:
                     meta = dict(stream.settings or {})
                     meta["last_platform_poll"] = datetime.now(timezone.utc).isoformat()
                     stream.settings = meta
+                    latency_ms = (time.perf_counter() - t0) * 1000.0
+                    self._health.record_poll(
+                        viewer_count=room.viewer_count,
+                        is_live=room.is_live,
+                        latency_ms=latency_ms,
+                    )
                     if room.is_live and room.viewer_count - prev >= 50:
                         await emit_platform_event(
                             db,
@@ -116,6 +134,8 @@ class TikTokLiveMonitor:
 
     async def stop(self) -> None:
         self._running = False
+        self._health.record_socket(False, "webcast")
+        drop_tracker(self.stream_id)
         if self._webcast:
             await self._webcast.stop()
         for task in (self._webcast_task, self._poll_task):

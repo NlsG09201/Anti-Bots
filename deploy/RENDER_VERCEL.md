@@ -94,6 +94,19 @@ Endpoints: `GET /api/v1/twitchbots/overview`, `GET /api/v1/twitchbots/detections
 
 Panel en **SOC Command** → *Bots conocidos (TwitchBots.info)*. Evento WebSocket: `twitchbots_detection`.
 
+### Salud monitores multi-plataforma
+
+| Variable | Uso |
+|----------|-----|
+| `PLATFORM_HEALTH_ENABLED` | Motor de auditoría cada 45s (API + worker) |
+| `REDIS_URL` | Heartbeat worker, caché salud, Pub/Sub `platform_monitor_health` |
+| `PLATFORM_MONITOR_RUN_IN_API` | `false` en API si usas worker dedicado |
+| `PLATFORM_MONITOR_WORKER` | `true` en servicio `anti-bots-platform-monitor` |
+
+Endpoints: `GET /api/v1/platform-health/overview`, `POST /api/v1/platform-health/audit`, `GET /api/v1/platform-health/integrations`.
+
+Panel SOC: **Salud monitores (Kick / YouTube / TikTok)**. WebSocket: `platform_monitor_health`.
+
 ### Worker dedicado (`anti-bots-platform-monitor`)
 
 El Blueprint `render.yaml` define un **background worker** con `Dockerfile.worker` (sin JVM Weka).

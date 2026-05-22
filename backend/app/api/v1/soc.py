@@ -63,12 +63,23 @@ async def soc_push_refresh(
 @router.get("/monitors/status")
 async def platform_monitors_status(_user: AnalystUser):
     from app.core.config import get_settings
+    from app.services.platform_health.store import PlatformHealthStore
 
+    cfg = get_settings()
     orch = get_platform_monitor_orchestrator()
+    store = PlatformHealthStore()
+    worker_alive, worker_ts = await store.worker_is_alive(cfg.platform_health_worker_heartbeat_ttl)
+    redis_ok, redis_ms = await store.probe_redis_latency()
     return {
-        "enabled": get_settings().platform_monitor_enabled,
+        "enabled": cfg.platform_monitor_enabled,
+        "health_enabled": cfg.platform_health_enabled,
         "running": orch._running,
         "active_monitors": list(orch._monitors.keys()),
         "count": len(orch._monitors),
-        "max_streams": get_settings().platform_monitor_max_streams,
+        "max_streams": cfg.platform_monitor_max_streams,
+        "worker_alive": worker_alive,
+        "worker_last_seen": worker_ts,
+        "redis_ok": redis_ok,
+        "redis_latency_ms": redis_ms,
+        "health_detail_url": "/api/v1/platform-health/overview",
     }

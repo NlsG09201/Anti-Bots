@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.infrastructure.database.models import Platform, Stream
 from app.infrastructure.database.session import AsyncSessionLocal
+from app.services.platform_health.registry import drop_tracker
 from app.services.monitoring.kick_live import KickLiveMonitor, resolve_kick_chatroom
 from app.services.monitoring.tiktok_live import TikTokLiveMonitor
 from app.services.monitoring.youtube_live import YouTubeLiveMonitor
@@ -87,6 +88,7 @@ class PlatformMonitorOrchestrator:
         monitor = self._monitors.pop(stream_id, None)
         if monitor:
             await monitor.stop()
+            drop_tracker(stream_id)
             logger.info("platform_monitor_stopped", stream_id=stream_id)
 
     async def reconcile(self) -> None:

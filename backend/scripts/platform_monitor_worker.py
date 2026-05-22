@@ -51,6 +51,14 @@ async def run_worker() -> None:
     orch = get_platform_monitor_orchestrator()
     await orch.start()
 
+    if settings.platform_health_enabled:
+        from app.services.platform_health.engine import get_platform_health_engine
+
+        he = get_platform_health_engine()
+        he.set_process_label("worker")
+        await he.start()
+        logger.info("platform_health_engine_in_worker")
+
     if settings.live_intel_enabled:
         from app.live_intel import get_live_intel_engine
 
@@ -60,6 +68,10 @@ async def run_worker() -> None:
     await _shutdown.wait()
 
     logger.info("platform_monitor_worker_shutting_down")
+    if settings.platform_health_enabled:
+        from app.services.platform_health.engine import get_platform_health_engine
+
+        await get_platform_health_engine().stop()
     await orch.stop()
     if settings.live_intel_enabled:
         from app.live_intel import get_live_intel_engine

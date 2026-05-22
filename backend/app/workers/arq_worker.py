@@ -84,6 +84,17 @@ async def twitchbots_verify_batch_job(
     }
 
 
+async def platform_health_audit_job(ctx: dict) -> Dict[str, Any]:
+    from app.services.platform_health.engine import get_platform_health_engine
+
+    overview = await get_platform_health_engine().audit_once()
+    return {
+        "streams": len(overview.streams),
+        "summary": overview.summary,
+        "worker_alive": overview.system.worker_alive,
+    }
+
+
 async def weka_j48_train_job(
     ctx: dict,
     tenant_id: Optional[str] = None,
@@ -116,6 +127,7 @@ class WorkerSettings:
         ai_train_models_job,
         weka_j48_train_job,
         twitchbots_verify_batch_job,
+        platform_health_audit_job,
     ]
     on_startup = startup
     on_shutdown = shutdown

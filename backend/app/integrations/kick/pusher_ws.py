@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional  # noqa: F401 used by callbacks
 
 import websockets
 from websockets.exceptions import ConnectionClosed
@@ -24,11 +24,15 @@ class KickPusherClient:
         chatroom_id: int,
         *,
         on_event: EventHandler,
+        on_connected: Optional[Callable[[], Awaitable[None]]] = None,
+        on_reconnect: Optional[Callable[[], Awaitable[None]]] = None,
         app_key: Optional[str] = None,
         cluster: Optional[str] = None,
     ) -> None:
         self.chatroom_id = chatroom_id
         self.on_event = on_event
+        self.on_connected = on_connected
+        self.on_reconnect = on_reconnect
         self.app_key = app_key or settings.kick_pusher_app_key
         self.cluster = cluster or settings.kick_pusher_cluster
         self._channel = f"chatrooms.{chatroom_id}.v2"
@@ -85,6 +89,8 @@ class KickPusherClient:
                     self._ws = ws
                     backoff = 2.0
                     await self._subscribe()
+                    if self.on_connected:
+                        await self.on_connected()
                     async for message in ws:
                         if not self._running:
                             break
@@ -103,6 +109,8 @@ class KickPusherClient:
                 self._ws = None
             if not self._running:
                 break
+            if self.on_reconnect:
+                await self.on_reconnect()
             await asyncio.sleep(min(backoff, max_backoff))
             backoff = min(backoff * 1.5, max_backoff)
 

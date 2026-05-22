@@ -121,6 +121,14 @@ class Settings(BaseSettings):
     platform_monitor_poll_seconds: int = 30
     platform_monitor_max_streams: int = 12
     platform_monitor_reconnect_max_seconds: int = 120
+
+    platform_health_enabled: bool = True
+    platform_health_audit_seconds: int = 45
+    platform_health_stale_poll_seconds: int = 90
+    platform_health_stale_chat_seconds: int = 180
+    platform_health_worker_heartbeat_ttl: int = 90
+    platform_health_alert_cooldown_seconds: int = 600
+
     kick_pusher_app_key: str = "32cbd69e8b950bf76579"
     kick_pusher_cluster: str = "us2"
 
