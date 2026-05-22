@@ -76,6 +76,13 @@ async def emit_platform_event(
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Procesa evento y emite feed SOC en tiempo real."""
+    from app.live_intel import get_live_intel_engine
+
+    await get_live_intel_engine().record_platform_event(
+        str(stream.id),
+        event_type,
+        username=platform_username,
+    )
     meta = dict(metadata or {})
     meta["platform"] = stream.platform.value
     meta["channel"] = stream.channel_name

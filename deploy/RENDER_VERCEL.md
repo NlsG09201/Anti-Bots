@@ -185,3 +185,19 @@ Colecciones MongoDB (auto-index en startup): `threat_entities`, `cross_platform_
 
 API: `/api/v1/streaming-intelligence/*`  
 Dashboard: `/dashboard/threat-intelligence` (Cytoscape + engagement en vivo vía WebSocket `threat_intel_update`).
+
+## Live Stream Intelligence Monitor
+
+Monitoreo competitivo de streams externos (Kick, YouTube, TikTok, Twitch):
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `LIVE_INTEL_ENABLED` | `true` | Sampler de métricas públicas |
+| `LIVE_INTEL_SAMPLE_SECONDS` | `20` | Intervalo de muestreo |
+| `LIVE_INTEL_MAX_STREAMS` | `30` | Máximo de canales competitivos |
+
+Al usar **Channels → Watch**, se activa `competitive_intel` automáticamente.
+
+API: `/api/v1/live-intelligence/*`  
+Dashboard: `/dashboard/live-intelligence`  
+WebSocket: `live_intel_update`

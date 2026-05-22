@@ -41,13 +41,30 @@ async def run_worker() -> None:
     await init_database(engine)
     await run_startup_migrations(engine)
 
+    if settings.mongodb_uri:
+        from app.threat_intel_engine.mongo_store import ensure_indexes
+        from app.live_intel.mongo_store import ensure_live_intel_indexes
+
+        await ensure_indexes()
+        await ensure_live_intel_indexes()
+
     orch = get_platform_monitor_orchestrator()
     await orch.start()
+
+    if settings.live_intel_enabled:
+        from app.live_intel import get_live_intel_engine
+
+        await get_live_intel_engine().start()
+        logger.info("live_intel_sampler_in_worker")
 
     await _shutdown.wait()
 
     logger.info("platform_monitor_worker_shutting_down")
     await orch.stop()
+    if settings.live_intel_enabled:
+        from app.live_intel import get_live_intel_engine
+
+        await get_live_intel_engine().stop()
     await close_redis()
     await engine.dispose()
 

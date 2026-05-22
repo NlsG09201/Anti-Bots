@@ -152,6 +152,10 @@ class Settings(BaseSettings):
     mongodb_uri: str = ""
     threat_intel_engine_enabled: bool = True
 
+    live_intel_enabled: bool = True
+    live_intel_sample_seconds: int = 20
+    live_intel_max_streams: int = 30
+
     twitch_insights_enabled: bool = True
     twitch_insights_cache_hours: int = 6
 

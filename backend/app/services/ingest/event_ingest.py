@@ -44,6 +44,18 @@ async def process_stream_event(
     reputation_svc = ReputationService(db)
     mitigation = MitigationService(db)
 
+    if ingest_settings.live_intel_enabled:
+        try:
+            from app.live_intel import get_live_intel_engine
+
+            await get_live_intel_engine().record_platform_event(
+                str(stream.id),
+                event.event_type,
+                username=event.platform_username,
+            )
+        except Exception:
+            pass
+
     blocked = await is_event_blocked(
         mitigation,
         stream.id,

@@ -371,6 +371,49 @@ export const api = {
         max_streams: number;
       }>("/api/v1/soc/monitors/status", {}, token),
   },
+  liveIntelligence: {
+    overview: (token: ApiAuthToken) =>
+      request<LiveIntelOverviewResponse>("/api/v1/live-intelligence/overview", {}, token),
+    streams: (token: ApiAuthToken) =>
+      request<{ streams: LiveIntelStreamRow[]; count: number }>(
+        "/api/v1/live-intelligence/streams",
+        {},
+        token,
+      ),
+    stream: (token: ApiAuthToken, streamId: string) =>
+      request<{ stream_id: string; snapshot: LiveStreamSnapshot | null; history: unknown[] }>(
+        `/api/v1/live-intelligence/streams/${streamId}`,
+        {},
+        token,
+      ),
+    history: (token: ApiAuthToken, streamId: string, limit = 200) =>
+      request<{ stream_id: string; points: LiveIntelHistoryPoint[]; count: number }>(
+        `/api/v1/live-intelligence/streams/${streamId}/history?limit=${limit}`,
+        {},
+        token,
+      ),
+    compare: (token: ApiAuthToken, streamIds: string[]) =>
+      request<{ rows: StreamComparisonRow[]; insights: string[] }>(
+        "/api/v1/live-intelligence/compare",
+        {
+          method: "POST",
+          body: JSON.stringify({ stream_ids: streamIds }),
+        },
+        token,
+      ),
+    anomalies: (token: ApiAuthToken, limit = 40) =>
+      request<{ anomalies: LiveIntelAnomaly[]; count: number }>(
+        `/api/v1/live-intelligence/anomalies?limit=${limit}`,
+        {},
+        token,
+      ),
+    status: (token: ApiAuthToken) =>
+      request<{ enabled: boolean; running: boolean; cached_snapshots: number }>(
+        "/api/v1/live-intelligence/status",
+        {},
+        token,
+      ),
+  },
   streamingIntelligence: {
     overview: (token: ApiAuthToken) =>
       request<ThreatIntelOverviewResponse>("/api/v1/streaming-intelligence/overview", {}, token),
@@ -1063,6 +1106,92 @@ export interface SocOverview {
     active_attacks: number;
   };
   updated_at: string;
+}
+
+export interface LiveStreamSnapshot {
+  stream_id: string;
+  tenant_id: string;
+  platform: string;
+  channel_name: string;
+  is_live: boolean;
+  title?: string;
+  viewers: number;
+  messages_per_minute: number;
+  viewers_per_minute: number;
+  follows_per_minute: number;
+  engagement_score: number;
+  growth_velocity: number;
+  organic_engagement_score: number;
+  suspicious_activity_score: number;
+  synthetic_audience_probability: number;
+  live_trust_score: number;
+  bot_probability: number;
+  viewbot_probability: number;
+  suspicious_growth: boolean;
+  flags: string[];
+}
+
+export interface StreamRankingEntry {
+  stream_id: string;
+  channel_name: string;
+  platform: string;
+  rank: number;
+  score: number;
+  metric: string;
+  is_live: boolean;
+}
+
+export interface LiveIntelOverview {
+  tenant_id: string;
+  live_count: number;
+  monitored_count: number;
+  suspicious_live: number;
+  avg_engagement: number;
+  rankings_suspicious: StreamRankingEntry[];
+  rankings_organic: StreamRankingEntry[];
+  rankings_anomaly_growth: StreamRankingEntry[];
+  snapshots: LiveStreamSnapshot[];
+  heatmap: { stream_id: string; channel: string; platform: string; intensity: number; viewers: number }[];
+}
+
+export interface LiveIntelOverviewResponse {
+  enabled: boolean;
+  overview?: LiveIntelOverview;
+}
+
+export interface LiveIntelStreamRow {
+  stream_id: string;
+  channel_name: string;
+  platform: string;
+  is_live: boolean;
+  viewer_count: number;
+  snapshot: LiveStreamSnapshot | null;
+}
+
+export interface LiveIntelHistoryPoint {
+  ts: string;
+  viewers: number;
+  engagement_score: number;
+  bot_probability: number;
+}
+
+export interface StreamComparisonRow {
+  stream_id: string;
+  channel_name: string;
+  platform: string;
+  viewers: number;
+  messages_per_minute: number;
+  engagement_score: number;
+  growth_velocity: number;
+  bot_probability: number;
+}
+
+export interface LiveIntelAnomaly {
+  stream_id: string;
+  type: string;
+  viewbot_probability?: number;
+  channel_name?: string;
+  created_at?: string;
 }
 
 export interface EngagementMetrics {

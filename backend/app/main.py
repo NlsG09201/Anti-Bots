@@ -21,6 +21,7 @@ from app.api.v1 import (
     streams,
     threat_intel,
     streaming_intelligence,
+    live_intelligence,
     twitch_integration,
     kick_integration,
     youtube_integration,
@@ -118,8 +119,10 @@ async def lifespan(app: FastAPI):
         _cfg = _gs()
         if _cfg.mongodb_uri:
             from app.threat_intel_engine.mongo_store import ensure_indexes
+            from app.live_intel.mongo_store import ensure_live_intel_indexes
 
             await ensure_indexes()
+            await ensure_live_intel_indexes()
         if _cfg.twitch_insights_enabled:
             asyncio.create_task(get_twitch_insights_db().ensure_loaded())
         if (
@@ -160,6 +163,12 @@ async def lifespan(app: FastAPI):
 
         await start_pipeline_consumer()
         await start_realtime_subscriber()
+        live_intel_task = None
+        if _cfg.live_intel_enabled and not _cfg.platform_monitor_worker_mode_resolved:
+            from app.live_intel import get_live_intel_engine
+
+            await get_live_intel_engine().start()
+            logger.info("live_intel_sampler_in_api_process")
     except Exception as exc:
         logger.error(
             "database_startup_failed",
@@ -177,6 +186,10 @@ async def lifespan(app: FastAPI):
     from app.services.monitoring.orchestrator import get_platform_monitor_orchestrator
 
     await get_platform_monitor_orchestrator().stop()
+    if _cfg.live_intel_enabled:
+        from app.live_intel import get_live_intel_engine
+
+        await get_live_intel_engine().stop()
     from app.workers.pipeline_consumer import stop_pipeline_consumer
     from app.workers.realtime_subscriber import stop_realtime_subscriber
 
@@ -237,6 +250,7 @@ app.include_router(ai_intel.router, prefix=API_PREFIX)
 app.include_router(weka_ml.router, prefix=API_PREFIX)
 app.include_router(threat_intel.router, prefix=API_PREFIX)
 app.include_router(streaming_intelligence.router, prefix=API_PREFIX)
+app.include_router(live_intelligence.router, prefix=API_PREFIX)
 app.include_router(events_pipeline.router, prefix=API_PREFIX)
 app.include_router(ai_insights.router, prefix=API_PREFIX)
 app.include_router(webhooks.router, prefix=API_PREFIX)

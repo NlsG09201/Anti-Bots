@@ -16,6 +16,7 @@ const navItems = [
   { href: "/dashboard/alerts", label: "Alerts", icon: Shield },
   { href: "/dashboard/security", label: "Security SOC", icon: ShieldAlert },
   { href: "/dashboard/threat-intelligence", label: "Threat Intel", icon: Radar },
+  { href: "/dashboard/live-intelligence", label: "Live Intel", icon: Radio },
   { href: "/dashboard/ai", label: "AI Predictions", icon: Brain },
   { href: "/dashboard/weka", label: "Weka J48", icon: Binary },
   { href: "/dashboard/viewers", label: "Viewers", icon: Users },

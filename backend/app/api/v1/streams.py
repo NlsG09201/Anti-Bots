@@ -109,6 +109,7 @@ async def watch_channel(
         meta_base = {
             "monitor_mode": True,
             "soc_monitor": True,
+            "competitive_intel": True,
             "auto_mitigate": False,
             "login": slug,
             "is_owned": False,
@@ -166,9 +167,12 @@ async def watch_channel(
         meta = dict(stream.settings or {})
         meta.update({
             "monitor_mode": True,
+            "soc_monitor": True,
+            "competitive_intel": True,
             "auto_mitigate": False,
             "login": login,
             "is_owned": False,
+            "force_monitor": True,
         })
         stream.settings = meta
         stream.channel_name = display_name
@@ -181,9 +185,12 @@ async def watch_channel(
             channel_name=display_name,
             settings={
                 "monitor_mode": True,
+                "soc_monitor": True,
+                "competitive_intel": True,
                 "auto_mitigate": False,
                 "login": login,
                 "is_owned": False,
+                "force_monitor": True,
             },
         )
         db.add(stream)
