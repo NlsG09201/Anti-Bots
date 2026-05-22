@@ -108,6 +108,16 @@ class Settings(BaseSettings):
     tiktok_session_id: str = ""
 
     platform_monitor_enabled: bool = True
+    platform_monitor_run_in_api: bool = True
+    platform_monitor_worker_mode: bool = False
+
+    @property
+    def platform_monitor_worker_mode_resolved(self) -> bool:
+        import os
+
+        if os.getenv("PLATFORM_MONITOR_WORKER", "").lower() in ("1", "true", "yes"):
+            return True
+        return self.platform_monitor_worker_mode
     platform_monitor_poll_seconds: int = 30
     platform_monitor_max_streams: int = 12
     platform_monitor_reconnect_max_seconds: int = 120

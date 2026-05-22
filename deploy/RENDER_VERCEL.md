@@ -81,6 +81,19 @@ En el dashboard: **Channels** → plataforma Kick/YouTube/TikTok → slug del ca
 
 Endpoints SOC: `GET /api/v1/soc/overview`, `GET /api/v1/soc/feed`.
 
+### Worker dedicado (`anti-bots-platform-monitor`)
+
+El Blueprint `render.yaml` define un **background worker** con `Dockerfile.worker` (sin JVM Weka).
+
+1. En Render, el worker debe tener **las mismas variables** que el API (`DATABASE_URL`, `REDIS_URL`, OAuth keys, etc.).
+2. Importa env en **ambos** servicios desde `deploy/render.env`.
+3. En Kick Developer Console y Google Cloud, registra:
+   - `https://anti-bots.onrender.com/api/v1/integrations/kick/callback`
+   - `https://anti-bots.onrender.com/api/v1/integrations/youtube/callback`
+4. **Settings** en el dashboard → Conectar Kick / YouTube.
+
+OAuth Kick usa **PKCE (S256)** obligatorio.
+
 ---
 
 ## Paso 4 — Probar API

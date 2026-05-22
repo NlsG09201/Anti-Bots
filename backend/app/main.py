@@ -21,6 +21,8 @@ from app.api.v1 import (
     streams,
     threat_intel,
     twitch_integration,
+    kick_integration,
+    youtube_integration,
     users,
     webhooks,
     widget,
@@ -134,12 +136,20 @@ async def lifespan(app: FastAPI):
         platform_monitor_task = None
         from app.core.config import get_settings as _gs2
 
-        if _gs2().platform_monitor_enabled:
+        cfg_mon = _gs2()
+        if (
+            cfg_mon.platform_monitor_enabled
+            and cfg_mon.platform_monitor_run_in_api
+            and not cfg_mon.platform_monitor_worker_mode_resolved
+        ):
             from app.services.monitoring.orchestrator import get_platform_monitor_orchestrator
 
             platform_monitor_task = asyncio.create_task(
                 get_platform_monitor_orchestrator().start()
             )
+            logger.info("platform_monitors_in_api_process")
+        elif cfg_mon.platform_monitor_worker_mode_resolved:
+            logger.info("platform_monitor_worker_mode_skip_api_orchestrator")
         from app.workers.pipeline_consumer import start_pipeline_consumer
         from app.workers.realtime_subscriber import start_realtime_subscriber
 
@@ -208,6 +218,8 @@ API_PREFIX = f"/api/{settings.app_api_version}"
 app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(mfa.router, prefix=API_PREFIX)
 app.include_router(twitch_integration.router, prefix=API_PREFIX)
+app.include_router(kick_integration.router, prefix=API_PREFIX)
+app.include_router(youtube_integration.router, prefix=API_PREFIX)
 app.include_router(users.router, prefix=API_PREFIX)
 app.include_router(streams.router, prefix=API_PREFIX)
 app.include_router(widget.router, prefix=API_PREFIX)

@@ -25,5 +25,33 @@ services:
         value: anti-bots.onrender.com,anti-bots-api.onrender.com,.onrender.com,localhost,127.0.0.1
       - key: RENDER
         value: "true"
+      - key: PLATFORM_MONITOR_RUN_IN_API
+        value: "false"
       # Secrets: Render Dashboard -> Environment -> import deploy/render.import.env
     healthCheckPath: /health
+
+  - type: worker
+    name: anti-bots-platform-monitor
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile.worker
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: APP_ENV
+        value: production
+      - key: RENDER
+        value: "true"
+      - key: PLATFORM_MONITOR_WORKER
+        value: "true"
+      - key: PLATFORM_MONITOR_RUN_IN_API
+        value: "false"
+      - key: PLATFORM_MONITOR_ENABLED
+        value: "true"
+      - key: WEKA_J48_ENABLED
+        value: "false"
+      - key: TWITCH_INSIGHTS_ENABLED
+        value: "false"
+      # Mismas secrets que anti-bots-api (DATABASE_URL, REDIS_URL, keys OAuth, etc.)

@@ -685,6 +685,55 @@ export const api = {
     authorize: (token: ApiAuthToken) =>
       request<{ authorization_url: string }>("/api/v1/integrations/twitch/authorize", {}, token),
   },
+  kick: {
+    status: (token: ApiAuthToken) =>
+      request<{
+        connected: boolean;
+        configured: boolean;
+        redirect_uri: string;
+        channels: {
+          id: string;
+          channel_name: string;
+          external_id: string;
+          is_live: boolean;
+          has_oauth: boolean;
+        }[];
+      }>("/api/v1/integrations/kick/status", {}, token),
+    setup: (token: ApiAuthToken) =>
+      request<{
+        redirect_uri: string;
+        credentials_ok: boolean;
+        register_at: string;
+        hint: string;
+      }>("/api/v1/integrations/kick/setup", {}, token),
+    authorize: (token: ApiAuthToken) =>
+      request<{ authorization_url: string }>("/api/v1/integrations/kick/authorize", {}, token),
+  },
+  youtube: {
+    status: (token: ApiAuthToken) =>
+      request<{
+        connected: boolean;
+        configured: boolean;
+        redirect_uri: string;
+        api_key_set: boolean;
+        channels: {
+          id: string;
+          channel_name: string;
+          external_id: string;
+          is_live: boolean;
+          has_oauth: boolean;
+        }[];
+      }>("/api/v1/integrations/youtube/status", {}, token),
+    setup: (token: ApiAuthToken) =>
+      request<{
+        redirect_uri: string;
+        credentials_ok: boolean;
+        register_at: string;
+        hint: string;
+      }>("/api/v1/integrations/youtube/setup", {}, token),
+    authorize: (token: ApiAuthToken) =>
+      request<{ authorization_url: string }>("/api/v1/integrations/youtube/authorize", {}, token),
+  },
   aiIntel: {
     health: (token: ApiAuthToken) =>
       request<{

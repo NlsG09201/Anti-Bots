@@ -8,6 +8,7 @@ from app.core.logging import get_logger
 from app.infrastructure.database.models import Platform, Stream
 from app.integrations.youtube.client import YouTubeLiveClient
 from app.services.platforms.base import LiveStatus, PlatformAdapter, ViewerSnapshot
+from app.services.platforms.oauth_tokens import get_stream_access_token
 
 logger = get_logger(__name__)
 
@@ -15,9 +16,31 @@ logger = get_logger(__name__)
 class YouTubePlatformAdapter(PlatformAdapter):
     platform = Platform.YOUTUBE
 
+    async def supports_oauth(self) -> bool:
+        return True
+
+    async def _client(self, stream: Stream) -> YouTubeLiveClient:
+        token = await get_stream_access_token(stream)
+        return YouTubeLiveClient(access_token=token)
+
     async def fetch_live_status(self, stream: Stream) -> LiveStatus:
-        client = YouTubeLiveClient()
+        client = await self._client(stream)
         try:
+            if stream.oauth_token_encrypted and stream.external_id:
+                live = await client.get_live_broadcasts(stream.external_id)
+                if live:
+                    vid = live[0]["video_id"]
+                    stats = await client.get_video_statistics(vid)
+                    return LiveStatus(
+                        is_live=True,
+                        viewer_count=int(
+                            stats.get("concurrent_viewers")
+                            or stats.get("viewer_count")
+                            or 0
+                        ),
+                        title=live[0].get("title"),
+                        external_live_id=vid,
+                    )
             live = await client.search_live_by_channel(stream.channel_name)
         except Exception as exc:
             logger.warning("youtube_live_failed", channel=stream.channel_name, error=str(exc))
@@ -33,7 +56,7 @@ class YouTubePlatformAdapter(PlatformAdapter):
         )
 
     async def fetch_viewers(self, stream: Stream) -> List[ViewerSnapshot]:
-        client = YouTubeLiveClient()
+        client = await self._client(stream)
         video_id = stream.external_id
         if not video_id:
             try:

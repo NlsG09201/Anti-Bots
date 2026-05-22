@@ -4,7 +4,8 @@ import { Suspense, useEffect, useState } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Shield, Tv, CheckCircle, AlertCircle } from "lucide-react";
+import { Shield, Tv, CheckCircle, AlertCircle, Radio } from "lucide-react";
+import { PlatformBadge } from "@/components/PlatformBadge";
 import { api } from "@/lib/api";
 import { useApiToken, useAuthStore } from "@/stores/authStore";
 
@@ -29,6 +30,22 @@ function SettingsContent() {
     if (searchParams.get("twitch") === "connected") {
       setMessage("Twitch conectado correctamente. EventSub suscripciones activadas.");
       queryClient.invalidateQueries({ queryKey: ["twitch-status"] });
+    }
+    if (searchParams.get("kick") === "connected") {
+      setMessage("Kick conectado. Monitores SOC activos cuando el canal esté LIVE.");
+      queryClient.invalidateQueries({ queryKey: ["kick-status"] });
+    }
+    if (searchParams.get("youtube") === "connected") {
+      setMessage("YouTube conectado. Live chat y métricas vía OAuth.");
+      queryClient.invalidateQueries({ queryKey: ["youtube-status"] });
+    }
+    const kickError = searchParams.get("kick_error");
+    if (kickError) {
+      setMessage(searchParams.get("kick_msg") || kickError);
+    }
+    const youtubeError = searchParams.get("youtube_error");
+    if (youtubeError) {
+      setMessage(searchParams.get("youtube_msg") || youtubeError);
     }
     const twitchError = searchParams.get("twitch_error");
     if (twitchError) {
@@ -56,6 +73,30 @@ function SettingsContent() {
   const { data: twitchSetup } = useQuery({
     queryKey: ["twitch-setup"],
     queryFn: () => api.twitch.setup(token),
+    enabled: !!token,
+  });
+
+  const { data: kickStatus } = useQuery({
+    queryKey: ["kick-status"],
+    queryFn: () => api.kick.status(token),
+    enabled: !!token,
+  });
+
+  const { data: kickSetup } = useQuery({
+    queryKey: ["kick-setup"],
+    queryFn: () => api.kick.setup(token),
+    enabled: !!token,
+  });
+
+  const { data: youtubeStatus } = useQuery({
+    queryKey: ["youtube-status"],
+    queryFn: () => api.youtube.status(token),
+    enabled: !!token,
+  });
+
+  const { data: youtubeSetup } = useQuery({
+    queryKey: ["youtube-setup"],
+    queryFn: () => api.youtube.setup(token),
     enabled: !!token,
   });
 
@@ -94,6 +135,26 @@ function SettingsContent() {
     },
     onError: (err: unknown) => {
       setMessage(err instanceof Error ? err.message : "Error al conectar con Twitch");
+    },
+  });
+
+  const connectKick = useMutation({
+    mutationFn: () => api.kick.authorize(token),
+    onSuccess: (data) => {
+      if (data.authorization_url) window.location.href = data.authorization_url;
+    },
+    onError: (err: unknown) => {
+      setMessage(err instanceof Error ? err.message : "Error al conectar Kick");
+    },
+  });
+
+  const connectYoutube = useMutation({
+    mutationFn: () => api.youtube.authorize(token),
+    onSuccess: (data) => {
+      if (data.authorization_url) window.location.href = data.authorization_url;
+    },
+    onError: (err: unknown) => {
+      setMessage(err instanceof Error ? err.message : "Error al conectar YouTube");
     },
   });
 
@@ -196,6 +257,101 @@ function SettingsContent() {
           <code className="text-cyber-info break-all">
             https://anti-bots.onrender.com/api/v1/integrations/twitch/callback
           </code>
+        </p>
+      </section>
+
+      <section className="cyber-card space-y-4">
+        <div className="flex items-center gap-3">
+          <PlatformBadge platform="kick" />
+          <div>
+            <h2 className="font-semibold text-white">Kick</h2>
+            <p className="text-xs text-cyber-muted">
+              OAuth + PKCE para API oficial y monitoreo SOC en worker dedicado
+            </p>
+          </div>
+        </div>
+        {kickSetup && !kickSetup.credentials_ok && (
+          <p className="text-xs text-cyber-warning">
+            Configura KICK_CLIENT_ID y KICK_CLIENT_SECRET en Render. Redirect:{" "}
+            <code className="text-cyber-info break-all">{kickSetup.redirect_uri}</code>
+          </p>
+        )}
+        {kickStatus?.connected ? (
+          <div className="space-y-2">
+            {kickStatus.channels.map((ch) => (
+              <div
+                key={ch.id}
+                className="flex items-center justify-between p-3 bg-cyber-bg rounded border border-cyber-border"
+              >
+                <span className="text-white">{ch.channel_name}</span>
+                <span className="text-xs text-cyber-muted">
+                  {ch.is_live ? "LIVE" : "Offline"} · OAuth {ch.has_oauth ? "✓" : "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => connectKick.mutate()}
+            disabled={!kickStatus?.configured || connectKick.isPending}
+            className="cyber-btn-primary"
+          >
+            {connectKick.isPending ? "Redirigiendo..." : "Conectar Kick"}
+          </button>
+        )}
+      </section>
+
+      <section className="cyber-card space-y-4">
+        <div className="flex items-center gap-3">
+          <PlatformBadge platform="youtube" />
+          <div>
+            <h2 className="font-semibold text-white">YouTube Live</h2>
+            <p className="text-xs text-cyber-muted">
+              OAuth para live chat autenticado (además de YOUTUBE_API_KEY pública)
+            </p>
+          </div>
+        </div>
+        {youtubeSetup && !youtubeSetup.credentials_ok && (
+          <p className="text-xs text-cyber-warning">
+            Define YOUTUBE_CLIENT_ID y YOUTUBE_CLIENT_SECRET. Redirect:{" "}
+            <code className="text-cyber-info break-all">{youtubeSetup.redirect_uri}</code>
+          </p>
+        )}
+        {youtubeStatus?.connected ? (
+          <div className="space-y-2">
+            {youtubeStatus.channels.map((ch) => (
+              <div
+                key={ch.id}
+                className="flex items-center justify-between p-3 bg-cyber-bg rounded border border-cyber-border"
+              >
+                <span className="text-white">{ch.channel_name}</span>
+                <span className="text-xs text-cyber-muted">
+                  {ch.is_live ? "LIVE" : "Offline"} · OAuth {ch.has_oauth ? "✓" : "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => connectYoutube.mutate()}
+            disabled={!youtubeStatus?.configured || connectYoutube.isPending}
+            className="cyber-btn-primary"
+          >
+            {connectYoutube.isPending ? "Redirigiendo..." : "Conectar YouTube"}
+          </button>
+        )}
+      </section>
+
+      <section className="cyber-card space-y-2 border-cyber-info/30">
+        <div className="flex items-center gap-2">
+          <Radio size={18} className="text-cyber-info" />
+          <h2 className="font-semibold text-white text-sm">Worker SOC (Render)</h2>
+        </div>
+        <p className="text-xs text-cyber-muted">
+          El servicio <code>anti-bots-platform-monitor</code> ejecuta monitores Kick/YouTube/TikTok
+          sin cargar Weka ni IRC. El API tiene <code>PLATFORM_MONITOR_RUN_IN_API=false</code>.
         </p>
       </section>
 
