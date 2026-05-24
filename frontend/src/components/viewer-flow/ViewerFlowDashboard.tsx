@@ -136,7 +136,7 @@ export function ViewerFlowDashboard({
       {metrics && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <MetricCard label="Viewers" value={metrics.viewers_current} />
+            <MetricCard label="Viewers" value={metrics.viewers_current ?? 0} />
             <MetricCard
               label="Viewers/min"
               value={(metrics.viewers_per_minute ?? 0).toFixed(1)}
