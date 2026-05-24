@@ -73,12 +73,19 @@ class ViewerBotScreeningService:
         tbi_map: Dict[str, Any] = {}
         tbi_svc = get_twitchbots_verification_service()
         if tbi_svc.enabled and tenant_id:
-            tbi_results = await tbi_svc.verify_batch(
-                tenant_id,
-                [{"username": u} for u in usernames],
-                stream_id=str(stream_id),
-            )
-            tbi_map = {k: v.to_verdict_dict() for k, v in tbi_results.items()}
+            try:
+                tbi_results = await tbi_svc.verify_batch(
+                    tenant_id,
+                    [{"username": u} for u in usernames],
+                    stream_id=str(stream_id),
+                )
+                tbi_map = {k: v.to_verdict_dict() for k, v in tbi_results.items()}
+            except Exception as exc:
+                logger.warning(
+                    "twitchbots_batch_verify_failed",
+                    stream_id=str(stream_id),
+                    error=str(exc)[:200],
+                )
 
         verdicts = await self.analyze_usernames(
             channel_name, usernames, tbi_verdicts=tbi_map

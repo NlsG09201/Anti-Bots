@@ -303,20 +303,32 @@ async def quick_sync_stream(
 ):
     """Sincroniza usuarios en chat (Helix rapido) sin escaneo IRC largo."""
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
-    if not stream.is_live:
-        stream = await sync_stream_live_status(db, stream)
-    if not stream.is_live:
-        return {"status": "offline", "message": "El canal no esta en vivo"}
-    from app.infrastructure.database.models import Platform
-    from app.services.platforms.sync_service import PlatformSyncService
+    try:
+        if not stream.is_live:
+            stream = await sync_stream_live_status(db, stream)
+        if not stream.is_live:
+            return {"status": "offline", "message": "El canal no esta en vivo"}
+        from app.infrastructure.database.models import Platform
+        from app.services.platforms.sync_service import PlatformSyncService
 
-    if stream.platform in (Platform.KICK, Platform.YOUTUBE, Platform.TIKTOK):
-        summary = await PlatformSyncService(db).sync_viewers(stream)
-    else:
-        summary = await ChannelMonitorService(db).run_quick_sync(
-            stream, current_user.tenant_id
-        )
-    return {"status": "ok", **summary}
+        if stream.platform in (Platform.KICK, Platform.YOUTUBE, Platform.TIKTOK):
+            summary = await PlatformSyncService(db).sync_viewers(stream)
+        else:
+            summary = await ChannelMonitorService(db).run_quick_sync(
+                stream, current_user.tenant_id
+            )
+        await db.commit()
+        return {"status": "ok", **summary}
+    except Exception as exc:
+        logger.exception("quick_sync_failed", stream_id=str(stream_id))
+        await db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "La sincronizacion rapida del canal falló. Reintenta en unos segundos.",
+                "error": str(exc)[:300],
+            },
+        ) from exc
 
 
 @router.post("/{stream_id}/monitor")

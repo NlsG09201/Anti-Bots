@@ -40,6 +40,15 @@ function parseApiErrorMessage(error: unknown, status: number): string {
   if (typeof body.detail === "string") {
     return body.detail;
   }
+  if (body.detail && typeof body.detail === "object") {
+    const nested = body.detail as Record<string, unknown>;
+    if (typeof nested.message === "string" && nested.message) {
+      return nested.message;
+    }
+    if (typeof nested.error === "string" && nested.error) {
+      return nested.error;
+    }
+  }
   return `HTTP ${status}`;
 }
 
@@ -685,7 +694,12 @@ export const api = {
         sync_mode?: string;
         note?: string;
         message?: string;
-      }>(`/api/v1/streams/${streamId}/sync/quick`, { method: "POST" }, token),
+      }>(
+        `/api/v1/streams/${streamId}/sync/quick`,
+        { method: "POST" },
+        token,
+        resolveDirectApiBaseUrl(),
+      ),
     monitor: (token: ApiAuthToken, streamId: string) =>
       request<{
         status: string;

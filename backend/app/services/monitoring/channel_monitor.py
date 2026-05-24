@@ -72,16 +72,26 @@ class ChannelMonitorService:
         chatters_data: List[Dict[str, Any]],
         summary: Dict[str, Any],
     ) -> None:
-        stats = await self.bot_screening.screen_and_update_sessions(
-            self.db,
-            stream.id,
-            stream.channel_name,
-            chatters_data,
-        )
-        summary["ai_screened"] = stats["screened"]
-        summary["ai_flagged"] = stats["flagged"]
-        counts = await self.viewers.count_active(stream.id)
-        summary["suspected_count"] = counts["suspected"]
+        try:
+            stats = await self.bot_screening.screen_and_update_sessions(
+                self.db,
+                stream.id,
+                stream.channel_name,
+                chatters_data,
+            )
+            summary["ai_screened"] = stats["screened"]
+            summary["ai_flagged"] = stats["flagged"]
+            counts = await self.viewers.count_active(stream.id)
+            summary["suspected_count"] = counts["suspected"]
+        except Exception as exc:
+            # Bot-intel enrichment is optional; sync should still succeed without it.
+            logger.warning(
+                "viewer_ai_screening_failed",
+                stream_id=str(stream.id),
+                error=str(exc)[:200],
+            )
+            summary["ai_screened"] = 0
+            summary["ai_flagged"] = 0
 
     async def _fetch_chatters(
         self,
