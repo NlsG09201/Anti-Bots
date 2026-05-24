@@ -245,6 +245,10 @@ if settings.is_production:
         allowed_hosts=settings.trusted_hosts_list,
     )
 
+app.add_middleware(CSRFMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(SecurityGatewayMiddleware)
+app.add_middleware(RequestTimingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -252,13 +256,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Stream-Key"],
-    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining"],
+    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-Response-Time"],
     max_age=3600,
 )
-app.add_middleware(CSRFMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(SecurityGatewayMiddleware)
-app.add_middleware(RequestTimingMiddleware)
 
 API_PREFIX = f"/api/{settings.app_api_version}"
 app.include_router(auth.router, prefix=API_PREFIX)
