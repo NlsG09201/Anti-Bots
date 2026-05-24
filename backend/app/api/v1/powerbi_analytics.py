@@ -96,6 +96,15 @@ async def analytics_attacks(
     return await AnalyticsWarehouseService(db, current_user.tenant_id, hours=hours).attack_analytics()
 
 
+@router.get("/executive-report")
+async def analytics_executive_report(
+    current_user: AnalystUser,
+    db: AsyncSession = Depends(get_db),
+    hours: int = Query(168, ge=1, le=2160),
+):
+    return await AnalyticsWarehouseService(db, current_user.tenant_id, hours=hours).executive_report()
+
+
 @router.get("/powerbi/model")
 async def analytics_powerbi_model():
     return powerbi_model_manifest()

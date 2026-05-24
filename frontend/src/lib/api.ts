@@ -353,6 +353,68 @@ export const api = {
         token,
       ),
   },
+  powerBiAnalytics: {
+    overview: (token: ApiAuthToken, hours = 168) =>
+      request<PowerBiOverview>(
+        `/api/v1/analytics/overview?hours=${hours}`,
+        {},
+        token,
+      ),
+    liveMetrics: (token: ApiAuthToken, hours = 24) =>
+      request<PowerBiLiveMetrics>(
+        `/api/v1/analytics/live-metrics?hours=${hours}`,
+        {},
+        token,
+      ),
+    suspiciousActivity: (token: ApiAuthToken, hours = 72) =>
+      request<PowerBiSuspiciousActivity>(
+        `/api/v1/analytics/suspicious-activity?hours=${hours}`,
+        {},
+        token,
+      ),
+    streamAnalytics: (token: ApiAuthToken, hours = 168) =>
+      request<PowerBiStreamAnalytics>(
+        `/api/v1/analytics/stream-analytics?hours=${hours}`,
+        {},
+        token,
+      ),
+    aiAnalytics: (token: ApiAuthToken, hours = 168) =>
+      request<PowerBiAiAnalytics>(
+        `/api/v1/analytics/ai-analytics?hours=${hours}`,
+        {},
+        token,
+      ),
+    engagementAnalytics: (token: ApiAuthToken, hours = 168) =>
+      request<PowerBiEngagementAnalytics>(
+        `/api/v1/analytics/engagement-analytics?hours=${hours}`,
+        {},
+        token,
+      ),
+    attackAnalytics: (token: ApiAuthToken, hours = 168) =>
+      request<PowerBiAttackAnalytics>(
+        `/api/v1/analytics/attack-analytics?hours=${hours}`,
+        {},
+        token,
+      ),
+    metadata: (token: ApiAuthToken, hours = 168) =>
+      request<PowerBiMetadata>(
+        `/api/v1/analytics/powerbi/metadata?hours=${hours}`,
+        {},
+        token,
+      ),
+    executiveReport: (token: ApiAuthToken, hours = 168) =>
+      request<PowerBiExecutiveReport>(
+        `/api/v1/analytics/executive-report?hours=${hours}`,
+        {},
+        token,
+      ),
+    sync: (token: ApiAuthToken, hours = 168) =>
+      request<PowerBiSyncResult>(
+        `/api/v1/analytics/powerbi/sync?hours=${hours}`,
+        { method: "POST" },
+        token,
+      ),
+  },
   viewerFlow: {
     overview: (token: ApiAuthToken) =>
       request<ViewerFlowOverview>("/api/v1/viewer-flow/overview", {}, token),
@@ -1196,6 +1258,346 @@ export interface DashboardCharts {
   timeline: { time: string; attacks: number; mitigated: number }[];
   heatmap: { hour: string; risk: number; events: number }[];
   updated_at: string;
+}
+
+export interface PowerBiGlobalMetrics {
+  viewers_monitoreados: number;
+  viewers_sospechosos: number;
+  ataques_detectados: number;
+  streams_activos: number;
+  bots_detectados: number;
+  follows_sospechosos: number;
+  engagement_score: number;
+  threat_score: number;
+  riesgo_global: number;
+}
+
+export interface PowerBiRealtimeMetrics {
+  viewers_por_minuto: number;
+  follows_por_minuto: number;
+  mensajes_por_minuto: number;
+  spikes_sospechosos: number;
+  raids_activas: number;
+  anomalias: number;
+}
+
+export interface PowerBiThreatScoreRow {
+  stream_id: string;
+  platform_key: string;
+  channel_name: string;
+  viewer_count: number;
+  suspicious_viewers: number;
+  suspicious_ratio: number;
+  active_attacks: number;
+  attack_frequency: number;
+  avg_attack_risk: number;
+  max_attack_risk: number;
+  proxy_event_ratio: number;
+  engagement_score: number;
+  ai_risk_score: number;
+  threat_score: number;
+  threat_level: string;
+  updated_at: string;
+}
+
+export interface PowerBiStreamerRow {
+  streamer_id: string;
+  tenant_id: string;
+  email: string;
+  username: string;
+  role: string;
+  streams_total: number;
+  streams_live: number;
+  viewer_count: number;
+  suspicious_viewers: number;
+  active_attacks: number;
+  updated_at: string;
+}
+
+export interface PowerBiOverview {
+  updated_at: string;
+  window_hours: number;
+  metrics_globales: PowerBiGlobalMetrics;
+  metricas_tiempo_real: PowerBiRealtimeMetrics;
+  kpis: {
+    porcentaje_engagement_real: number;
+    porcentaje_bots: number;
+    streams_mas_sospechosos: PowerBiThreatScoreRow[];
+    plataformas_mas_atacadas: { platform: string; attacks: number }[];
+    top_ataques: { attack_type: string; count: number }[];
+    top_streamers_monitoreados: PowerBiStreamerRow[];
+  };
+}
+
+export interface PowerBiLiveMetrics {
+  updated_at: string;
+  window_hours: number;
+  global: {
+    streams_live: number;
+    viewers_current: number;
+    active_attacks: number;
+    suspicious_viewers: number;
+  };
+  velocities: {
+    viewers_per_minute: number;
+    follows_per_minute: number;
+    messages_per_minute: number;
+  };
+  anomalies: {
+    count: number;
+    high_risk: number;
+    items: Record<string, unknown>[];
+  };
+  top_streams: PowerBiThreatScoreRow[];
+}
+
+export interface PowerBiStreamRow {
+  stream_id: string;
+  tenant_id: string;
+  streamer_id: string;
+  platform_key: string;
+  platform_name: string;
+  channel_name: string;
+  external_id: string;
+  is_live: boolean;
+  viewer_count: number;
+  monitor_mode: boolean;
+  auto_mitigate: boolean;
+  force_monitor: boolean;
+  created_at: string;
+  updated_at: string;
+  engagement_percent: number;
+  engagement_score: number;
+  threat_score: number;
+  suspicious_ratio: number;
+}
+
+export interface PowerBiPlatformSummary {
+  platform_key: string;
+  platform_name: string;
+  streams_total: number;
+  streams_live: number;
+  viewer_count: number;
+  suspicious_viewers: number;
+  active_attacks: number;
+  engagement_score: number;
+  threat_score: number;
+  updated_at: string;
+}
+
+export interface PowerBiStreamAnalytics {
+  updated_at: string;
+  count: number;
+  streams: PowerBiStreamRow[];
+  platform_summary: PowerBiPlatformSummary[];
+  streamers: PowerBiStreamerRow[];
+}
+
+export interface PowerBiSuspiciousViewerRow {
+  viewer_session_id: string;
+  stream_id: string;
+  platform_key: string;
+  channel_name: string;
+  platform_username: string;
+  risk_score: number;
+  bot_probability: number;
+  confidence: number;
+  reason: string;
+  source: string;
+  chat_messages: number;
+  joined_at: string;
+}
+
+export interface PowerBiSuspiciousActivity {
+  updated_at: string;
+  count: number;
+  by_platform: { platform: string; count: number }[];
+  by_source: { source: string; count: number }[];
+  top_viewers: PowerBiSuspiciousViewerRow[];
+  top_streams: PowerBiThreatScoreRow[];
+}
+
+export interface PowerBiAiPredictionRow {
+  stream_id: string;
+  platform_key: string;
+  channel_name: string;
+  risk_score: number;
+  attack_probability: number;
+  bot_probability: number;
+  anomaly_score: number;
+  viewbot_probability: number;
+  automation_probability: number;
+  coordination_score: number;
+  classification: string;
+  threat_level: string;
+  recommended_action: string;
+  model_version: string;
+  updated_at: string;
+}
+
+export interface PowerBiBotProfileRow {
+  bot_profile_key: string;
+  canonical_username: string;
+  platform_key: string;
+  stream_id: string;
+  channel_name: string;
+  threat_score: number;
+  bot_probability: number;
+  trust_score: number;
+  source: string;
+  flags: string;
+  updated_at: string;
+}
+
+export interface PowerBiAiAnalytics {
+  updated_at: string;
+  summary: {
+    predictions_total: number;
+    bot_probability_avg: number;
+    anomaly_score_avg: number;
+    threat_score_avg: number;
+    viewers_coordinados: number;
+    comportamiento_sintetico: number;
+  };
+  predictions: PowerBiAiPredictionRow[];
+  bot_profiles: PowerBiBotProfileRow[];
+}
+
+export interface PowerBiEngagementMetricsRow {
+  stream_id: string;
+  platform_key: string;
+  channel_name: string;
+  viewers_total: number;
+  viewers_suspected: number;
+  viewers_real_estimate: number;
+  engagement_percent: number;
+  active_chatters: number;
+  unique_chatters: number;
+  messages_per_minute: number;
+  viewer_to_chat_ratio: number;
+  engagement_health_score: number;
+  growth_anomaly: boolean;
+  lexical_diversity: number;
+  synthetic_engagement_score: number;
+  updated_at: string;
+}
+
+export interface PowerBiEngagementAnalytics {
+  updated_at: string;
+  summary: {
+    engagement_rate_avg: number;
+    engagement_score_avg: number;
+    follows_total: number;
+    chat_messages_total: number;
+  };
+  engagement_metrics: PowerBiEngagementMetricsRow[];
+  follows: Record<string, unknown>[];
+  chat_activity: {
+    activity_key: string;
+    stream_id: string;
+    platform_key: string;
+    channel_name: string;
+    bucket_start: string;
+    messages: number;
+    unique_users: number;
+    suspicious_messages: number;
+    message_risk_avg: number;
+  }[];
+}
+
+export interface PowerBiAttackRow {
+  attack_id: string;
+  stream_id: string;
+  platform_key: string;
+  channel_name: string;
+  attack_type: string;
+  severity: string;
+  status: string;
+  risk_score: number;
+  confidence: number;
+  affected_users: number;
+  source_ip_count: number;
+  fingerprint_count: number;
+  mitigation_action: string;
+  created_at: string;
+  mitigated_at: string | null;
+  resolved_at: string | null;
+}
+
+export interface PowerBiAttackAnalytics {
+  updated_at: string;
+  summary: {
+    total: number;
+    active: number;
+    critical: number;
+    avg_risk: number;
+  };
+  by_type: { attack_type: string; count: number }[];
+  by_platform: { platform: string; count: number }[];
+  by_severity: { severity: string; count: number; rank: number }[];
+  timeline: { bucket: string; attacks: number; avg_risk: number }[];
+  attacks: PowerBiAttackRow[];
+}
+
+export interface PowerBiReportPage {
+  page: string;
+  purpose: string;
+  visuals: { type: string; title: string; measure?: string; table?: string }[];
+  slicers: string[];
+}
+
+export interface PowerBiMetadata {
+  generated_at: string;
+  window_hours: number;
+  dataset_name: string;
+  tables: { name: string; rows: number; columns: { name: string; dataType: string }[] }[];
+  relationships: { fromTable: string; fromColumn: string; toTable: string; toColumn: string }[];
+  measures: Record<string, string>;
+  report_pages: PowerBiReportPage[];
+  powerbi_service: {
+    enabled: boolean;
+    configured: boolean;
+    group_id?: string;
+    dataset_name: string;
+  };
+}
+
+export interface PowerBiExecutiveReport {
+  generated_at: string;
+  window_hours: number;
+  executive_summary: {
+    posture: string;
+    recommendation: string;
+    global_risk: number;
+    global_threat_score: number;
+    real_engagement_percentage: number;
+    bot_percentage: number;
+    active_attacks: number;
+    monitored_viewers: number;
+    suspicious_viewers: number;
+  };
+  realtime_operations: Record<string, number>;
+  ai_intelligence: PowerBiAiAnalytics["summary"];
+  highest_risk_streams: PowerBiStreamRow[];
+  top_attack_types: { attack_type: string; count: number }[];
+  powerbi: {
+    dataset_name: string;
+    tables: { name: string; rows: number }[];
+    measures: string[];
+    report_pages: PowerBiReportPage[];
+    service: PowerBiMetadata["powerbi_service"];
+  };
+}
+
+export interface PowerBiSyncResult {
+  generated_at: string;
+  window_hours: number;
+  enabled: boolean;
+  configured: boolean;
+  message?: string;
+  dataset_id?: string;
+  dataset_name?: string;
+  tables_pushed?: { table: string; rows: number }[];
 }
 
 export interface SocPlatformMetrics {

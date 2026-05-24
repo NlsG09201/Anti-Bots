@@ -279,6 +279,76 @@ POWERBI_DAX_MEASURES = {
     "Bot Probability": "Bot Probability = AVERAGE(ai_predictions[bot_probability])",
 }
 
+POWERBI_REPORT_PAGES: List[Dict[str, Any]] = [
+    {
+        "page": "SOC Overview",
+        "purpose": "Executive SOC posture and live threat operations.",
+        "visuals": [
+            {"type": "KPI Card", "title": "Viewers Monitored", "measure": "Viewers Monitoreados"},
+            {"type": "KPI Card", "title": "Suspicious Viewers", "measure": "Viewers Sospechosos"},
+            {"type": "KPI Card", "title": "Active Attacks", "measure": "Ataques Detectados"},
+            {"type": "Gauge", "title": "Global Threat Score", "measure": "Threat Score Global"},
+            {"type": "Matrix", "title": "Top Suspicious Streams", "table": "threat_scores"},
+        ],
+        "slicers": ["platforms[platform_name]", "threat_scores[threat_level]", "attacks[status]"],
+    },
+    {
+        "page": "Live Streaming Analytics",
+        "purpose": "Viewer, follow, chat, and engagement velocity by stream.",
+        "visuals": [
+            {"type": "Line Chart", "title": "Messages Over Time", "table": "chat_activity"},
+            {"type": "Area Chart", "title": "Viewer Quality", "measure": "Viewers Quality"},
+            {"type": "Bar Chart", "title": "Engagement by Stream", "table": "engagement_metrics"},
+            {"type": "Table", "title": "Live Streams", "table": "streams"},
+        ],
+        "slicers": ["streams[platform_name]", "streams[channel_name]"],
+    },
+    {
+        "page": "Threat Intelligence",
+        "purpose": "Bot attacks, raids, clusters, and high-risk entities.",
+        "visuals": [
+            {"type": "Treemap", "title": "Attack Types", "table": "attacks"},
+            {"type": "Timeline", "title": "Threat Timeline", "table": "attacks"},
+            {"type": "Scatter Chart", "title": "Risk vs Confidence", "table": "attacks"},
+            {"type": "Matrix", "title": "Platform x Attack Type", "table": "attacks"},
+        ],
+        "slicers": ["attacks[severity]", "attacks[attack_type]", "platforms[platform_name]"],
+    },
+    {
+        "page": "AI Predictions",
+        "purpose": "Model output, bot probability, anomaly score, and AI recommendations.",
+        "visuals": [
+            {"type": "KPI Card", "title": "Bot Probability", "measure": "Bot Probability"},
+            {"type": "KPI Card", "title": "Anomaly Percentage", "measure": "Anomaly Percentage"},
+            {"type": "Scatter Chart", "title": "Bot Probability vs Coordination", "table": "ai_predictions"},
+            {"type": "Table", "title": "AI Recommendations", "table": "ai_predictions"},
+        ],
+        "slicers": ["ai_predictions[threat_level]", "ai_predictions[classification]"],
+    },
+    {
+        "page": "Cross Platform Analysis",
+        "purpose": "Kick, Twitch, TikTok Live, and YouTube Live comparison.",
+        "visuals": [
+            {"type": "Clustered Bar", "title": "Viewers by Platform", "table": "platforms"},
+            {"type": "Donut", "title": "Attacks by Platform", "table": "attacks"},
+            {"type": "Matrix", "title": "Platform Health", "table": "platforms"},
+            {"type": "Table", "title": "Top Streamers", "table": "streamers"},
+        ],
+        "slicers": ["platforms[platform_name]"],
+    },
+    {
+        "page": "Historical Analysis",
+        "purpose": "Threat, engagement, chat, and mitigation evolution over time.",
+        "visuals": [
+            {"type": "Line Chart", "title": "Attack Frequency", "measure": "Attack Frequency"},
+            {"type": "Line Chart", "title": "Engagement Trend", "measure": "Engagement Score"},
+            {"type": "Heatmap", "title": "Chat Risk by Hour", "table": "chat_activity"},
+            {"type": "Matrix", "title": "Historical Threat Scores", "table": "threat_scores"},
+        ],
+        "slicers": ["chat_activity[bucket_start]", "streams[channel_name]"],
+    },
+]
+
 
 def powerbi_model_manifest() -> Dict[str, Any]:
     return {
@@ -286,6 +356,7 @@ def powerbi_model_manifest() -> Dict[str, Any]:
         "tables": POWERBI_TABLE_DEFINITIONS,
         "relationships": POWERBI_RELATIONSHIPS,
         "measures": POWERBI_DAX_MEASURES,
+        "report_pages": POWERBI_REPORT_PAGES,
     }
 
 
@@ -620,6 +691,67 @@ class AnalyticsWarehouseService:
             "by_severity": [{"severity": key, "count": count, "rank": _severity_rank(key)} for key, count in by_severity.items()],
             "timeline": timeline,
             "attacks": sorted(attacks, key=lambda row: (-_safe_float(row["risk_score"]), str(row["created_at"])))[:200],
+        }
+
+    async def executive_report(self) -> Dict[str, Any]:
+        overview = await self.overview()
+        live = await self.live_metrics()
+        attacks = await self.attack_analytics()
+        ai = await self.ai_analytics()
+        streams = await self.stream_analytics()
+        metadata = await self.powerbi_metadata()
+        global_metrics = overview["metrics_globales"]
+        realtime = overview["metricas_tiempo_real"]
+        kpis = overview["kpis"]
+        highest_risk_streams = streams["streams"][:5]
+        top_attacks = attacks["by_type"][:5]
+        ai_summary = ai["summary"]
+
+        if global_metrics["riesgo_global"] >= 80:
+            posture = "critical"
+            recommendation = "Activate incident response, prioritize coordinated attacks, and push mitigations to affected streams."
+        elif global_metrics["riesgo_global"] >= 60:
+            posture = "high"
+            recommendation = "Increase analyst review on high-threat streams and validate AI-detected coordinated viewers."
+        elif global_metrics["riesgo_global"] >= 35:
+            posture = "elevated"
+            recommendation = "Keep live monitoring active and review suspicious growth, follows, and chat anomalies."
+        else:
+            posture = "stable"
+            recommendation = "Maintain scheduled monitoring and keep Power BI refresh active."
+
+        return {
+            "generated_at": self.snapshot_at.isoformat(),
+            "window_hours": self.hours,
+            "executive_summary": {
+                "posture": posture,
+                "recommendation": recommendation,
+                "global_risk": global_metrics["riesgo_global"],
+                "global_threat_score": global_metrics["threat_score"],
+                "real_engagement_percentage": kpis["porcentaje_engagement_real"],
+                "bot_percentage": kpis["porcentaje_bots"],
+                "active_attacks": live["global"]["active_attacks"],
+                "monitored_viewers": global_metrics["viewers_monitoreados"],
+                "suspicious_viewers": global_metrics["viewers_sospechosos"],
+            },
+            "realtime_operations": {
+                "viewers_per_minute": realtime["viewers_por_minuto"],
+                "follows_per_minute": realtime["follows_por_minuto"],
+                "messages_per_minute": realtime["mensajes_por_minuto"],
+                "suspicious_spikes": realtime["spikes_sospechosos"],
+                "active_raids": realtime["raids_activas"],
+                "anomalies": realtime["anomalias"],
+            },
+            "ai_intelligence": ai_summary,
+            "highest_risk_streams": highest_risk_streams,
+            "top_attack_types": top_attacks,
+            "powerbi": {
+                "dataset_name": metadata["dataset_name"],
+                "tables": [{"name": table["name"], "rows": table["rows"]} for table in metadata["tables"]],
+                "measures": list(POWERBI_DAX_MEASURES.keys()),
+                "report_pages": POWERBI_REPORT_PAGES,
+                "service": metadata["powerbi_service"],
+            },
         }
 
     async def stream_rows(self) -> List[Dict[str, Any]]:
@@ -1076,6 +1208,7 @@ class AnalyticsWarehouseService:
             ],
             "relationships": POWERBI_RELATIONSHIPS,
             "measures": POWERBI_DAX_MEASURES,
+            "report_pages": POWERBI_REPORT_PAGES,
             "powerbi_service": {
                 "enabled": settings.powerbi_enabled,
                 "configured": bool(settings.powerbi_enabled and settings.powerbi_tenant_id and settings.powerbi_client_id and settings.powerbi_client_secret and settings.powerbi_group_id),
@@ -1227,6 +1360,7 @@ def powerbi_package_bytes(
         for name, rows in bundle.items():
             zf.writestr(f"{name}.csv", csv_bytes(rows))
         zf.writestr("powerbi_model.json", json_bytes(metadata))
+        zf.writestr("powerbi_report_blueprint.json", json_bytes(powerbi_model_manifest()["report_pages"]))
         dax_text = "\n\n".join(POWERBI_DAX_MEASURES.values())
         zf.writestr("powerbi_measures.dax", dax_text.encode("utf-8"))
         zf.writestr(
