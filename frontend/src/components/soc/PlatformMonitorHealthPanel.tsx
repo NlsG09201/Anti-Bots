@@ -90,7 +90,7 @@ function StreamRow({ row }: { row: PlatformHealthStream }) {
       </div>
       {row.ai_flags && row.ai_flags.length > 0 && (
         <p className="text-[10px] text-orange-300/90">
-          IA: {row.ai_flags.join(", ")} ({Math.round(row.ai_anomaly_score)})
+          IA: {row.ai_flags.join(", ")} ({Math.round(row.ai_anomaly_score ?? 0)})
         </p>
       )}
     </div>
