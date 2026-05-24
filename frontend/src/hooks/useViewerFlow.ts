@@ -64,24 +64,33 @@ export function useViewerFlow(streamId?: string) {
       }
     : undefined;
 
-  const displayMetrics = liveMetrics
-    ? { ...streamSnap?.metrics, ...(liveMetrics as object) }
-    : streamSnap?.metrics;
+  const displayMetrics = streamSnap?.metrics
+    ? (liveMetrics && streamSnap.metrics.stream_id
+        ? ({
+            ...streamSnap.metrics,
+            ...liveMetrics,
+          } as ViewerFlowStreamSnapshot["metrics"])
+        : streamSnap.metrics)
+    : undefined;
 
   const displayTimeline =
     liveTimeline.length > 0
       ? [...liveTimeline, ...(streamSnap?.timeline ?? [])].slice(0, 60)
       : streamSnap?.timeline ?? [];
 
+  const finalSnapshot: ViewerFlowStreamSnapshot | undefined = 
+    streamSnap && streamSnap.metrics && streamSnap.metrics.stream_id
+      ? {
+          metrics: displayMetrics!,
+          timeline: displayTimeline,
+          suspicious_viewers: streamSnap.suspicious_viewers,
+          viewer_history: streamSnap.viewer_history,
+        }
+      : undefined;
+
   return {
     overview,
-    streamSnap: streamSnap
-      ? {
-          ...streamSnap,
-          metrics: displayMetrics ?? streamSnap.metrics,
-          timeline: displayTimeline,
-        }
-      : undefined,
+    streamSnap: finalSnapshot,
     loading: overviewQuery.isLoading || streamQuery.isLoading,
     scan: async (id: string) => {
       if (!accessToken) return;
