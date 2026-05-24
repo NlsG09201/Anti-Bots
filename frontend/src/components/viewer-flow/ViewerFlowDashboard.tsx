@@ -195,32 +195,32 @@ export function ViewerFlowDashboard({
                 <div className="flex justify-between text-xs mb-1">
                   <span className="text-cyber-muted">Bot probability</span>
                   <span className="font-mono text-white">
-                    {(metrics.bot_probability * 100).toFixed(0)}%
+                    {((metrics.bot_probability ?? 0) * 100).toFixed(0)}%
                   </span>
                 </div>
-                <ThreatBar score={metrics.bot_probability * 100} />
+                <ThreatBar score={(metrics.bot_probability ?? 0) * 100} />
               </div>
               <div>
                 <div className="flex justify-between text-xs mb-1">
                   <span className="text-cyber-muted">Raid likelihood</span>
                   <span className="font-mono text-white">
-                    {(metrics.raid_likelihood * 100).toFixed(0)}%
+                    {((metrics.raid_likelihood ?? 0) * 100).toFixed(0)}%
                   </span>
                 </div>
-                <ThreatBar score={metrics.raid_likelihood * 100} />
+                <ThreatBar score={(metrics.raid_likelihood ?? 0) * 100} />
               </div>
               <div>
                 <div className="flex justify-between text-xs mb-1">
                   <span className="text-cyber-muted">Suspicious growth</span>
                   <span className="font-mono text-white">
-                    {metrics.suspicious_growth_score.toFixed(0)}
+                    {(metrics.suspicious_growth_score ?? 0).toFixed(0)}
                   </span>
                 </div>
-                <ThreatBar score={metrics.suspicious_growth_score} />
+                <ThreatBar score={metrics.suspicious_growth_score ?? 0} />
               </div>
-              {metrics.ai_flags.length > 0 && (
+              {(metrics.ai_flags ?? []).length > 0 && (
                 <div className="flex flex-wrap gap-1 pt-2">
-                  {metrics.ai_flags.map((f) => (
+                  {(metrics.ai_flags ?? []).map((f) => (
                     <span
                       key={f}
                       className="text-[10px] px-2 py-0.5 rounded border border-orange-500/40 text-orange-200"
@@ -282,13 +282,13 @@ export function ViewerFlowDashboard({
               <div className="flex justify-between">
                 <span className="text-white font-medium">@{v.username}</span>
                 <span className="font-mono text-cyber-danger">
-                  {v.suspicious_score.toFixed(0)}
+                  {(v.suspicious_score ?? 0).toFixed(0)}
                 </span>
               </div>
               <p className="text-cyber-muted text-[10px] mt-0.5">
-                {v.reasons.join(" · ")}
+                {(v.reasons ?? []).join(" · ")}
                 {v.is_silent ? " · silencioso" : ""}
-                {v.cross_platform_hits > 0
+                {(v.cross_platform_hits ?? 0) > 0
                   ? ` · cross-platform×${v.cross_platform_hits}`
                   : ""}
               </p>
