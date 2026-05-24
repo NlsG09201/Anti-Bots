@@ -302,6 +302,8 @@ class Settings(BaseSettings):
     def model_post_init(self, __context) -> None:
         if self.is_production and not self.cookie_secure:
             object.__setattr__(self, "cookie_secure", True)
+        if self.is_production and self.cookie_secure and self.cookie_samesite != "none":
+            object.__setattr__(self, "cookie_samesite", "none")
         # Render: ruta escribible para modelos Weka (disco efímero en /tmp)
         if os.getenv("RENDER") and self.weka_j48_model_path.strip() in (
             "data/weka_models",

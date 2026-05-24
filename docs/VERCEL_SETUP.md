@@ -72,7 +72,7 @@ REDIS_URL=<de upstash.com>
 CELERY_BROKER_URL=<misma redis>
 CELERY_RESULT_BACKEND=<misma redis>
 COOKIE_SECURE=true
-COOKIE_SAMESITE=strict
+COOKIE_SAMESITE=none
 ```
 
 7. URL API: `https://tu-servicio.onrender.com`

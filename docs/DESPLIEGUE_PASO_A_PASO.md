@@ -115,7 +115,7 @@ REDIS_URL=<upstash rediss url>
 CELERY_BROKER_URL=<misma upstash url>
 CELERY_RESULT_BACKEND=<misma upstash url>
 COOKIE_SECURE=true
-COOKIE_SAMESITE=strict
+COOKIE_SAMESITE=none
 ```
 
 Deja `APP_CORS_ORIGINS` y `APP_FRONTEND_URL` vacíos por ahora (las añades después de Vercel).

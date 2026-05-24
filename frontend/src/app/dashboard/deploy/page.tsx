@@ -21,7 +21,7 @@ const CHECKLIST: CheckItem[] = [
   { id: "render", phase: "Backend", label: "API desplegada en Render/Fly", detail: "APP_ENV=production, health check /health", link: "https://render.com" },
   { id: "vercel", phase: "Frontend", label: "Frontend en Vercel", detail: "NEXT_PUBLIC_API_URL y WS_URL", link: "https://vercel.com" },
   { id: "cors", phase: "Seguridad", label: "CORS y TRUSTED_HOSTS configurados", detail: "Solo tu dominio real" },
-  { id: "cookies", phase: "Seguridad", label: "COOKIE_SECURE=true", detail: "COOKIE_SAMESITE=strict" },
+  { id: "cookies", phase: "Seguridad", label: "COOKIE_SECURE=true", detail: "COOKIE_SAMESITE=none" },
   { id: "twitch-dev", phase: "Twitch", label: "App en dev.twitch.tv", detail: "Client ID + Secret", link: "https://dev.twitch.tv/console" },
   { id: "twitch-redirect", phase: "Twitch", label: "OAuth Redirect URI", detail: "https://api.tudominio.com/api/v1/integrations/twitch/callback" },
   { id: "twitch-webhook", phase: "Twitch", label: "EventSub callback HTTPS:443", detail: "TWITCH_WEBHOOK_SECRET aleatorio" },
