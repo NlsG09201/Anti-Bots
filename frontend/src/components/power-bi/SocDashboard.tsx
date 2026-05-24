@@ -72,7 +72,7 @@ function Panel({
   action,
 }: {
   title: string;
-  icon: ComponentType<{ className?: string; size?: number }>;
+  icon: ComponentType<{ className?: string; size?: number | string }>;
   children: ReactNode;
   action?: ReactNode;
 }) {
@@ -97,7 +97,7 @@ function MetricCard({
   unit,
   tone = "accent",
 }: {
-  icon: ComponentType<{ className?: string; size?: number }>;
+  icon: ComponentType<{ className?: string; size?: number | string }>;
   label: string;
   value: string;
   unit?: string;
@@ -159,56 +159,56 @@ export function SocDashboard() {
   const global = overview?.metrics_globales;
   const realtime = overview?.metricas_tiempo_real;
   const streamRows = streams?.streams ?? [];
-  const topThreatStreams = live?.top_streams ?? overview?.kpis.streams_mas_sospechosos ?? [];
-  const platformRows = streams?.platform_summary ?? [];
-  const aiPredictions = ai?.predictions ?? [];
   const attackTimeline = attacks?.timeline ?? [];
-  const chatRows = engagement?.chat_activity ?? [];
   const metadataTables = metadata?.tables ?? [];
 
   const threatSeries = useMemo(
-    () =>
-      topThreatStreams.slice(0, 10).map((row) => ({
+    () => {
+      const rows = live?.top_streams ?? overview?.kpis.streams_mas_sospechosos ?? [];
+      return rows.slice(0, 10).map((row) => ({
         channel: row.channel_name,
         threat: row.threat_score,
         suspicious: Math.round(row.suspicious_ratio * 100),
         viewers: row.viewer_count,
-      })),
-    [topThreatStreams],
+      }));
+    },
+    [live?.top_streams, overview?.kpis.streams_mas_sospechosos],
   );
 
   const platformChart = useMemo(
     () =>
-      platformRows.map((row) => ({
+      (streams?.platform_summary ?? []).map((row) => ({
         platform: row.platform_name,
         viewers: row.viewer_count,
         attacks: row.active_attacks,
         threat: row.threat_score,
       })),
-    [platformRows],
+    [streams?.platform_summary],
   );
 
   const aiScatter = useMemo(
     () =>
-      aiPredictions.slice(0, 12).map((row) => ({
+      (ai?.predictions ?? []).slice(0, 12).map((row) => ({
         channel: row.channel_name,
         bot: row.bot_probability,
         anomaly: row.anomaly_score,
         coordination: row.coordination_score,
       })),
-    [aiPredictions],
+    [ai?.predictions],
   );
 
   const chatTimeline = useMemo(
     () =>
-      chatRows.slice(-24).map((row) => ({
+      (engagement?.chat_activity ?? []).slice(-24).map((row) => ({
         bucket: String(row.bucket_start).slice(5, 16).replace("T", " "),
         messages: row.messages,
         suspicious: row.suspicious_messages,
         risk: row.message_risk_avg,
       })),
-    [chatRows],
+    [engagement?.chat_activity],
   );
+
+  const topThreatStreams = live?.top_streams ?? overview?.kpis.streams_mas_sospechosos ?? [];
 
   async function downloadExport(kind: "json" | "excel" | "powerbi-package") {
     if (!accessToken) return;
