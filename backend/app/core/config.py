@@ -246,6 +246,14 @@ class Settings(BaseSettings):
 
     otel_exporter_otlp_endpoint: str = "http://otel-collector:4317"
     prometheus_enabled: bool = True
+    analytics_default_hours: int = 168
+    powerbi_enabled: bool = False
+    powerbi_tenant_id: str = ""
+    powerbi_client_id: str = ""
+    powerbi_client_secret: str = ""
+    powerbi_group_id: str = ""
+    powerbi_dataset_name: str = "StreamShield SOC Analytics"
+    powerbi_max_rows_per_table: int = 5000
 
     @field_validator(
         "database_url",

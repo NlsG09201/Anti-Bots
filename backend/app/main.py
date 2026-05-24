@@ -22,6 +22,7 @@ from app.api.v1 import (
     threat_intel,
     streaming_intelligence,
     live_intelligence,
+    powerbi_analytics,
     twitchbots_soc,
     platform_health,
     viewer_flow,
@@ -278,6 +279,7 @@ app.include_router(weka_ml.router, prefix=API_PREFIX)
 app.include_router(threat_intel.router, prefix=API_PREFIX)
 app.include_router(streaming_intelligence.router, prefix=API_PREFIX)
 app.include_router(live_intelligence.router, prefix=API_PREFIX)
+app.include_router(powerbi_analytics.router, prefix=API_PREFIX)
 app.include_router(twitchbots_soc.router, prefix=API_PREFIX)
 app.include_router(platform_health.router, prefix=API_PREFIX)
 app.include_router(viewer_flow.router, prefix=API_PREFIX)
