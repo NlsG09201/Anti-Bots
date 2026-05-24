@@ -302,31 +302,102 @@ async def quick_sync_stream(
     db: AsyncSession = Depends(get_db),
 ):
     """Sincroniza usuarios en chat (Helix rapido) sin escaneo IRC largo."""
+    import asyncio
+    from sqlalchemy.exc import SQLAlchemyError
+    
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
     try:
+        # Validaciones iniciales
         if not stream.is_live:
-            stream = await sync_stream_live_status(db, stream)
+            try:
+                stream = await asyncio.wait_for(
+                    sync_stream_live_status(db, stream), 
+                    timeout=10.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning("sync_live_status_timeout", stream_id=str(stream_id))
+                return {
+                    "status": "offline",
+                    "message": "Timeout al verificar estado live"
+                }
+            except Exception as exc:
+                logger.warning("sync_live_status_error", 
+                             stream_id=str(stream_id), 
+                             error=str(exc)[:200])
+                return {
+                    "status": "offline",
+                    "message": "No se pudo verificar estado live"
+                }
+        
         if not stream.is_live:
             return {"status": "offline", "message": "El canal no esta en vivo"}
+        
         from app.infrastructure.database.models import Platform
         from app.services.platforms.sync_service import PlatformSyncService
 
-        if stream.platform in (Platform.KICK, Platform.YOUTUBE, Platform.TIKTOK):
-            summary = await PlatformSyncService(db).sync_viewers(stream)
-        else:
-            summary = await ChannelMonitorService(db).run_quick_sync(
-                stream, current_user.tenant_id
-            )
-        await db.commit()
+        # Sincronización según plataforma
+        try:
+            if stream.platform in (Platform.KICK, Platform.YOUTUBE, Platform.TIKTOK):
+                summary = await asyncio.wait_for(
+                    PlatformSyncService(db).sync_viewers(stream),
+                    timeout=15.0
+                )
+            else:
+                summary = await asyncio.wait_for(
+                    ChannelMonitorService(db).run_quick_sync(stream, current_user.tenant_id),
+                    timeout=15.0
+                )
+        except asyncio.TimeoutError:
+            logger.warning("quick_sync_timeout", 
+                         stream_id=str(stream_id),
+                         platform=stream.platform.value)
+            await db.rollback()
+            return {
+                "status": "timeout",
+                "message": "La sincronizacion rapida excedio el tiempo limite (15s)",
+                "viewer_count": stream.viewer_count
+            }
+        except (SQLAlchemyError, ValueError, KeyError) as exc:
+            logger.warning("quick_sync_service_error",
+                         stream_id=str(stream_id),
+                         platform=stream.platform.value if stream.platform else "unknown",
+                         error_type=type(exc).__name__,
+                         error=str(exc)[:200])
+            await db.rollback()
+            return {
+                "status": "error",
+                "message": "Error temporal en sincronizacion. Reintenta en unos segundos.",
+                "viewer_count": stream.viewer_count
+            }
+        
+        # Commit
+        try:
+            await db.commit()
+        except SQLAlchemyError as exc:
+            logger.error("quick_sync_commit_error",
+                        stream_id=str(stream_id),
+                        error=str(exc)[:200])
+            await db.rollback()
+            return {
+                "status": "error",
+                "message": "Error al guardar sincronizacion. Reintenta en unos segundos.",
+                "viewer_count": stream.viewer_count
+            }
+        
         return {"status": "ok", **summary}
+        
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.exception("quick_sync_failed", stream_id=str(stream_id))
+        logger.exception("quick_sync_unexpected_error", 
+                        stream_id=str(stream_id),
+                        error=str(exc)[:300])
         await db.rollback()
         raise HTTPException(
             status_code=503,
             detail={
                 "message": "La sincronizacion rapida del canal falló. Reintenta en unos segundos.",
-                "error": str(exc)[:300],
+                "error": str(exc)[:150],
             },
         ) from exc
 
