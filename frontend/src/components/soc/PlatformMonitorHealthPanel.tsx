@@ -88,7 +88,7 @@ function StreamRow({ row }: { row: PlatformHealthStream }) {
           socket: {row.socket_connected ? row.socket_transport || "on" : "off"}
         </span>
       </div>
-      {row.ai_flags.length > 0 && (
+      {row.ai_flags && row.ai_flags.length > 0 && (
         <p className="text-[10px] text-orange-300/90">
           IA: {row.ai_flags.join(", ")} ({Math.round(row.ai_anomaly_score)})
         </p>
