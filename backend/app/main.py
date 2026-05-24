@@ -23,7 +23,6 @@ from app.api.v1 import (
     streaming_intelligence,
     live_intelligence,
     powerbi_analytics,
-    power_bi,
     twitchbots_soc,
     platform_health,
     viewer_flow,
