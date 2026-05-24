@@ -186,6 +186,7 @@ async function handleAuthFailure(): Promise<void> {
   useAuthStore.getState().logout();
 
   if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("streamshield:session-expired"));
   const path = window.location.pathname;
   if (!path.startsWith("/login") && !path.startsWith("/register")) {
     window.location.replace("/login?session=expired");
