@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type PowerBiSyncResult } from "@/lib/api";
 import { useApiToken } from "@/stores/authStore";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import { useWebSocket, type WSMessage } from "@/hooks/useWebSocket";
 
 export function usePowerBiSocData(hours = 168) {
   const accessToken = useApiToken();
@@ -16,7 +16,7 @@ export function usePowerBiSocData(hours = 168) {
 
   useWebSocket(
     useCallback(
-      (msg) => {
+      (msg: WSMessage) => {
         if (
           msg.type === "soc_update" ||
           msg.type === "live_intel_update" ||
