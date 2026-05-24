@@ -11,8 +11,6 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from uuid import UUID
 
 import httpx
-from openpyxl import Workbook
-from openpyxl.styles import Font
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1329,6 +1327,9 @@ def json_bytes(payload: Any) -> bytes:
 
 
 def excel_bytes(bundle: Dict[str, Sequence[Dict[str, Any]]]) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
     workbook = Workbook()
     first = True
     for sheet_name, rows in bundle.items():

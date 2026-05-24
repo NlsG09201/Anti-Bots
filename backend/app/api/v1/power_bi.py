@@ -1,123 +1,143 @@
-"""Power BI REST APIs — Endpoints para exportación y consumo de datos en Power BI."""
+"""Legacy Power BI endpoints backed by the active analytics warehouse.
+
+This module intentionally avoids app.power_bi.export_service. That older service
+references ORM models and columns that no longer exist, so importing it can stop
+the API process during startup.
+"""
 
 from __future__ import annotations
 
-import io
-import json
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from uuid import UUID
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import AnalystUser
-from app.core.logging import get_logger
-from app.infrastructure.database.session import get_db
-from app.power_bi.export_service import PowerBIExportService
-from app.power_bi.schemas import (
-    ExportRequest,
-    ExportResponse,
+from app.api.dependencies import AnalystUser, get_db
+from app.services.analytics.powerbi import (
+    AnalyticsWarehouseService,
+    EXPORT_DATASETS,
+    csv_bytes,
+    excel_bytes,
 )
 
-logger = get_logger(__name__)
-router = APIRouter(prefix="/power-bi", tags=["Power BI"])
+router = APIRouter(prefix="/power-bi", tags=["Power BI Legacy"])
+
+
+class ExportRequest(BaseModel):
+    format: Literal["csv", "excel", "json"] = "csv"
+    table_type: str = "streams"
+    hours: int = 168
+    platform_filter: str | None = None
+
+
+def _service(db: AsyncSession, current_user: AnalystUser, hours: int = 168) -> AnalyticsWarehouseService:
+    return AnalyticsWarehouseService(db, current_user.tenant_id, hours=hours)
 
 
 @router.get("/metrics/global")
 async def get_global_metrics(
     current_user: AnalystUser,
     db: AsyncSession = Depends(get_db),
+    hours: int = Query(168, ge=1, le=2160),
 ):
-    """Obtiene métricas globales del SOC."""
-    service = PowerBIExportService(db)
-    metrics = await service.compute_global_metrics(current_user.tenant_id)
-    return metrics.model_dump()
+    overview = await _service(db, current_user, hours).overview()
+    metrics = overview["metrics_globales"]
+    realtime = overview["metricas_tiempo_real"]
+    return {
+        "timestamp": overview["updated_at"],
+        "total_streams_monitored": metrics["streams_activos"],
+        "total_suspicious_viewers": metrics["viewers_sospechosos"],
+        "total_attacks_detected": metrics["ataques_detectados"],
+        "active_streams": metrics["streams_activos"],
+        "detected_bots": metrics["bots_detectados"],
+        "suspicious_follows": metrics["follows_sospechosos"],
+        "engagement_score": metrics["engagement_score"],
+        "global_threat_score": metrics["threat_score"],
+        "risk_score": metrics["riesgo_global"],
+        "viewers_per_minute": realtime["viewers_por_minuto"],
+        "follows_per_minute": realtime["follows_por_minuto"],
+        "messages_per_minute": realtime["mensajes_por_minuto"],
+        "anomalies": realtime["anomalias"],
+    }
 
 
 @router.get("/metrics/kpis")
 async def get_kpis(
     current_user: AnalystUser,
     db: AsyncSession = Depends(get_db),
+    hours: int = Query(168, ge=1, le=2160),
 ):
-    """Obtiene KPIs principales."""
-    service = PowerBIExportService(db)
-    kpis = await service.compute_kpis(current_user.tenant_id)
-    return kpis.model_dump()
+    overview = await _service(db, current_user, hours).overview()
+    return {
+        "timestamp": overview["updated_at"],
+        **overview["kpis"],
+    }
 
 
 @router.get("/streams/snapshots")
 async def get_stream_snapshots(
     current_user: AnalystUser,
     db: AsyncSession = Depends(get_db),
-    platform: Optional[str] = Query(None, description="Filtrar por plataforma"),
+    platform: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
+    hours: int = Query(168, ge=1, le=2160),
 ):
-    """Obtiene snapshots de streams activos."""
-    service = PowerBIExportService(db)
-    snapshots = await service.get_stream_snapshots(
-        current_user.tenant_id,
-        platform_filter=platform,
-        limit=limit,
-    )
-    return [s.model_dump() for s in snapshots]
+    analytics = await _service(db, current_user, hours).stream_analytics()
+    rows = analytics["streams"]
+    if platform:
+        rows = [row for row in rows if row["platform_key"] == platform.lower()]
+    return rows[:limit]
 
 
 @router.get("/viewers/suspicious")
 async def get_suspicious_viewers(
     current_user: AnalystUser,
     db: AsyncSession = Depends(get_db),
-    min_score: float = Query(0.7, ge=0, le=1),
+    min_score: float = Query(0.7, ge=0, le=100),
     limit: int = Query(1000, ge=1, le=5000),
+    hours: int = Query(168, ge=1, le=2160),
 ):
-    """Obtiene viewers sospechosos."""
-    service = PowerBIExportService(db)
-    viewers = await service.get_suspicious_viewers(
-        current_user.tenant_id,
-        min_score=min_score,
-        limit=limit,
-    )
-    return [v.model_dump() for v in viewers]
+    min_score_normalized = min_score * 100 if min_score <= 1 else min_score
+    analytics = await _service(db, current_user, hours).suspicious_activity()
+    return [
+        row
+        for row in analytics["top_viewers"]
+        if float(row.get("risk_score") or 0) >= min_score_normalized
+    ][:limit]
 
 
 @router.get("/attacks/list")
 async def get_attacks(
     current_user: AnalystUser,
     db: AsyncSession = Depends(get_db),
-    status: Optional[str] = Query(None),
+    status: str | None = Query(None),
     hours: int = Query(24, ge=1, le=720),
     limit: int = Query(500, ge=1, le=5000),
 ):
-    """Obtiene ataques detectados."""
-    service = PowerBIExportService(db)
-    attacks = await service.get_attacks(
-        current_user.tenant_id,
-        status=status,
-        hours=hours,
-        limit=limit,
-    )
-    return [a.model_dump() for a in attacks]
+    analytics = await _service(db, current_user, hours).attack_analytics()
+    rows = analytics["attacks"]
+    if status:
+        rows = [row for row in rows if row["status"] == status]
+    return rows[:limit]
 
 
 @router.get("/dataset/json")
 async def export_dataset_json(
     current_user: AnalystUser,
     db: AsyncSession = Depends(get_db),
-    tables: str = Query("all", description="Tablas a incluir: all, streams, suspicious_viewers, attacks"),
+    tables: str = Query("all"),
+    hours: int = Query(168, ge=1, le=2160),
 ):
-    """Exporta dataset completo en JSON."""
-    service = PowerBIExportService(db)
-    
+    bundle = await _service(db, current_user, hours).build_export_bundle()
     if tables == "all":
-        table_list = ["streams", "suspicious_viewers", "attacks"]
-    else:
-        table_list = [t.strip() for t in tables.split(",") if t.strip()]
-
-    dataset = await service.generate_powerbi_dataset(
-        current_user.tenant_id,
-        include_tables=table_list,
-    )
-    return dataset
+        return bundle
+    selected = [name.strip() for name in tables.split(",") if name.strip()]
+    invalid = [name for name in selected if name not in EXPORT_DATASETS]
+    if invalid:
+        raise HTTPException(status_code=400, detail={"invalid": invalid, "allowed": list(EXPORT_DATASETS)})
+    return {name: bundle[name] for name in selected}
 
 
 @router.post("/export")
@@ -126,82 +146,42 @@ async def export_data(
     current_user: AnalystUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Exporta datos en múltiples formatos."""
-    service = PowerBIExportService(db)
-
-    # Obtener datos según tipo de tabla
-    if request.table_type == "streams":
-        snapshots = await service.get_stream_snapshots(
-            current_user.tenant_id,
-            platform_filter=request.platform_filter,
-            limit=1000,
-        )
-        data = service.generate_powerbi_stream_table(snapshots)
-        table_name = "Streams"
-
-    elif request.table_type == "suspicious_viewers":
-        viewers = await service.get_suspicious_viewers(
-            current_user.tenant_id,
-            limit=5000,
-        )
-        data = [v.model_dump() for v in viewers]
-        table_name = "SuspiciousViewers"
-
-    elif request.table_type == "attacks":
-        attacks = await service.get_attacks(
-            current_user.tenant_id,
-            status=None,
-            hours=168,  # 1 semana
-            limit=5000,
-        )
-        data = [a.model_dump() for a in attacks]
-        table_name = "Attacks"
-
-    else:
+    table_name = request.table_type
+    if table_name == "all":
+        table_name = "streams"
+    if table_name not in EXPORT_DATASETS:
         raise HTTPException(
             status_code=400,
-            detail=f"Tipo de tabla inválido: {request.table_type}",
+            detail={"message": "Dataset no soportado", "allowed": list(EXPORT_DATASETS)},
         )
 
-    # Exportar según formato
+    bundle = await _service(db, current_user, request.hours).build_export_bundle()
+    rows = bundle[table_name]
+    if request.platform_filter and "platform_key" in (rows[0] if rows else {}):
+        rows = [row for row in rows if row["platform_key"] == request.platform_filter.lower()]
+
     if request.format == "csv":
-        csv_content = service.generate_csv_export(data)
         return {
             "status": "ok",
             "format": "csv",
-            "content": csv_content.getvalue(),
-            "rows": len(data),
+            "content": csv_bytes(rows).decode("utf-8"),
+            "rows": len(rows),
         }
-
-    elif request.format == "excel":
-        excel_bytes = service.generate_excel_export(data, filename=table_name)
+    if request.format == "excel":
         return {
             "status": "ok",
             "format": "excel",
-            "content": excel_bytes.hex(),  # Codificar como hex para JSON
-            "rows": len(data),
+            "content": excel_bytes({table_name: rows}).hex(),
+            "rows": len(rows),
         }
-
-    elif request.format == "json":
-        return {
-            "status": "ok",
-            "format": "json",
-            "data": data,
-            "rows": len(data),
-        }
-
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Formato no soportado: {request.format}",
-        )
+    return {"status": "ok", "format": "json", "data": rows, "rows": len(rows)}
 
 
 @router.get("/health")
 async def power_bi_health():
-    """Health check para Power BI."""
     return {
         "status": "operational",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "version": "1.0.0",
+        "version": "2.0.0",
+        "backend": "analytics_warehouse",
     }
