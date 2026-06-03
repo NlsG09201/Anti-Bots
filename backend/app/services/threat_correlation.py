@@ -71,6 +71,13 @@ class ThreatCorrelationEngine:
             "recommendations": [],
             "detected_attacks": [],
             "active_alerts": [],
+            "network_summary": {
+                "vpn_users": 0,
+                "proxy_users": 0,
+                "datacenter_users": 0,
+                "tor_users": 0,
+                "high_risk_ips": 0,
+            },
         }
 
         # Parallel tasks
@@ -95,6 +102,9 @@ class ThreatCorrelationEngine:
 
         # Calculate overall risk
         assessment["overall_risk_score"] = self._calculate_overall_risk(
+            assessment["threat_components"]
+        )
+        assessment["active_alerts"] = self._detect_active_alerts(
             assessment["threat_components"]
         )
 
@@ -245,6 +255,9 @@ class ThreatCorrelationEngine:
                 "graph_threat_score": 0,
                 "detected_clusters": 0,
                 "coordination_score": 0,
+                "community_count": 0,
+                "modularity_score": 0,
+                "high_centrality_nodes": [],
             }
 
         # Build correlation edges
@@ -276,11 +289,14 @@ class ThreatCorrelationEngine:
 
         return {
             "graph_threat_score": snapshot.coordination_score,
-            "detected_clusters": len(snapshot.clusters),
+            "detected_clusters": len(snapshot.bot_clusters),
             "cluster_size": (
-                max(len(c) for c in snapshot.clusters) if snapshot.clusters else 0
+                max(len(c) for c in snapshot.bot_clusters) if snapshot.bot_clusters else 0
             ),
             "coordination_score": snapshot.coordination_score,
+            "community_count": snapshot.community_count,
+            "modularity_score": snapshot.modularity_score,
+            "high_centrality_nodes": snapshot.high_centrality_nodes,
         }
 
     @staticmethod
@@ -302,7 +318,12 @@ class ThreatCorrelationEngine:
 
         graph = threat_components.get("graph_correlation", {})
         if not isinstance(graph, dict) or "error" not in graph:
-            scores.append(graph.get("graph_threat_score", 0) * 0.15)
+            graph_score = max(
+                graph.get("graph_threat_score", 0),
+                graph.get("coordination_score", 0),
+                graph.get("modularity_score", 0),
+            )
+            scores.append(graph_score * 0.15)
 
         return sum(scores) if scores else 0.0
 
@@ -315,10 +336,12 @@ class ThreatCorrelationEngine:
             recommendations.append("BLOCK_STREAM")
             recommendations.append("INVESTIGATE_ATTACK")
             recommendations.append("ENABLE_FOLLOWER_ONLY_MODE")
+            recommendations.append("TRIGGER_HIGH_PRIORITY_ALERTS")
         elif risk_score >= 0.6:
             recommendations.append("ENABLE_SLOW_MODE")
             recommendations.append("REQUIRE_VERIFICATION")
             recommendations.append("MONITOR_VIEWERS")
+            recommendations.append("ALERT_SOC_TEAM")
         elif risk_score >= 0.4:
             recommendations.append("INCREASE_MONITORING")
             recommendations.append("BLOCK_SUSPICIOUS_IPS")
@@ -346,6 +369,8 @@ class ThreatCorrelationEngine:
         if not isinstance(chat, dict) or "error" not in chat:
             if chat.get("coordinated_spam_detected"):
                 attacks.append("CHAT_SPAM_ATTACK")
+            if chat.get("automation_surge_detected"):
+                attacks.append("AUTOMATION_ATTACK")
 
         return attacks
 
@@ -358,6 +383,63 @@ class ThreatCorrelationEngine:
             if isinstance(threats, list):
                 all_threats.update(threats)
         return sorted(list(all_threats))
+
+    def _detect_active_alerts(self, threat_components: Dict[str, Any]) -> List[Dict[str, Any]]:
+        alerts: List[Dict[str, Any]] = []
+
+        ip_threats = threat_components.get("ip_threats", {}) or {}
+        if ip_threats.get("suspicious_ips", 0) >= 10:
+            alerts.append(
+                {
+                    "type": "network_surge",
+                    "severity": "high",
+                    "suspicious_ips": ip_threats.get("suspicious_ips", 0),
+                }
+            )
+        if ip_threats.get("threat_categories"):
+            categories = set(str(c).lower() for c in ip_threats.get("threat_categories", []))
+            if categories & {"vpn", "proxy", "tor", "datacenter"}:
+                alerts.append(
+                    {
+                        "type": "network_reputation_risk",
+                        "severity": "high",
+                        "categories": sorted(categories & {"vpn", "proxy", "tor", "datacenter"}),
+                    }
+                )
+
+        behavioral = threat_components.get("behavioral", {}) or {}
+        patterns = behavioral.get("patterns_detected", []) or []
+        if "impossible_growth" in patterns or "mass_entry" in patterns:
+            alerts.append(
+                {
+                    "type": "viewbotting",
+                    "severity": "critical" if "impossible_growth" in patterns else "high",
+                    "patterns": patterns,
+                }
+            )
+
+        chat = threat_components.get("chat", {}) or {}
+        if chat.get("coordinated_spam_detected"):
+            alerts.append(
+                {
+                    "type": "chat_spam",
+                    "severity": "high",
+                    "spam_indicators": chat.get("spam_indicators", 0),
+                }
+            )
+
+        graph = threat_components.get("graph_correlation", {}) or {}
+        if graph.get("detected_clusters", 0) >= 2 or graph.get("modularity_score", 0) >= 0.4:
+            alerts.append(
+                {
+                    "type": "coordinated_cluster",
+                    "severity": "medium",
+                    "cluster_count": graph.get("detected_clusters", 0),
+                    "modularity_score": graph.get("modularity_score", 0),
+                }
+            )
+
+        return alerts
 
     async def _get_cached(self, cache_key: str) -> Optional[Dict[str, Any]]:
         """Get cached assessment."""

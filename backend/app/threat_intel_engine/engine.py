@@ -323,6 +323,34 @@ class ThreatIntelligenceEngine:
                     "bot_probability": ai_assessment.bot_probability,
                     "classification": ai_assessment.classification.value,
                     "threat_level": ai_assessment.threat_level.value,
+                    "coordination_score": ai_assessment.coordination_score,
+                    "attack_probability": ai_assessment.attack_probability,
+                    "viewbot_probability": ai_assessment.viewbot_probability,
+                    "automation_probability": ai_assessment.automation_probability,
+                    "reputation_delta": ai_assessment.reputation_delta,
+                    "flags": ai_assessment.flags,
+                },
+            )
+        else:
+            await self._store.save_prediction(
+                tid,
+                sid,
+                {
+                    "entity_key": ekey,
+                    "risk_score": assessment.attack_severity * 100,
+                    "bot_probability": assessment.bot_probability,
+                    "classification": "none",
+                    "threat_level": "low",
+                    "coordination_score": assessment.coordination_score,
+                    "attack_probability": max(
+                        assessment.bot_probability,
+                        assessment.raid_likelihood,
+                        assessment.synthetic_audience_score,
+                    ),
+                    "viewbot_probability": assessment.bot_probability,
+                    "automation_probability": behavioral.anomaly_score,
+                    "reputation_delta": 0.0,
+                    "flags": assessment.flags,
                 },
             )
 
@@ -332,6 +360,20 @@ class ThreatIntelligenceEngine:
             "threat_intel_update",
             {"stream_id": sid, "payload": assessment.to_dict()},
         )
+        if assessment.bot_probability >= 0.7 or assessment.raid_likelihood >= 0.6:
+            await publish_realtime(
+                tid,
+                "threat_intel_alert",
+                {
+                    "stream_id": sid,
+                    "entity_key": ekey,
+                    "risk_score": assessment.attack_severity,
+                    "bot_probability": assessment.bot_probability,
+                    "raid_likelihood": assessment.raid_likelihood,
+                    "flags": assessment.flags,
+                    "alerts": assessment.graph.high_centrality_nodes if assessment.graph else [],
+                },
+            )
         return assessment
 
     async def _update_entity(
