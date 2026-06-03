@@ -13,7 +13,6 @@ from app.infrastructure.database.models import (
     PlaybookExecution,
 )
 from app.services.mitigation.service import MitigationService
-from app.services.mitigation.targets import build_target_from_incident
 
 logger = get_logger(__name__)
 
