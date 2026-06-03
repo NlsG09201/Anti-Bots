@@ -231,6 +231,8 @@ async def process_stream_event(
                 ti_meta.setdefault("ip_address", event.ip_address)
             if event.fingerprint_hash:
                 ti_meta.setdefault("fingerprint_hash", event.fingerprint_hash)
+            if ip_data:
+                ti_meta.setdefault("network_reputation", ip_data)
             ti_assessment = await get_threat_intel_engine().process_event(
                 db,
                 tenant_id=tenant_id,

@@ -63,6 +63,7 @@ class ChatIntelligenceEngine:
 
         self._message_windows[stream_id].append(message_data)
         self._message_timestamps[stream_id].append(timestamp)
+        self._message_timestamps[f"{stream_id}:{user_id}"].append(timestamp)
         self._user_messages[f"{stream_id}:{user_id}"].append(message)
 
         # Run analyses

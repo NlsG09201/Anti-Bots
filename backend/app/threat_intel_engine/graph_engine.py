@@ -70,11 +70,32 @@ class ThreatGraphBuilder:
 
         clusters: List[List[str]] = []
         coordination = 0.0
+        community_count = 0
+        modularity_score = 0.0
+        high_centrality_nodes: List[str] = []
         if G.number_of_nodes() > 0:
             components = list(nx.connected_components(G))
+            communities: List[Set[str]] = []
+            if G.number_of_edges() > 0 and G.number_of_nodes() >= 3:
+                try:
+                    communities = [
+                        set(c)
+                        for c in nx.algorithms.community.greedy_modularity_communities(
+                            G, weight="weight"
+                        )
+                    ]
+                    community_count = len(communities)
+                    if community_count > 1:
+                        modularity_score = float(
+                            nx.algorithms.community.modularity(
+                                G, communities, weight="weight"
+                            )
+                        )
+                except Exception:
+                    communities = []
             bot_clusters = [
                 sorted(c)
-                for c in components
+                for c in (communities or components)
                 if len(c) >= 3
                 and self._cluster_bot_score(c, threat) >= 0.45
             ]
@@ -86,6 +107,15 @@ class ThreatGraphBuilder:
                     (largest / max(G.number_of_nodes(), 1)) * 0.7
                     + (len(bot_clusters) / max(len(components), 1)) * 0.3,
                 )
+            if G.number_of_nodes() >= 3:
+                centrality = nx.degree_centrality(G)
+                high_centrality_nodes = [
+                    n
+                    for n, _ in sorted(
+                        centrality.items(), key=lambda item: item[1], reverse=True
+                    )[:12]
+                    if centrality.get(n, 0.0) >= 0.25
+                ]
 
         node_cluster: Dict[str, int] = {}
         for i, cl in enumerate(clusters):
@@ -124,6 +154,9 @@ class ThreatGraphBuilder:
             edges=edges,
             bot_clusters=clusters,
             coordination_score=round(coordination, 4),
+            community_count=community_count,
+            modularity_score=round(max(0.0, modularity_score), 4),
+            high_centrality_nodes=high_centrality_nodes,
         )
 
     def _cluster_bot_score(

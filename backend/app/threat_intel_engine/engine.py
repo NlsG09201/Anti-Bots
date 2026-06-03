@@ -14,7 +14,9 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.realtime import publish_realtime
 from app.infrastructure.cache.redis_client import get_redis
+from app.threat_intel_engine.behavioral import BehavioralAnomalyEngine
 from app.threat_intel_engine.chat_lexical import ChatLexicalAnalyzer
+from app.threat_intel_engine.chat_intelligence import ChatIntelligenceEngine
 from app.threat_intel_engine.cross_platform import CrossPlatformCorrelator
 from app.threat_intel_engine.engagement import EngagementAnalyzer
 from app.threat_intel_engine.graph_engine import ThreatGraphBuilder
@@ -41,6 +43,8 @@ class ThreatIntelligenceEngine:
         self._store = ThreatIntelMongoStore()
         self._engagement = EngagementAnalyzer()
         self._chat = ChatLexicalAnalyzer()
+        self._chat_intel = ChatIntelligenceEngine()
+        self._behavioral = BehavioralAnomalyEngine()
         self._graph = ThreatGraphBuilder()
         self._cross = CrossPlatformCorrelator(self._store)
         self._session_entities: Dict[str, set[str]] = {}
@@ -73,6 +77,9 @@ class ThreatIntelligenceEngine:
         platform_user_id = metadata.get("user_id") or metadata.get("platform_user_id")
         ip = metadata.get("ip_address") or metadata.get("ip")
         fp = metadata.get("fingerprint_hash") or metadata.get("fingerprint")
+        network_reputation = metadata.get("network_reputation")
+        if not isinstance(network_reputation, dict):
+            network_reputation = {}
 
         ekey = entity_key(
             platform=platform,
@@ -95,11 +102,35 @@ class ThreatIntelligenceEngine:
         )
 
         et = (event_type or "").lower()
+        behavioral = self._behavioral.record_event(
+            sid,
+            ekey,
+            et,
+            {
+                **metadata,
+                "ip_hash": hash_value(str(ip), "ip") if ip else metadata.get("ip_hash"),
+                "fingerprint_hash": str(fp)[:64] if fp else metadata.get("fingerprint_hash"),
+            },
+            network_reputation=network_reputation,
+        )
         if et in ("chat_message", "message", "chat"):
             self._engagement.record_chat(sid, ekey)
             msg = str(metadata.get("message") or metadata.get("text") or "")
             if msg:
                 chat_analysis = self._chat.analyze(sid, ekey, msg)
+                advanced_chat = await self._chat_intel.analyze_message(
+                    sid,
+                    str(platform_user_id or ekey),
+                    str(username or "unknown"),
+                    msg,
+                    metadata.get("timestamp"),
+                )
+                chat_analysis["advanced"] = advanced_chat
+                chat_analysis["spam_probability"] = max(
+                    float(chat_analysis.get("spam_probability", 0)),
+                    float(advanced_chat.get("spam_score", {}).get("confidence", 0)),
+                    float(advanced_chat.get("coordinated_score", {}).get("confidence", 0)),
+                )
                 await self._store.append_chat_pattern(
                     tid, ekey, sid, msg, chat_analysis
                 )
@@ -113,6 +144,8 @@ class ThreatIntelligenceEngine:
                     fp=fp,
                     known_twitchbots=known_tbi,
                     tbi_meta=tbi_meta,
+                    behavioral=behavioral.to_dict(),
+                    network_reputation=network_reputation,
                 )
         elif et in ("viewer_join", "join", "viewer", "presence"):
             vc = metadata.get("viewer_count")
@@ -122,7 +155,7 @@ class ThreatIntelligenceEngine:
                 suspected=suspected,
                 viewer_count=int(vc) if vc is not None else None,
             )
-            await self._update_entity(
+                await self._update_entity(
                 tid,
                 ekey,
                 platform,
@@ -131,10 +164,12 @@ class ThreatIntelligenceEngine:
                 fp=fp,
                 suspected=suspected,
                 known_twitchbots=known_tbi,
-                tbi_meta=tbi_meta,
-            )
+                    tbi_meta=tbi_meta,
+                    behavioral=behavioral.to_dict(),
+                    network_reputation=network_reputation,
+                )
         elif et in ("follow", "subscription", "raid"):
-            await self._update_entity(
+                await self._update_entity(
                 tid,
                 ekey,
                 platform,
@@ -143,8 +178,10 @@ class ThreatIntelligenceEngine:
                 ip=ip,
                 fp=fp,
                 known_twitchbots=known_tbi,
-                tbi_meta=tbi_meta,
-            )
+                    tbi_meta=tbi_meta,
+                    behavioral=behavioral.to_dict(),
+                    network_reputation=network_reputation,
+                )
 
         sess = self._session_entities.setdefault(sid, set())
         if len(sess) < 500:
@@ -237,6 +274,7 @@ class ThreatIntelligenceEngine:
         )
 
         bot_p = reputation.bot_probability if reputation else 0.0
+        bot_p = max(bot_p, behavioral.bot_probability)
         if ai_assessment:
             bot_p = max(bot_p, ai_assessment.bot_probability)
 
@@ -252,15 +290,25 @@ class ThreatIntelligenceEngine:
             bot_probability=round(bot_p, 4),
             attack_severity=round(
                 (ai_assessment.risk_score / 100.0 if ai_assessment else 0)
-                * max(bot_p, graph.coordination_score),
+                * max(bot_p, graph.coordination_score, behavioral.anomaly_score),
                 4,
             ),
-            coordination_score=graph.coordination_score,
+            coordination_score=max(graph.coordination_score, behavioral.sync_score),
             spam_probability=reputation.spam_probability if reputation else 0.0,
-            raid_likelihood=(
-                ai_assessment.raid_probability if ai_assessment else 0.0
+            raid_likelihood=max(
+                ai_assessment.raid_probability if ai_assessment else 0.0,
+                behavioral.raid_probability,
             ),
-            flags=(ai_assessment.flags if ai_assessment else [])[:12],
+            synthetic_audience_score=max(
+                engagement.synthetic_engagement_score / 100.0,
+                behavioral.synthetic_audience_score,
+            ),
+            trust_score=behavioral.trust_score,
+            behavioral=behavioral.to_dict(),
+            network_reputation=network_reputation,
+            flags=list(dict.fromkeys(
+                (ai_assessment.flags if ai_assessment else []) + behavioral.flags
+            ))[:16],
             ai_insights=self._insights(engagement, graph, reputation, ai_assessment),
             cross_platform_matches=cross_matches,
         )
@@ -300,6 +348,8 @@ class ThreatIntelligenceEngine:
         follow_burst: bool = False,
         known_twitchbots: bool = False,
         tbi_meta: Optional[Dict[str, Any]] = None,
+        behavioral: Optional[Dict[str, Any]] = None,
+        network_reputation: Optional[Dict[str, Any]] = None,
     ) -> None:
         existing = await self._store.get_entity(tenant_id, ekey) or {}
         threat = float(existing.get("threat_score", 0))
@@ -332,6 +382,28 @@ class ThreatIntelligenceEngine:
             for f in chat_analysis.get("flags") or []:
                 if f not in flags:
                     flags.append(f)
+        if behavioral:
+            threat = max(threat, float(behavioral.get("bot_probability", 0)) * 100)
+            trust = min(trust, float(behavioral.get("trust_score", trust)))
+            bot_p = max(bot_p, float(behavioral.get("bot_probability", 0)))
+            coord = max(coord, float(behavioral.get("sync_score", 0)))
+            for f in behavioral.get("flags") or []:
+                if f not in flags:
+                    flags.append(f)
+        if network_reputation:
+            threat_score = float(
+                network_reputation.get(
+                    "risk_score",
+                    network_reputation.get("combined_threat_score", 0),
+                )
+                or 0
+            )
+            if threat_score <= 1:
+                threat_score *= 100
+            threat = max(threat, threat_score)
+            for key in ("is_vpn", "is_proxy", "is_tor", "is_datacenter"):
+                if network_reputation.get(key) and key not in flags:
+                    flags.append(key)
 
         trust = max(0, 100 - threat * 0.85 - bot_p * 40)
         engagement_s = max(0, min(100, engagement_s + (5 if chat_analysis else 0)))
@@ -361,6 +433,14 @@ class ThreatIntelligenceEngine:
             patch["ip_hash"] = hash_value(str(ip), "ip")
         if fp:
             patch["fingerprint_hash"] = str(fp)[:64]
+        if behavioral:
+            patch["behavioral"] = behavioral
+            patch["synthetic_audience_score"] = float(
+                behavioral.get("synthetic_audience_score", 0)
+            )
+            patch["raid_likelihood"] = float(behavioral.get("raid_probability", 0))
+        if network_reputation:
+            patch["network_reputation"] = network_reputation
         streams = list(existing.get("streams_seen") or [])
         await self._store.upsert_entity(tenant_id, ekey, patch)
 

@@ -69,6 +69,9 @@ class ThreatGraphSnapshot(BaseModel):
     edges: List[GraphEdge] = Field(default_factory=list)
     bot_clusters: List[List[str]] = Field(default_factory=list)
     coordination_score: float = 0.0
+    community_count: int = 0
+    modularity_score: float = 0.0
+    high_centrality_nodes: List[str] = Field(default_factory=list)
 
 
 class ThreatIntelAssessment(BaseModel):
@@ -81,6 +84,10 @@ class ThreatIntelAssessment(BaseModel):
     coordination_score: float = 0.0
     spam_probability: float = 0.0
     raid_likelihood: float = 0.0
+    synthetic_audience_score: float = 0.0
+    trust_score: float = 50.0
+    behavioral: Dict[str, Any] = Field(default_factory=dict)
+    network_reputation: Dict[str, Any] = Field(default_factory=dict)
     flags: List[str] = Field(default_factory=list)
     ai_insights: List[str] = Field(default_factory=list)
     cross_platform_matches: List[Dict[str, Any]] = Field(default_factory=list)
