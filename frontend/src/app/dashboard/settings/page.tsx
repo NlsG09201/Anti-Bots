@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Shield, Tv, CheckCircle, AlertCircle, Radio } from "lucide-react";
+import { Shield, Tv, CheckCircle, AlertCircle, Radio, ExternalLink } from "lucide-react";
 import { PlatformBadge } from "@/components/PlatformBadge";
 import { api } from "@/lib/api";
 import { useApiToken, useAuthStore } from "@/stores/authStore";
@@ -22,6 +22,11 @@ function SettingsContent() {
     provisioning_uri: string;
   } | null>(null);
   const [message, setMessage] = useState("");
+  const [youtubeFailure, setYoutubeFailure] = useState<{
+    code: string;
+    message: string;
+    redirectUri?: string;
+  } | null>(null);
 
   const isAdmin =
     user?.role === "admin" || user?.role === "super_admin" || user?.role === "analyst";
@@ -45,7 +50,17 @@ function SettingsContent() {
     }
     const youtubeError = searchParams.get("youtube_error");
     if (youtubeError) {
-      setMessage(searchParams.get("youtube_msg") || youtubeError);
+      const detail = searchParams.get("youtube_msg") || youtubeError;
+      const redirectUri = searchParams.get("youtube_redirect_uri") || undefined;
+      setYoutubeFailure({ code: youtubeError, message: detail, redirectUri });
+      const normalized = detail.toLowerCase();
+      setMessage(
+        youtubeError === "token_exchange_failed" && normalized.includes("access_denied")
+          ? "YouTube bloqueó el acceso porque la app sigue en modo de prueba o tu cuenta no está autorizada como tester."
+          : youtubeError === "token_exchange_failed" && normalized.includes("invalid_client")
+            ? "YouTube rechazó la autenticación del cliente. Revisa Client ID, Client Secret y la Redirect URI exacta."
+            : detail,
+      );
     }
     const twitchError = searchParams.get("twitch_error");
     if (twitchError) {
@@ -317,6 +332,32 @@ function SettingsContent() {
             Define YOUTUBE_CLIENT_ID y YOUTUBE_CLIENT_SECRET. Redirect:{" "}
             <code className="text-cyber-info break-all">{youtubeSetup.redirect_uri}</code>
           </p>
+        )}
+        {youtubeFailure && (
+          <div className="p-4 rounded-lg bg-cyber-warning/10 border border-cyber-warning/40 text-sm text-cyber-warning space-y-3">
+            <p className="font-semibold">Diagnóstico de YouTube</p>
+            <p>{youtubeFailure.message}</p>
+            <div className="space-y-1 text-xs text-cyber-muted">
+              <p>
+                Código: <code className="text-cyber-info">{youtubeFailure.code}</code>
+              </p>
+              {youtubeFailure.redirectUri && (
+                <p className="break-all">
+                  Redirect URI usada:{" "}
+                  <code className="text-cyber-info">{youtubeFailure.redirectUri}</code>
+                </p>
+              )}
+            </div>
+            <a
+              href="https://console.cloud.google.com/apis/credentials"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 text-cyber-info hover:underline"
+            >
+              Abrir Google Cloud Console
+              <ExternalLink size={14} />
+            </a>
+          </div>
         )}
         {youtubeStatus?.connected ? (
           <div className="space-y-2">
