@@ -111,6 +111,19 @@ def _frontend_redirect(path: str) -> RedirectResponse:
     return RedirectResponse(f"{base}{path}")
 
 
+def _oauth_error_redirect(
+    provider: str,
+    error_code: str,
+    message: str,
+    *,
+    extra: str = "",
+) -> RedirectResponse:
+    prefix = f"/dashboard/settings?{provider}_error={quote(error_code)}&{provider}_msg={quote(message)}"
+    if extra:
+        prefix += f"&{extra}"
+    return _frontend_redirect(prefix)
+
+
 @router.get("/callback")
 async def twitch_callback(
     code: Optional[str] = Query(None),
@@ -134,7 +147,23 @@ async def twitch_callback(
     await cache.delete(f"state:{state}")
 
     oauth = TwitchOAuth()
-    token_data = await oauth.exchange_code(code)
+    try:
+        token_data = await oauth.exchange_code(code)
+    except httpx.HTTPStatusError as exc:
+        detail = (exc.response.text or exc.response.reason_phrase or "oauth_token_error")[:180]
+        return _oauth_error_redirect(
+            "twitch",
+            "token_exchange_failed",
+            f"Token exchange failed: {detail}",
+            extra=f"twitch_redirect_uri={quote(resolve_twitch_redirect_uri())}",
+        )
+    except httpx.HTTPError as exc:
+        return _oauth_error_redirect(
+            "twitch",
+            "token_exchange_failed",
+            f"Token exchange failed: {str(exc)[:180]}",
+            extra=f"twitch_redirect_uri={quote(resolve_twitch_redirect_uri())}",
+        )
     access_token = token_data["access_token"]
     refresh_token = token_data.get("refresh_token", "")
 

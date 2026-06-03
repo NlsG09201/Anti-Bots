@@ -31,6 +31,21 @@ def _frontend_redirect(path: str) -> RedirectResponse:
     return RedirectResponse(f"{settings.app_frontend_url.rstrip('/')}{path}")
 
 
+def _oauth_error_redirect(
+    error_code: str,
+    message: str,
+    *,
+    extra: str = "",
+) -> RedirectResponse:
+    path = (
+        f"/dashboard/settings?kick_error={quote(error_code)}"
+        f"&kick_msg={quote(message)}"
+    )
+    if extra:
+        path += f"&{extra}"
+    return _frontend_redirect(path)
+
+
 @router.get("/setup")
 async def kick_setup(_user: CurrentUser):
     cid = settings.kick_client_id or ""
@@ -101,12 +116,16 @@ async def kick_callback(
         token_data = await oauth.exchange_code(code, verifier)
     except httpx.HTTPStatusError as exc:
         detail = (exc.response.text or exc.response.reason_phrase or "oauth_token_error")[:180]
-        return _frontend_redirect(
-            f"/dashboard/settings?kick_error=token_exchange_failed&kick_msg={quote(detail)}"
+        return _oauth_error_redirect(
+            "token_exchange_failed",
+            f"Token exchange failed: {detail}",
+            extra=f"kick_redirect_uri={quote(resolve_kick_redirect_uri())}",
         )
     except httpx.HTTPError as exc:
-        return _frontend_redirect(
-            f"/dashboard/settings?kick_error=token_exchange_failed&kick_msg={quote(str(exc)[:180])}"
+        return _oauth_error_redirect(
+            "token_exchange_failed",
+            f"Token exchange failed: {str(exc)[:180]}",
+            extra=f"kick_redirect_uri={quote(resolve_kick_redirect_uri())}",
         )
     access_token = token_data["access_token"]
     refresh_token = token_data.get("refresh_token", "")
