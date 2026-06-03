@@ -54,7 +54,7 @@ async def kick_setup(_user: CurrentUser):
         "client_id_prefix": cid[:12] + "..." if len(cid) > 12 else cid,
         "credentials_ok": kick_credentials_valid(),
         "register_at": "https://kick.com/settings/developer",
-        "hint": "Redirect URI debe coincidir exactamente en Kick Developer Console.",
+        "hint": "Kick OAuth usa PKCE; registra el redirect URI exacto y el Client ID del proyecto.",
     }
 
 
@@ -65,7 +65,7 @@ async def kick_authorize(
 ):
     if not kick_credentials_valid():
         raise ValidationError(
-            "Kick OAuth no configurado. Define KICK_CLIENT_ID y KICK_CLIENT_SECRET en Render."
+            "Kick OAuth no configurado. Define KICK_CLIENT_ID en Render."
         )
     oauth = KickOAuth()
     url, state, verifier = oauth.build_authorize_payload()

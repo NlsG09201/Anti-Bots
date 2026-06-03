@@ -287,7 +287,7 @@ function SettingsContent() {
         </div>
         {kickSetup && !kickSetup.credentials_ok && (
           <p className="text-xs text-cyber-warning">
-            Configura KICK_CLIENT_ID y KICK_CLIENT_SECRET en Render. Redirect:{" "}
+            Configura KICK_CLIENT_ID en Render. Redirect:{" "}
             <code className="text-cyber-info break-all">{kickSetup.redirect_uri}</code>
           </p>
         )}

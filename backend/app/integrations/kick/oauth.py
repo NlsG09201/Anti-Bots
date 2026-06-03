@@ -22,8 +22,7 @@ DEFAULT_SCOPES = (
 
 def kick_credentials_valid() -> bool:
     cid = (settings.kick_client_id or "").strip()
-    secret = (settings.kick_client_secret or "").strip()
-    return bool(cid and secret and cid != secret and len(secret) >= 20)
+    return bool(cid)
 
 
 class KickOAuth:
@@ -53,7 +52,6 @@ class KickOAuth:
                 data={
                     "grant_type": "authorization_code",
                     "client_id": settings.kick_client_id,
-                    "client_secret": settings.kick_client_secret,
                     "redirect_uri": resolve_kick_redirect_uri(),
                     "code": code,
                     "code_verifier": code_verifier,
@@ -70,7 +68,6 @@ class KickOAuth:
                 data={
                     "grant_type": "refresh_token",
                     "client_id": settings.kick_client_id,
-                    "client_secret": settings.kick_client_secret,
                     "refresh_token": refresh_token,
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
