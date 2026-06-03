@@ -68,7 +68,9 @@ function SettingsContent() {
       setMessage(
         twitchError === "redirect_mismatch"
           ? `Twitch: la Redirect URI no coincide. En dev.twitch.tv añade exactamente: https://anti-bots.onrender.com/api/v1/integrations/twitch/callback (${detail})`
-          : `Error Twitch (${twitchError}): ${detail}`,
+          : twitchError === "credentials_invalid"
+            ? `Twitch: credenciales inválidas en Render. Revisa TWITCH_CLIENT_ID y TWITCH_CLIENT_SECRET (${detail})`
+            : `Error Twitch (${twitchError}): ${detail}`,
       );
     }
   }, [searchParams, queryClient]);
@@ -204,10 +206,15 @@ function SettingsContent() {
               <AlertCircle size={16} />
               Credenciales Twitch inválidas en Render
             </p>
-            {twitchSetup.client_id_equals_secret && (
+            {twitchSetup.client_id_equals_secret ? (
               <p>
                 El Client ID y el Client Secret son <strong>iguales</strong> (valores de plantilla).
-                Twitch rechaza la conexión con <code>redirect_mismatch</code>.
+                Twitch rechaza la conexión porque esas credenciales no corresponden a una app real.
+              </p>
+            ) : (
+              <p>
+                Falta `TWITCH_CLIENT_ID` o `TWITCH_CLIENT_SECRET`, o uno de ellos no pertenece a la
+                misma app de Twitch.
               </p>
             )}
             <ol className="list-decimal list-inside space-y-1 text-cyber-muted">

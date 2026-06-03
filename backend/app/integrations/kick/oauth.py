@@ -22,7 +22,8 @@ DEFAULT_SCOPES = (
 
 def kick_credentials_valid() -> bool:
     cid = (settings.kick_client_id or "").strip()
-    return bool(cid)
+    secret = (settings.kick_client_secret or "").strip()
+    return bool(cid and secret and cid != secret and len(secret) >= 20)
 
 
 class KickOAuth:
@@ -47,18 +48,28 @@ class KickOAuth:
 
     async def exchange_code(self, code: str, code_verifier: str) -> Dict[str, Any]:
         async with httpx.AsyncClient(timeout=20.0) as client:
+            payload = {
+                "grant_type": "authorization_code",
+                "client_id": settings.kick_client_id,
+                "client_secret": settings.kick_client_secret,
+                "redirect_uri": resolve_kick_redirect_uri(),
+                "code": code,
+                "code_verifier": code_verifier,
+            }
             response = await client.post(
                 f"{KICK_OAUTH_BASE}/oauth/token",
-                data={
-                    "grant_type": "authorization_code",
-                    "client_id": settings.kick_client_id,
-                    "redirect_uri": resolve_kick_redirect_uri(),
-                    "code": code,
-                    "code_verifier": code_verifier,
-                },
+                data=payload,
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
-            response.raise_for_status()
+            if response.status_code >= 400:
+                fallback = await client.post(
+                    f"{KICK_OAUTH_BASE}/oauth/token",
+                    data={k: v for k, v in payload.items() if k != "client_secret"},
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+                if fallback.status_code < 400:
+                    return fallback.json()
+                response.raise_for_status()
             return response.json()
 
     async def refresh_token(self, refresh_token: str) -> Dict[str, Any]:
@@ -68,6 +79,7 @@ class KickOAuth:
                 data={
                     "grant_type": "refresh_token",
                     "client_id": settings.kick_client_id,
+                    "client_secret": settings.kick_client_secret,
                     "refresh_token": refresh_token,
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
