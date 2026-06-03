@@ -155,7 +155,7 @@ class ThreatIntelligenceEngine:
                 suspected=suspected,
                 viewer_count=int(vc) if vc is not None else None,
             )
-                await self._update_entity(
+            await self._update_entity(
                 tid,
                 ekey,
                 platform,
@@ -164,12 +164,12 @@ class ThreatIntelligenceEngine:
                 fp=fp,
                 suspected=suspected,
                 known_twitchbots=known_tbi,
-                    tbi_meta=tbi_meta,
-                    behavioral=behavioral.to_dict(),
-                    network_reputation=network_reputation,
-                )
+                tbi_meta=tbi_meta,
+                behavioral=behavioral.to_dict(),
+                network_reputation=network_reputation,
+            )
         elif et in ("follow", "subscription", "raid"):
-                await self._update_entity(
+            await self._update_entity(
                 tid,
                 ekey,
                 platform,
@@ -178,10 +178,10 @@ class ThreatIntelligenceEngine:
                 ip=ip,
                 fp=fp,
                 known_twitchbots=known_tbi,
-                    tbi_meta=tbi_meta,
-                    behavioral=behavioral.to_dict(),
-                    network_reputation=network_reputation,
-                )
+                tbi_meta=tbi_meta,
+                behavioral=behavioral.to_dict(),
+                network_reputation=network_reputation,
+            )
 
         sess = self._session_entities.setdefault(sid, set())
         if len(sess) < 500:

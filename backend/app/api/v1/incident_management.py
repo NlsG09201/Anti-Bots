@@ -168,9 +168,9 @@ async def create_playbook(
     name: str,
     conditions: dict,
     actions: list,
+    current_user: CurrentUser,
     description: Optional[str] = None,
     enabled: bool = True,
-    current_user: CurrentUser = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new incident response playbook."""
@@ -259,11 +259,11 @@ async def get_playbook(
 @router.put("/playbooks/{playbook_id}")
 async def update_playbook(
     playbook_id: UUID,
+    current_user: CurrentUser,
     name: Optional[str] = None,
     conditions: Optional[dict] = None,
     actions: Optional[list] = None,
     enabled: Optional[bool] = None,
-    current_user: CurrentUser = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
     """Update playbook."""
