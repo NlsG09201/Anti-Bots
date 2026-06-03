@@ -83,11 +83,24 @@ async def youtube_callback(
     cache = RedisCache(prefix="oauth")
     stored = await cache.get(f"youtube_state:{state}")
     if not stored:
-        raise ValidationError("OAuth state invalido o expirado")
+        return _frontend_redirect(
+            "/dashboard/settings?youtube_error=invalid_state"
+            "&youtube_msg=OAuth+state+invalido+o+expirado.+Intenta+conectar+de+nuevo"
+        )
     await cache.delete(f"youtube_state:{state}")
 
     oauth = YouTubeOAuth()
-    token_data = await oauth.exchange_code(code)
+    try:
+        token_data = await oauth.exchange_code(code)
+    except httpx.HTTPStatusError as exc:
+        detail = (exc.response.text or exc.response.reason_phrase or "oauth_token_error")[:180]
+        return _frontend_redirect(
+            f"/dashboard/settings?youtube_error=token_exchange_failed&youtube_msg={quote(detail)}"
+        )
+    except httpx.HTTPError as exc:
+        return _frontend_redirect(
+            f"/dashboard/settings?youtube_error=token_exchange_failed&youtube_msg={quote(str(exc)[:180])}"
+        )
     access_token = token_data["access_token"]
     refresh_token = token_data.get("refresh_token", "")
 

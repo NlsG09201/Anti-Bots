@@ -86,7 +86,10 @@ async def kick_callback(
     cache = RedisCache(prefix="oauth")
     stored = await cache.get(f"kick_state:{state}")
     if not stored:
-        raise ValidationError("OAuth state invalido o expirado")
+        return _frontend_redirect(
+            "/dashboard/settings?kick_error=invalid_state"
+            "&kick_msg=OAuth+state+invalido+o+expirado.+Intenta+conectar+de+nuevo"
+        )
     await cache.delete(f"kick_state:{state}")
 
     verifier = stored.get("code_verifier")
@@ -94,7 +97,17 @@ async def kick_callback(
         raise ValidationError("PKCE verifier missing")
 
     oauth = KickOAuth()
-    token_data = await oauth.exchange_code(code, verifier)
+    try:
+        token_data = await oauth.exchange_code(code, verifier)
+    except httpx.HTTPStatusError as exc:
+        detail = (exc.response.text or exc.response.reason_phrase or "oauth_token_error")[:180]
+        return _frontend_redirect(
+            f"/dashboard/settings?kick_error=token_exchange_failed&kick_msg={quote(detail)}"
+        )
+    except httpx.HTTPError as exc:
+        return _frontend_redirect(
+            f"/dashboard/settings?kick_error=token_exchange_failed&kick_msg={quote(str(exc)[:180])}"
+        )
     access_token = token_data["access_token"]
     refresh_token = token_data.get("refresh_token", "")
 
