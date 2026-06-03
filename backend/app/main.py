@@ -16,6 +16,7 @@ from app.api.v1 import (
     enterprise,
     soc,
     events_pipeline,
+    incident_management,
     mfa,
     security,
     streams,
@@ -274,6 +275,7 @@ app.include_router(detection.router, prefix=API_PREFIX)
 app.include_router(security.router, prefix=API_PREFIX)
 app.include_router(enterprise.router, prefix=API_PREFIX)
 app.include_router(soc.router, prefix=API_PREFIX)
+app.include_router(incident_management.router, prefix=API_PREFIX)
 app.include_router(ai_intel.router, prefix=API_PREFIX)
 app.include_router(weka_ml.router, prefix=API_PREFIX)
 app.include_router(threat_intel.router, prefix=API_PREFIX)

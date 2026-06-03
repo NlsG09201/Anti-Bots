@@ -337,3 +337,105 @@ class ViewerSession(UUIDMixin, TimestampMixin, Base):
     risk_score: Mapped[float] = mapped_column(Float, default=0.0)
     is_suspected_bot: Mapped[bool] = mapped_column(Boolean, default=False)
     behavior_metrics: Mapped[dict] = mapped_column(JsonType, default=dict)
+
+
+class IncidentStatus(str, enum.Enum):
+    ACTIVE = "active"
+    MITIGATED = "mitigated"
+    ESCALATED = "escalated"
+    RESOLVED = "resolved"
+
+
+class Incident(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "incidents"
+    __table_args__ = (
+        Index("ix_incidents_stream_status", "stream_id", "status"),
+        Index("ix_incidents_correlation", "correlation_id"),
+        Index("ix_incidents_threat_actor", "threat_actor_id"),
+    )
+
+    stream_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("streams.id"), nullable=False)
+    correlation_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    status: Mapped[IncidentStatus] = mapped_column(Enum(IncidentStatus), default=IncidentStatus.ACTIVE)
+    severity: Mapped[float] = mapped_column(Float, default=0.0)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    threat_actor_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("threat_actors.id"))
+    attack_ids: Mapped[list] = mapped_column(StringArrayType, default=list)
+    alert_ids: Mapped[list] = mapped_column(StringArrayType, default=list)
+    related_ips: Mapped[list] = mapped_column(StringArrayType, default=list)
+    related_fingerprints: Mapped[list] = mapped_column(StringArrayType, default=list)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class Playbook(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "playbooks"
+    __table_args__ = (
+        Index("ix_playbooks_tenant_enabled", "tenant_id", "enabled"),
+    )
+
+    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    conditions: Mapped[dict] = mapped_column(JsonType, default=dict)
+    actions: Mapped[list] = mapped_column(JsonType, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    execution_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_executed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    executions: Mapped[List["PlaybookExecution"]] = relationship(back_populates="playbook")
+
+
+class PlaybookExecution(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "playbook_executions"
+    __table_args__ = (
+        Index("ix_playbook_executions_playbook_status", "playbook_id", "status"),
+        Index("ix_playbook_executions_incident", "incident_id"),
+    )
+
+    playbook_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("playbooks.id"), nullable=False)
+    incident_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("incidents.id"))
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    executed_actions: Mapped[list] = mapped_column(JsonType, default=list)
+    failed_actions: Mapped[list] = mapped_column(JsonType, default=list)
+    execution_duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+
+    playbook: Mapped["Playbook"] = relationship(back_populates="executions")
+
+
+class ThreatActor(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "threat_actors"
+    __table_args__ = (
+        Index("ix_threat_actors_tenant_confidence", "tenant_id", "confidence"),
+    )
+
+    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    tactics: Mapped[list] = mapped_column(StringArrayType, default=list)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    incident_count: Mapped[int] = mapped_column(Integer, default=0)
+    target_count: Mapped[int] = mapped_column(Integer, default=0)
+    common_asns: Mapped[list] = mapped_column(StringArrayType, default=list)
+    common_fingerprints: Mapped[list] = mapped_column(StringArrayType, default=list)
+    actor_metadata: Mapped[dict] = mapped_column("metadata", JsonType, default=dict)
+
+
+class ThreatAnalyticsDaily(UUIDMixin, Base):
+    __tablename__ = "threat_analytics_daily"
+    __table_args__ = (
+        Index("ix_threat_analytics_tenant_date", "tenant_id", "date"),
+        UniqueConstraint("tenant_id", "date", name="uq_threat_analytics_tenant_date"),
+    )
+
+    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    date: Mapped[str] = mapped_column(String(10), nullable=False)
+    attack_count: Mapped[int] = mapped_column(Integer, default=0)
+    blocked_ips: Mapped[int] = mapped_column(Integer, default=0)
+    blocked_fingerprints: Mapped[int] = mapped_column(Integer, default=0)
+    top_asns: Mapped[list] = mapped_column(JsonType, default=list)
+    top_attack_types: Mapped[list] = mapped_column(JsonType, default=list)
+    avg_risk_score: Mapped[float] = mapped_column(Float, default=0.0)
+    max_risk_score: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

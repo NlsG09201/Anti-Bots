@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
@@ -411,7 +412,10 @@ async def run_channel_monitor(
     """Escaneo en vivo: Twitch IRC/Helix o sync multi-plataforma + deteccion."""
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
     if not stream.is_live:
-        stream = await sync_stream_live_status(db, stream)
+        try:
+            stream = await sync_stream_live_status(db, stream)
+        except Exception as exc:
+            logger.warning("monitor_live_status_sync_failed", error=str(exc)[:200])
     if not stream.is_live:
         return {"status": "offline", "message": "El canal no esta en vivo"}
     try:
@@ -448,14 +452,28 @@ async def run_channel_monitor(
         )
         await db.commit()
         return {"status": "ok", **summary}
+    except asyncio.TimeoutError as exc:
+        logger.warning(
+            "channel_monitor_timeout",
+            stream_id=str(stream_id),
+            platform=stream.platform.value,
+        )
+        await db.rollback()
+        raise HTTPException(
+            status_code=504,
+            detail={
+                "message": "El escaneo del canal excedió el tiempo límite. Reintenta.",
+                "error": "timeout",
+            },
+        ) from exc
     except Exception as exc:
-        logger.exception("channel_monitor_failed", stream_id=str(stream_id))
+        logger.exception("channel_monitor_failed", stream_id=str(stream_id), error=str(exc)[:300])
         await db.rollback()
         raise HTTPException(
             status_code=503,
             detail={
                 "message": "El escaneo del canal falló. Reintenta en unos segundos.",
-                "error": str(exc)[:300],
+                "error": str(exc)[:150],
             },
         ) from exc
 
@@ -535,9 +553,21 @@ async def list_streams(
     )
     streams = list(result.scalars().all())
     if sync:
-        for stream in streams:
-            if stream_monitor_mode(stream) or stream.platform == Platform.TWITCH:
-                await sync_stream_live_status(db, stream)
+        try:
+            for stream in streams:
+                if stream_monitor_mode(stream) or stream.platform == Platform.TWITCH:
+                    try:
+                        await sync_stream_live_status(db, stream)
+                    except Exception as exc:
+                        logger.warning(
+                            "stream_sync_failed",
+                            stream_id=str(stream.id),
+                            error=str(exc)[:200],
+                        )
+            await db.commit()
+        except Exception as exc:
+            logger.error("streams_sync_commit_failed", error=str(exc)[:300])
+            await db.rollback()
     return [_as_stream_response(s) for s in streams]
 
 
