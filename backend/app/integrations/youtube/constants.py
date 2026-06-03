@@ -5,6 +5,8 @@ from app.core.config import get_settings
 PRODUCTION_CALLBACK_URL = (
     "https://anti-bots.onrender.com/api/v1/integrations/youtube/callback"
 )
+LEGACY_FRONTEND_CALLBACK_PATH = "/auth/youtube/callback"
+BACKEND_CALLBACK_PATH = "/api/v1/integrations/youtube/callback"
 
 YOUTUBE_SCOPES = [
     "https://www.googleapis.com/auth/youtube.readonly",
@@ -15,6 +17,8 @@ YOUTUBE_SCOPES = [
 def resolve_youtube_redirect_uri() -> str:
     settings = get_settings()
     uri = (settings.youtube_redirect_uri or "").strip().rstrip("/")
+    if uri.endswith(LEGACY_FRONTEND_CALLBACK_PATH):
+        uri = uri[: -len(LEGACY_FRONTEND_CALLBACK_PATH)] + BACKEND_CALLBACK_PATH
     if os.getenv("RENDER") or settings.is_production:
         if not uri or "localhost" in uri or "127.0.0.1" in uri:
             return PRODUCTION_CALLBACK_URL
