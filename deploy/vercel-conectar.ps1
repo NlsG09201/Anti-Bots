@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 if (-not $ApiUrl) {
     Write-Host "URL publica de tu API (sin barra final):" -ForegroundColor Cyan
     Write-Host "  Ej. https://api.midominio.com" -ForegroundColor Gray
-    Write-Host "  Ej. https://anti-bots-api.onrender.com" -ForegroundColor Gray
+    Write-Host "  Ej. https://anti-bots.onrender.com" -ForegroundColor Gray
     $ApiUrl = (Read-Host).Trim().TrimEnd("/")
 }
 

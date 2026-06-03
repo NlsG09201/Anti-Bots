@@ -5,7 +5,7 @@
 - [ ] **1.** Importar env en Render (28 variables)
 - [ ] **2.** Manual Deploy en Render
 - [ ] **3.** Log: `Preflight OK — starting uvicorn`
-- [ ] **4.** `curl https://anti-bots-api.onrender.com/health` → healthy
+- [ ] **4.** `curl https://anti-bots.onrender.com/health` → healthy
 - [ ] **5.** Variables en Vercel (`API_PROXY_TARGET`, `NEXT_PUBLIC_WS_URL`)
 - [ ] **6.** Redeploy Vercel
 - [ ] **7.** Login en https://anti-bots.vercel.app
@@ -127,7 +127,7 @@ OAuth Kick usa **PKCE (S256)** obligatorio.
 ## Paso 4 — Probar API
 
 ```powershell
-curl https://anti-bots-api.onrender.com/health
+curl https://anti-bots.onrender.com/health
 ```
 
 Respuesta esperada:
@@ -141,15 +141,15 @@ Respuesta esperada:
 ## Paso 5 — Vercel
 
 ```powershell
-.\vercel-conectar.ps1 -ApiUrl "https://anti-bots-api.onrender.com"
+.\vercel-conectar.ps1 -ApiUrl "https://anti-bots.onrender.com"
 ```
 
 Pega en Vercel → **Environment Variables** → **Production**:
 
 | Variable | Valor |
 |----------|--------|
-| `API_PROXY_TARGET` | `https://anti-bots-api.onrender.com` |
-| `NEXT_PUBLIC_WS_URL` | `wss://anti-bots-api.onrender.com` |
+| `API_PROXY_TARGET` | `https://anti-bots.onrender.com` |
+| `NEXT_PUBLIC_WS_URL` | `wss://anti-bots.onrender.com` |
 
 Elimina `NEXT_PUBLIC_API_URL` si es `localhost`.
 
@@ -169,8 +169,8 @@ Render outbound (referencia): `74.220.49.0/24`, `74.220.57.0/24`
 
 En [dev.twitch.tv](https://dev.twitch.tv):
 
-- Redirect: `https://anti-bots-api.onrender.com/api/v1/integrations/twitch/callback`
-- EventSub: `https://anti-bots-api.onrender.com/api/v1/webhooks/twitch`
+- Redirect: `https://anti-bots.onrender.com/api/v1/integrations/twitch/callback`
+- EventSub: `https://anti-bots.onrender.com/api/v1/webhooks/twitch`
 
 ---
 
@@ -182,7 +182,7 @@ En [dev.twitch.tv](https://dev.twitch.tv):
 | `Variables NO definidas` | Save en Environment, redeploy |
 | Solo `Running uvicorn...` sin preflight | Corregir Start Command |
 | Vercel 502 en `/api/*` | API caida; revisar Render logs |
-| WS desconectado | `NEXT_PUBLIC_WS_URL=wss://anti-bots-api.onrender.com` |
+| WS desconectado | `NEXT_PUBLIC_WS_URL=wss://anti-bots.onrender.com` |
 | Cold start 50s | Normal en free tier; espera y recarga |
 
 ---

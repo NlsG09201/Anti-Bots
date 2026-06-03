@@ -35,7 +35,7 @@ Write-Host "  Servicio: anti-bots-api"
 Write-Host "  Opcion A: Environment -> Add from .env -> Ctrl+V -> Save"
 Write-Host "  Opcion B: Environment -> Secret Files -> subir render.import.env como .env"
 Write-Host "  Luego: Manual Deploy"
-Write-Host "  Health: https://anti-bots-api.onrender.com/health"
+Write-Host "  Health: https://anti-bots.onrender.com/health"
 Write-Host ""
 
 Start-Process "https://dashboard.render.com"
@@ -44,8 +44,8 @@ notepad $importFile
 
 # 4 Vercel
 Write-Host "[4/4] VERCEL (dashboard.vercel.com -> proyecto -> Settings -> Environment):" -ForegroundColor Yellow
-Write-Host "  API_PROXY_TARGET=https://anti-bots-api.onrender.com"
-Write-Host "  NEXT_PUBLIC_WS_URL=wss://anti-bots-api.onrender.com"
+Write-Host "  API_PROXY_TARGET=https://anti-bots.onrender.com"
+Write-Host "  NEXT_PUBLIC_WS_URL=wss://anti-bots.onrender.com"
 Write-Host "  (NO pongas NEXT_PUBLIC_API_URL=localhost)"
 Write-Host ""
 Write-Host "Cuando Render este Live, redeploy Vercel." -ForegroundColor Gray

@@ -1,6 +1,6 @@
 # Render + Vercel: preparar env, abrir dashboard, configurar Vercel
 param(
-    [string]$RenderServiceUrl = "https://anti-bots-api.onrender.com",
+    [string]$RenderServiceUrl = "https://anti-bots.onrender.com",
     [switch]$SkipVercel,
     [switch]$SkipRenderOpen
 )

@@ -29,8 +29,8 @@ cd deploy
 ```
 
 1. Pegar env en Render → Save → Manual Deploy  
-2. `curl https://anti-bots-api.onrender.com/health`  
-3. `.\vercel-conectar.ps1 -ApiUrl "https://anti-bots-api.onrender.com"` → Redeploy Vercel
+2. `curl https://anti-bots.onrender.com/health`  
+3. `.\vercel-conectar.ps1 -ApiUrl "https://anti-bots.onrender.com"` → Redeploy Vercel
 
 ---
 

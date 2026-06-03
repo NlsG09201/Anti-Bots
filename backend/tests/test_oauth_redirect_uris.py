@@ -52,3 +52,39 @@ def test_render_does_not_use_local_redirects(monkeypatch):
     assert resolve_youtube_redirect_uri() == YOUTUBE_PRODUCTION_CALLBACK_URL
 
     invalidate_settings_cache()
+
+
+def test_render_does_not_use_inactive_render_alias(monkeypatch):
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setenv(
+        "KICK_REDIRECT_URI",
+        "https://anti-bots-api.onrender.com/api/v1/integrations/kick/callback",
+    )
+    monkeypatch.setenv(
+        "YOUTUBE_REDIRECT_URI",
+        "https://anti-bots-api.onrender.com/api/v1/integrations/youtube/callback",
+    )
+    invalidate_settings_cache()
+
+    assert resolve_kick_redirect_uri() == KICK_PRODUCTION_CALLBACK_URL
+    assert resolve_youtube_redirect_uri() == YOUTUBE_PRODUCTION_CALLBACK_URL
+
+    invalidate_settings_cache()
+
+
+def test_render_does_not_use_vercel_proxy_callback(monkeypatch):
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setenv(
+        "KICK_REDIRECT_URI",
+        "https://anti-bots.vercel.app/auth/kick/callback",
+    )
+    monkeypatch.setenv(
+        "YOUTUBE_REDIRECT_URI",
+        "https://anti-bots.vercel.app/auth/youtube/callback",
+    )
+    invalidate_settings_cache()
+
+    assert resolve_kick_redirect_uri() == KICK_PRODUCTION_CALLBACK_URL
+    assert resolve_youtube_redirect_uri() == YOUTUBE_PRODUCTION_CALLBACK_URL
+
+    invalidate_settings_cache()
