@@ -4,7 +4,7 @@ Este servicio es el primer módulo real de la migración progresiva de StreamShi
 
 ## Capacidades implementadas
 
-- Spring Boot 3.5.16, Spring AI 1.1.8 y Java 21.
+- Spring Boot 3.5.16, Spring AI 1.1.8 y Java 25.
 - Spring Security Resource Server, validación de tokens JWT HS256 emitidos por StreamShield y autorización por rol.
 - Validación de que el usuario siga activo y que el `tenant_id` del token corresponda a su registro.
 - Verificación opcional de revocación en la misma clave Redis que usa FastAPI (`ss:blacklist:<jti>`).
