@@ -45,7 +45,7 @@ jobs:
       - name: Tests
         run: pytest tests/ -q --tb=short -x
         env:
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           REDIS_URL: ""
           JWT_SECRET_KEY: ci-test-secret-min-32-chars-long
           ENCRYPTION_KEY: ci-test-encryption-key-32b!!
