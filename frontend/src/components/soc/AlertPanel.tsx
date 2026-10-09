@@ -104,9 +104,6 @@ export default function AlertPanel({ streamId, refreshInterval = 5000 }: AlertPa
     }
   };
 
-  const activeAlerts = alerts.filter((a) => !a.dismissed);
-  const dismissedAlerts = alerts.filter((a) => a.dismissed);
-
   if (loading) {
     return <div className="text-gray-400">Loading alerts...</div>;
   }

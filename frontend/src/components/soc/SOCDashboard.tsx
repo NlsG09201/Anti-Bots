@@ -5,7 +5,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import { useWebSocket, type WSMessage } from "@/hooks/useWebSocket";
 import ThreatViewer from "./ThreatViewer";
 import ThreatMetrics from "./ThreatMetrics";
 import AttackTimeline from "./AttackTimeline";
@@ -22,14 +22,22 @@ interface StreamThreatData {
     ip_threats: {
       threat_score: number;
       suspicious_ips: number;
+      threat_categories: string[];
     };
     behavioral: {
       behavioral_threat_score: number;
       patterns_detected: string[];
+      patterns_detail: Record<string, { detected: boolean; confidence: number }>;
     };
     chat: {
       chat_threat_score: number;
       spam_indicators: number;
+      coordinated_spam_detected: boolean;
+    };
+    graph_correlation?: {
+      graph_threat_score: number;
+      detected_clusters: number;
+      coordination_score: number;
     };
   };
 }
@@ -44,26 +52,19 @@ export default function SOCDashboard({ streamId, tenantId }: SOCDashboardProps) 
   const [riskHistory, setRiskHistory] = useState<Array<{ timestamp: number; risk: number }>>([]);
   const [selectedTab, setSelectedTab] = useState<"overview" | "viewers" | "timeline" | "alerts">("overview");
 
-  // WebSocket connection for real-time updates
-  const { data: wsData, isConnected } = useWebSocket(
-    `/api/v1/threat-intelligence/ws/stream-threat/${streamId}?tenant_id=${tenantId}`
-  );
-
-  // Update threat data from WebSocket
-  useEffect(() => {
-    if (wsData) {
-      setThreatData(wsData);
-      
-      // Add to history
-      setRiskHistory((prev) => [
-        ...prev.slice(-59), // Keep last 60 points
-        {
-          timestamp: Date.now(),
-          risk: wsData.overall_risk_score * 100,
-        },
-      ]);
-    }
-  }, [wsData]);
+  // The current application uses the shared authenticated WebSocket (/ws/live).
+  // This legacy component only accepts messages that contain its complete payload.
+  const onWsMessage = useCallback((message: WSMessage) => {
+    if (message.type !== "stream_threat_update" || !message.data) return;
+    const payload = message.data as unknown as StreamThreatData;
+    if (payload.stream_id !== streamId || typeof payload.overall_risk_score !== "number") return;
+    setThreatData(payload);
+    setRiskHistory((prev) => [
+      ...prev.slice(-59),
+      { timestamp: Date.now(), risk: payload.overall_risk_score * 100 },
+    ]);
+  }, [streamId]);
+  const { connected: isConnected } = useWebSocket(onWsMessage);
 
   // Determine threat level color
   const getThreatColor = (score: number) => {
