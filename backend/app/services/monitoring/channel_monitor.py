@@ -116,7 +116,7 @@ class ChannelMonitorService:
                         by_login[login_name.lower()] = {
                             "username": login_name,
                             "user_id": item.get("user_id"),
-                            "joins": 1,
+                            "joins": 0,
                             "messages": 0,
                             "source": "helix",
                         }
@@ -404,9 +404,9 @@ class ChannelMonitorService:
         summary["sync_mode"] = "full"
 
         proxy_intel = await collect_proxy_threats(self.db, stream.id)
-        silent_estimate = max(0, (stream.viewer_count or 0) - counts["total"])
-        if silent_estimate > 50:
-            summary["silent_viewbots_estimate"] = silent_estimate
+        viewers_not_identifiable = max(0, (stream.viewer_count or 0) - counts["total"])
+        if viewers_not_identifiable > 0:
+            summary["viewers_not_identifiable"] = viewers_not_identifiable
 
         rt_engine = get_realtime_viewbot_engine()
         intelligence = await rt_engine.assess_stream_sessions(
@@ -447,7 +447,7 @@ class ChannelMonitorService:
                     "twitch_insights_matches": sum(
                         1 for s in suspected_sessions if s.get("source") == "twitch_insights"
                     ),
-                    "silent_viewbots_estimate": silent_estimate if silent_estimate > 50 else None,
+                    "viewers_not_identifiable": viewers_not_identifiable,
                 },
                 proxy_intel,
             )

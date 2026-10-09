@@ -21,6 +21,54 @@ import clsx from "clsx";
 
 type ViewFilter = "all" | "talking" | "suspected";
 
+function viewerAssessment(viewer: Viewer): { label: string; detail: string; tone: string } {
+  const verdict = viewer.behavior_metrics?.ai_verdict as
+    | {
+        classification?: string;
+        risk_description?: string;
+        source?: string;
+        confidence?: number;
+      }
+    | undefined;
+
+  if (verdict?.classification === "known_bot") {
+    return {
+      label: "Bot conocido",
+      detail: `${verdict.risk_description || `Fuente verificada: ${verdict.source || "base de bots"}`}${verdict.confidence != null ? ` · confianza ${Math.round(verdict.confidence * 100)}%` : ""}`,
+      tone: "text-cyber-danger",
+    };
+  }
+  if (verdict?.classification === "review" || viewer.is_suspected_bot) {
+    return {
+      label: "Revisión recomendada",
+      detail: verdict?.risk_description || "Señales heurísticas; no confirman automatización.",
+      tone: "text-amber-400",
+    };
+  }
+  if (verdict) {
+    return {
+      label: "Sin señales fuertes",
+      detail: "No equivale a confirmar que sea una persona real.",
+      tone: "text-cyber-accent",
+    };
+  }
+  return {
+    label: "Pendiente de analizar",
+    detail: "Usa “Analizar señales de bots” para cruzar las fuentes disponibles.",
+    tone: "text-cyber-muted",
+  };
+}
+
+function platformLabel(platform?: string): string {
+  const labels: Record<string, string> = {
+    twitch: "Twitch",
+    kick: "Kick",
+    youtube: "YouTube",
+    tiktok: "TikTok",
+  };
+  return labels[platform?.toLowerCase() ?? ""] ?? "plataforma";
+}
+
 function ViewersContent() {
   const searchParams = useSearchParams();
   const token = useApiToken();
@@ -121,8 +169,42 @@ function ViewersContent() {
     lastFullLoadStream.current = id;
     setViewFilter("all");
 
+    const platform = currentStream?.platform?.toLowerCase();
+    if (!platform) {
+      fullLoadInFlight.current = false;
+      return;
+    }
+    if (platform !== "twitch") {
+      if (platform !== "kick" && platform !== "youtube") {
+        setMessage(`El listado de participantes aún no está disponible para ${platform}.`);
+        setLoadPhase("idle");
+        fullLoadInFlight.current = false;
+        return;
+      }
+      setLoadPhase("quick");
+      setMessage(`Sincronizando participantes del chat de ${platform}…`);
+      try {
+        const sync = await api.streams.syncPlatform(token, id);
+        const analysis = await api.streams.screenViewers(token, id);
+        await queryClient.invalidateQueries({ queryKey: ["viewers", id] });
+        await queryClient.invalidateQueries({ queryKey: ["monitor-status", id] });
+        await queryClient.invalidateQueries({ queryKey: ["streams"] });
+        setMessage(
+          `${sync.chatters_synced ?? 0} participantes de chat de ${platform} analizados: ` +
+            `${analysis.flagged} coincidencias conocidas, ${analysis.review_required ?? 0} para revisar. ` +
+            "Los espectadores silenciosos no son identificables por la plataforma.",
+        );
+      } catch (e) {
+        setMessage(e instanceof Error ? e.message : `No se pudo sincronizar ${platform}`);
+      } finally {
+        setLoadPhase("idle");
+        fullLoadInFlight.current = false;
+      }
+      return;
+    }
+
     setLoadPhase("quick");
-    setMessage("Sincronizando viewers en chat (Helix)…");
+    setMessage("Sincronizando participantes del chat (Helix)…");
     try {
       const quick = await api.streams.syncQuick(token, id);
       await queryClient.invalidateQueries({ queryKey: ["viewers"] });
@@ -161,7 +243,7 @@ function ViewersContent() {
     if (!streamId || !token) return;
     void triggerFullLoad(streamId);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when channel changes, not on token refresh
-  }, [streamId]);
+  }, [streamId, currentStream?.platform]);
 
   const aiScreenMutation = useMutation({
     mutationFn: () => api.streams.screenViewers(token, streamId),
@@ -169,8 +251,9 @@ function ViewersContent() {
       const ti = res.twitch_insights_matched ?? 0;
       const db = res.twitch_insights_db_size ?? 0;
       setMessage(
-        `IA + Twitch Insights (${db} bots conocidos): ${res.screened} analizados · ` +
-          `${res.flagged} maliciosos · ${ti} en base Twitch Insights`,
+          `${res.screened} usuarios analizados · ${res.flagged} coincidencias conocidas · ` +
+            `${res.review_required ?? 0} requieren revisión` +
+            (currentStream?.platform === "twitch" ? ` · ${ti} en Twitch Insights` : ""),
       );
       queryClient.invalidateQueries({ queryKey: ["viewers"] });
       queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
@@ -221,7 +304,10 @@ function ViewersContent() {
 
   const banSuspectedMutation = useMutation({
     mutationFn: () =>
-      api.streams.banSuspected(token, streamId, { apply_twitch_ban: true, duration_hours: 24 }),
+      api.streams.banSuspected(token, streamId, {
+        apply_twitch_ban: currentStream?.platform === "twitch" && !currentStream.monitor_mode,
+        duration_hours: 24,
+      }),
     onSuccess: (res) => {
       setMessage(
         `Bloqueados ${res.targets} sospechosos · ${res.bans_created} bans · ` +
@@ -265,7 +351,7 @@ function ViewersContent() {
       api.streams.blockViewer(token, streamId, viewer.id, {
         reason: "Bloqueado desde panel SOC — actividad sospechosa",
         duration_hours: 24,
-        apply_twitch_ban: !currentStream?.monitor_mode,
+        apply_twitch_ban: currentStream?.platform === "twitch" && !currentStream.monitor_mode,
       }),
     onSuccess: (res) => {
       setMessage(res.message || "Usuario bloqueado");
@@ -277,8 +363,13 @@ function ViewersContent() {
   const totalInChat = monitorStatus?.active_viewers_tracked ?? viewers.length;
   const talkingCount = monitorStatus?.talking_count ?? viewers.filter((v) => (v.chat_messages ?? 0) > 0).length;
   const suspectedCount = monitorStatus?.suspected_bots ?? viewers.filter((v) => v.is_suspected_bot).length;
+  const knownBotCount = viewers.filter(
+    (viewer) =>
+      (viewer.behavior_metrics?.ai_verdict as { classification?: string } | undefined)
+        ?.classification === "known_bot",
+  ).length;
   const twitchViewers = monitorStatus?.viewer_count ?? currentStream?.viewer_count ?? 0;
-  const silentBots = monitorStatus?.silent_viewbots_estimate ?? 0;
+  const viewersNotIdentifiable = monitorStatus?.viewers_not_identifiable ?? 0;
   const proxyIps = monitorStatus?.proxy_ips_detected ?? 0;
   const activeAttacks = monitorStatus?.active_attacks ?? 0;
   const syncing = loadPhase !== "idle" || fullLoadMutation.isPending;
@@ -291,8 +382,8 @@ function ViewersContent() {
           Quién está viendo el stream
         </h1>
         <p className="text-cyber-muted text-sm mt-1 max-w-3xl">
-          Al elegir un canal cargamos quien está en el chat (Helix + IRC). Twitch no da la lista de viewers
-          silenciosos — solo usuarios en sala de chat. Contador global de viewers:{" "}
+          Al elegir un canal cargamos participantes observados en el chat. Las plataformas no revelan
+          la identidad de quienes miran sin escribir. Viewers en vivo según {platformLabel(currentStream?.platform)}:{" "}
           <strong className="text-white">{twitchViewers || "—"}</strong>
           {monitorStatus?.active_viewers_tracked != null && twitchViewers > 0 && (
             <>
@@ -300,14 +391,13 @@ function ViewersContent() {
               · en chat: <strong className="text-cyber-accent">{totalInChat}</strong>
             </>
           )}
-          {silentBots > 0 && (
+          {viewersNotIdentifiable > 0 && (
             <>
-              {" "}
-              · no visibles en chat:{" "}
-              <strong className="text-cyber-danger">~{silentBots}</strong>
+              {" "}· fuera del chat / no identificables: {" "}
+              <strong className="text-cyber-muted">~{viewersNotIdentifiable}</strong>
             </>
           )}
-          {currentStream?.monitor_mode && !monitorStatus?.has_broadcaster_oauth && (
+            {currentStream?.platform === "twitch" && currentStream.monitor_mode && !monitorStatus?.has_broadcaster_oauth && (
             <>
               {" "}
               · <Link href="/dashboard/channels" className="text-cyber-accent hover:underline">
@@ -327,7 +417,10 @@ function ViewersContent() {
 
       {monitorStatus && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <Stat label="Viewers Twitch" value={String(twitchViewers)} />
+          <Stat
+            label={`${platformLabel(currentStream?.platform)} en vivo`}
+            value={String(twitchViewers)}
+          />
           <Stat label="En chat" value={String(totalInChat)} highlight={syncing} />
           <Stat label="Hablando" value={String(talkingCount)} />
           <Stat label="Sospechosos" value={String(suspectedCount)} highlight={suspectedCount > 0} danger />
@@ -341,7 +434,7 @@ function ViewersContent() {
         </p>
       )}
 
-      {currentStream?.monitor_mode && !monitorStatus?.has_broadcaster_oauth && (
+      {currentStream?.platform === "twitch" && currentStream.monitor_mode && !monitorStatus?.has_broadcaster_oauth && (
         <div className="cyber-card p-4 border border-cyber-info/30 bg-cyber-info/5">
           <p className="text-sm text-white font-medium mb-2">
             Canal ajeno — listado Helix completo
@@ -363,9 +456,9 @@ function ViewersContent() {
         </div>
       )}
 
-      {monitorStatus?.has_broadcaster_oauth && currentStream?.monitor_mode && (
+        {monitorStatus?.has_broadcaster_oauth && currentStream?.platform === "twitch" && currentStream.monitor_mode && (
         <p className="text-xs text-cyber-accent border border-cyber-accent/30 rounded-lg px-3 py-2">
-          Helix conectado — &quot;Cargar listado completo&quot; usa la API oficial de chatters de
+          Helix conectado — la carga del listado usa la API oficial de chatters de
           Twitch.
         </p>
       )}
@@ -396,9 +489,13 @@ function ViewersContent() {
           <Users size={16} className={syncing ? "animate-spin" : ""} />
           {syncing
             ? loadPhase === "quick"
-              ? "Listando (Helix)…"
+              ? currentStream?.platform === "twitch"
+                ? "Listando (Helix)…"
+                : "Sincronizando chat…"
               : "Ampliando (IRC)…"
-            : "Recargar listado"}
+            : currentStream?.platform === "twitch"
+              ? "Recargar listado"
+              : "Sincronizar chat"}
         </button>
         <button
           type="button"
@@ -416,7 +513,7 @@ function ViewersContent() {
           className="flex items-center gap-2 px-3 py-2 rounded-lg border border-cyber-border text-sm text-cyber-muted hover:text-white disabled:opacity-50"
         >
           <Brain size={16} className={aiScreenMutation.isPending ? "animate-pulse" : ""} />
-          {aiScreenMutation.isPending ? "Analizando..." : "Verificar bots (Insights + IA)"}
+          {aiScreenMutation.isPending ? "Analizando..." : "Analizar señales de bots"}
         </button>
         <div className="flex items-center gap-2 flex-wrap">
           <select
@@ -449,7 +546,7 @@ function ViewersContent() {
             </span>
           )}
         </div>
-        {suspectedCount > 0 && (
+        {currentStream?.platform === "twitch" && knownBotCount > 0 && (
           <button
             type="button"
             disabled={banSuspectedMutation.isPending}
@@ -459,7 +556,7 @@ function ViewersContent() {
             <Ban size={16} />
             {banSuspectedMutation.isPending
               ? "Baneando..."
-              : `Banear sospechosos (${suspectedCount})`}
+              : `Banear bots conocidos (${knownBotCount})`}
           </button>
         )}
         {activeAttacks > 0 && (
@@ -515,7 +612,9 @@ function ViewersContent() {
             </tr>
           </thead>
           <tbody>
-            {viewers.map((v) => (
+              {viewers.map((v) => {
+                const assessment = viewerAssessment(v);
+                return (
               <tr
                 key={v.id}
                 className={clsx(
@@ -529,7 +628,16 @@ function ViewersContent() {
                 <td className="py-3 px-2 text-cyber-muted text-xs">
                   {(v.behavior_metrics?.source as string) || "chat"}
                 </td>
-                <td className="py-3 px-2 text-right font-mono text-cyber-danger">
+                <td
+                  className={clsx(
+                    "py-3 px-2 text-right font-mono",
+                    v.risk_score >= 70
+                      ? "text-cyber-danger"
+                      : v.risk_score >= 40
+                        ? "text-amber-400"
+                        : "text-cyber-muted",
+                  )}
+                >
                   {v.risk_score.toFixed(0)}
                 </td>
                 <td className="py-3 px-2 text-center text-xs">
@@ -541,7 +649,7 @@ function ViewersContent() {
                       )}
                       title={v.j48_backend ? `Modelo: ${v.j48_backend}` : undefined}
                     >
-                      {v.j48_is_bot ? "BOT" : "OK"}{" "}
+                      {v.j48_is_bot ? "BOT probable" : "Sin señal"}{" "}
                       {(v.j48_probability * 100).toFixed(0)}%
                     </span>
                   ) : (
@@ -558,38 +666,18 @@ function ViewersContent() {
                   )}
                 </td>
                 <td className="py-3 px-2 text-center text-xs max-w-[220px]">
-                  {v.is_suspected_bot ? (
-                    <div>
-                      <span className="text-cyber-danger block">
-                        {(v.behavior_metrics?.ai_verdict as { source?: string })?.source ===
-                        "twitch_insights"
-                          ? "Viewbot (Twitch Insights)"
-                          : (v.behavior_metrics?.ai_verdict as { source?: string })?.source ===
-                              "twitchbots_info"
-                            ? "Bot conocido (TwitchBots.info)"
-                            : "Bot / malicioso"}
-                      </span>
-                      <span
-                        className="text-cyber-muted text-[10px] line-clamp-2"
-                        title={String(
-                          (v.behavior_metrics?.ai_verdict as { risk_description?: string })
-                            ?.risk_description ?? "",
-                        )}
-                      >
-                        {(
-                          v.behavior_metrics?.ai_verdict as { risk_description?: string }
-                        )?.risk_description ||
-                          "Patron sospechoso detectado"}
-                      </span>
-                    </div>
-                  ) : (v.chat_messages ?? 0) > 0 ? (
-                    <span className="text-cyber-accent">Hablando</span>
-                  ) : (
-                    <span className="text-cyber-muted">En chat</span>
-                  )}
+                  <div>
+                    <span className={`${assessment.tone} block`}>{assessment.label}</span>
+                    <span className="text-cyber-muted text-[10px] line-clamp-2">
+                      {assessment.detail}
+                    </span>
+                    {(v.chat_messages ?? 0) > 0 && (
+                      <span className="text-cyber-muted text-[10px] block">Participa en chat</span>
+                    )}
+                  </div>
                 </td>
                 <td className="py-3 px-2 text-right">
-                  {v.is_suspected_bot && (
+                  {assessment.label === "Bot conocido" && currentStream?.platform === "twitch" && (
                     <button
                       type="button"
                       disabled={blockMutation.isPending}
@@ -601,7 +689,8 @@ function ViewersContent() {
                   )}
                 </td>
               </tr>
-            ))}
+                );
+              })}
           </tbody>
         </table>
         {!streamId && (

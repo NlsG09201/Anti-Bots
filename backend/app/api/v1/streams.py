@@ -403,6 +403,23 @@ async def quick_sync_stream(
         ) from exc
 
 
+@router.post("/{stream_id}/sync/platform")
+async def sync_platform_chat(
+    stream_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Sincroniza participantes del chat de Kick o YouTube para su análisis SOC."""
+    from app.services.platforms.sync_service import PlatformSyncService
+
+    stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    if stream.platform not in (Platform.KICK, Platform.YOUTUBE):
+        raise ValidationError("La sincronización de chat multi-plataforma aplica a Kick y YouTube")
+    result = await PlatformSyncService(db).sync_viewers(stream)
+    await db.commit()
+    return {"status": "ok", **result}
+
+
 @router.post("/{stream_id}/monitor")
 async def run_channel_monitor(
     stream_id: UUID,
@@ -497,7 +514,7 @@ async def monitor_status(
     from app.services.monitoring.proxy_intel import collect_proxy_threats
 
     proxy_intel = await collect_proxy_threats(db, stream.id)
-    silent = max(0, (stream.viewer_count or 0) - counts["total"])
+    viewers_not_identifiable = max(0, (stream.viewer_count or 0) - counts["total"])
     return {
         "is_live": stream.is_live,
         "viewer_count": stream.viewer_count,
@@ -508,13 +525,13 @@ async def monitor_status(
         "talking_count": counts["talking"],
         "suspected_bots": counts["suspected"],
         "proxy_ips_detected": len(proxy_intel["proxy_ips"]),
-        "silent_viewbots_estimate": silent if silent > 50 else 0,
+        "viewers_not_identifiable": viewers_not_identifiable,
         "active_attacks": len(attacks.scalars().all()),
         "monitor_mode": stream_monitor_mode(stream),
         "has_broadcaster_oauth": bool(stream.oauth_token_encrypted),
         "note": (
-            "Usuarios en chat (Helix/IRC). Viewers totales en Twitch incluyen quien no escribe. "
-            "Ataques por proxy se mitigan bloqueando IPs detectadas en eventos."
+            "Sólo se listan participantes observados en el chat. La plataforma no expone la identidad "
+            "de quienes miran sin escribir; no se clasifican como bots."
         ),
     }
 
@@ -704,10 +721,15 @@ async def ban_all_suspected_viewers(
     from app.services.mitigation.targets import build_targets_from_suspected_sessions
 
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
-    targets = await build_targets_from_suspected_sessions(db, stream.id, limit=50)
+    targets = await build_targets_from_suspected_sessions(
+        db,
+        stream.id,
+        limit=50,
+        known_bot_only=True,
+    )
     if not targets:
         raise ValidationError(
-            "No hay viewers sospechosos. Ejecuta Verificar bots (Insights + IA) o escanea el canal."
+            "No hay coincidencias de bots conocidos. Analiza los usuarios y revisa la evidencia antes de sancionar."
         )
 
     correlation = CorrelationService(db)

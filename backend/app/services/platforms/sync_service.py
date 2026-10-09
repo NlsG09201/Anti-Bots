@@ -23,6 +23,8 @@ class PlatformSyncService:
     async def sync_viewers(self, stream: Stream) -> Dict[str, Any]:
         adapter = get_platform_adapter(stream.platform)
         live = await adapter.fetch_live_status(stream)
+        stream.is_live = live.is_live
+        stream.viewer_count = live.viewer_count
         snapshots = await adapter.fetch_viewers(stream)
 
         synced = 0
@@ -33,6 +35,7 @@ class PlatformSyncService:
                     stream.id,
                     username,
                     platform_user_id=snap.platform_user_id,
+                    joins=0,
                     source=snap.metadata.get("source", stream.platform.value),
                 )
             else:

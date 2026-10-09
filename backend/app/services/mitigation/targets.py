@@ -46,6 +46,7 @@ async def build_targets_from_suspected_sessions(
     *,
     limit: int = 50,
     min_risk: float = 55.0,
+    known_bot_only: bool = False,
 ) -> List[Dict[str, str]]:
     result = await db.execute(
         select(ViewerSession).where(
@@ -56,6 +57,9 @@ async def build_targets_from_suspected_sessions(
     )
     targets: List[Dict[str, str]] = []
     for session in result.scalars().all():
+        verdict = (session.behavior_metrics or {}).get("ai_verdict") or {}
+        if known_bot_only and verdict.get("classification") != "known_bot":
+            continue
         if not is_chat_presence_session(session) and session.risk_score < min_risk:
             continue
         ut = session_to_user_target(session)

@@ -728,6 +728,15 @@ export const api = {
       request<{ status: string }>(`/api/v1/streams/watch/${streamId}`, { method: "DELETE" }, token),
     sync: (token: ApiAuthToken, streamId: string) =>
       request<Stream>(`/api/v1/streams/${streamId}/sync`, { method: "POST" }, token),
+    syncPlatform: (token: ApiAuthToken, streamId: string) =>
+      request<{
+        status: string;
+        platform: string;
+        is_live: boolean;
+        viewer_count: number;
+        chatters_synced: number;
+        source: string;
+      }>(`/api/v1/streams/${streamId}/sync/platform`, { method: "POST" }, token),
     ingestEvent: (token: ApiAuthToken, streamId: string, body: object) =>
       request<{ event_id: string; risk_score: number; attack_created: boolean }>(
         `/api/v1/streams/${streamId}/events`,
@@ -741,6 +750,7 @@ export const api = {
         status: string;
         screened: number;
         flagged: number;
+        review_required?: number;
         twitch_insights_matched?: number;
         twitch_insights_db_size?: number;
       }>(
@@ -804,7 +814,7 @@ export const api = {
         talking_count: number;
         suspected_bots: number;
         proxy_ips_detected: number;
-        silent_viewbots_estimate: number;
+        viewers_not_identifiable: number;
         active_attacks: number;
         last_monitor?: string;
         last_quick_sync?: string;

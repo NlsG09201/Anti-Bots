@@ -1,6 +1,7 @@
 """Filtros para listar solo usuarios humanos reales en el chat de Twitch."""
 
 import re
+import unicodedata
 
 # Bots de moderacion / alertas habituales en canales (no son viewers a vigilar)
 TWITCH_CHAT_BOTS = frozenset(
@@ -33,7 +34,13 @@ TWITCH_CHAT_BOTS = frozenset(
     }
 )
 
-CHAT_PRESENCE_SOURCES = frozenset({"irc", "helix", "helix+irc"})
+TWITCH_CHAT_PRESENCE_SOURCES = frozenset(
+    {"irc", "helix", "helix+irc", "helix_chatters"}
+)
+PLATFORM_CHAT_PRESENCE_SOURCES = frozenset(
+    {"kick_chat", "youtube_live_chat", "tiktok_live_chat"}
+)
+CHAT_PRESENCE_SOURCES = TWITCH_CHAT_PRESENCE_SOURCES | PLATFORM_CHAT_PRESENCE_SOURCES
 TWITCH_LOGIN_RE = re.compile(r"^[a-zA-Z0-9_]{2,25}$")
 
 # Fragmentos de protocolo IRC (p. ej. "End of /NAMES list")
@@ -71,3 +78,24 @@ def is_valid_chatter_username(username: str) -> bool:
     if not TWITCH_LOGIN_RE.match(name):
         return False
     return True
+
+
+def is_valid_platform_chatter_name(username: str) -> bool:
+    """Valida nombres visibles que no siguen las reglas de login de Twitch."""
+    if not isinstance(username, str):
+        return False
+    name = username.strip()
+    if not name or len(name) > 255 or not any(not char.isspace() for char in name):
+        return False
+    if any(unicodedata.category(char).startswith("C") for char in name):
+        return False
+    return True
+
+
+def is_valid_chat_presence(username: str, source: str = "irc") -> bool:
+    source_name = source.strip().lower()
+    if source_name in TWITCH_CHAT_PRESENCE_SOURCES or not source_name:
+        return is_valid_chatter_username(username)
+    if source_name in PLATFORM_CHAT_PRESENCE_SOURCES:
+        return is_valid_platform_chatter_name(username)
+    return False

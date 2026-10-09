@@ -69,10 +69,18 @@ async def test_screen_and_update_sessions_ignores_twitchbots_batch_failures(
         async def verify_batch(self, *args, **kwargs):
             raise RuntimeError("twitchbots unavailable")
 
-    async def fake_analyze_usernames(self, channel_name, usernames, *, tbi_verdicts=None):
+    async def fake_analyze_usernames(
+        self,
+        channel_name,
+        usernames,
+        *,
+        tbi_verdicts=None,
+        platform="twitch",
+    ):
         assert channel_name == "testchannel"
         assert usernames == ["viewer123"]
         assert tbi_verdicts == {}
+        assert platform == "twitch"
         return {}
 
     monkeypatch.setattr(

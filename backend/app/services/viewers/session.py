@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.database.models import ViewerSession
 from app.integrations.twitch.chat_filters import (
     CHAT_PRESENCE_SOURCES,
-    is_valid_chatter_username,
+    is_valid_chat_presence,
 )
 from app.integrations.twitch.irc_chat import score_username_risk
 
@@ -26,7 +26,7 @@ def is_chat_presence_session(session: ViewerSession) -> bool:
         return False
     if source and source not in CHAT_PRESENCE_SOURCES:
         return False
-    return is_valid_chatter_username(session.platform_username or "")
+    return is_valid_chat_presence(session.platform_username or "", source)
 
 
 class ViewerSessionService:
@@ -44,11 +44,16 @@ class ViewerSessionService:
         extra_risk: float = 0.0,
         source: str = "irc",
     ) -> Optional[ViewerSession]:
-        risk = max(score_username_risk(username, joins, messages), extra_risk)
+        source_name = source.strip().lower()
+        twitch_source = source_name in {"irc", "helix", "helix+irc", "helix_chatters"}
+        risk = max(
+            score_username_risk(username, joins, messages) if twitch_source else 0.0,
+            extra_risk,
+        )
         is_bot = risk >= 55.0
 
         uname = username.strip()
-        if not is_valid_chatter_username(uname):
+        if not is_valid_chat_presence(uname, source_name):
             return None
 
         result = await self.db.execute(
@@ -66,7 +71,9 @@ class ViewerSessionService:
             session.risk_score = max(session.risk_score, risk)
             session.is_suspected_bot = session.is_suspected_bot or is_bot
             metrics = dict(session.behavior_metrics or {})
-            metrics["joins"] = metrics.get("joins", 0) + joins
+            # `joins` is a count from this observed chat window, not a count of
+            # API polling cycles. Repeated snapshots must not inflate bot risk.
+            metrics["joins"] = max(int(metrics.get("joins", 0)), joins)
             metrics["source"] = source
             metrics["last_seen"] = datetime.now(timezone.utc).isoformat()
             session.behavior_metrics = metrics
@@ -167,7 +174,8 @@ class ViewerSessionService:
         suspected = 0
         for chatter in chatters:
             username = chatter.get("username", "")
-            if not is_valid_chatter_username(username):
+            source = chatter.get("source", "irc")
+            if not is_valid_chat_presence(username, source):
                 continue
             session = await self.upsert_chat_viewer(
                 stream_id,
@@ -175,7 +183,7 @@ class ViewerSessionService:
                 chatter.get("user_id"),
                 joins=chatter.get("joins", 1),
                 messages=chatter.get("messages", 0),
-                source=chatter.get("source", "irc"),
+                source=source,
             )
             if not session:
                 continue
