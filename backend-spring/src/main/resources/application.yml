@@ -1,0 +1,62 @@
+server:
+  address: 0.0.0.0
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: streamshield-spring-api
+  datasource:
+    url: ${SPRING_DATABASE_URL:jdbc:postgresql://localhost:5432/streamshield}
+    username: ${SPRING_DATABASE_USERNAME:${DB_USER:streamshield}}
+    password: ${SPRING_DATABASE_PASSWORD:${DB_PASSWORD:}}
+    hikari:
+      maximum-pool-size: ${SPRING_DB_POOL_SIZE:5}
+      connection-timeout: 10000
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379/0}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        default_schema: ${DB_SCHEMA:public}
+        jdbc:
+          time_zone: UTC
+  ai:
+    openai:
+      base-url: ${AI_BASE_URL:https://api.openai.com}
+      api-key: ${AI_API_KEY:${OPENAI_API_KEY:local-disabled-placeholder}}
+      chat:
+        options:
+          model: ${AI_MODEL:${OPENAI_MODEL:gpt-4o-mini}}
+          temperature: 0.2
+          max-tokens: 350
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+streamshield:
+  ai:
+    enabled: ${AI_ENABLED:false}
+    api-key: ${AI_API_KEY:${OPENAI_API_KEY:}}
+  security:
+    jwt-secret: ${JWT_SECRET_KEY:}
+    check-redis-blacklist: ${SPRING_CHECK_REDIS_BLACKLIST:false}
+  cors:
+    allowed-origins: ${APP_CORS_ORIGINS:http://localhost:3000}
+
+logging:
+  level:
+    root: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN

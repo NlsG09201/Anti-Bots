@@ -31,7 +31,7 @@ export default function ViewerFlowPage() {
   );
 
   const activeStream =
-    nonTwitchLive.find((s) => s.id === streamId) ?? nonTwitchLive[0] ?? liveStream;
+    nonTwitchLive.find((s) => s.id === streamId) ?? nonTwitchLive[0];
 
   const { overview, streamSnap, loading, scan } = useViewerFlow(activeStream?.id);
 

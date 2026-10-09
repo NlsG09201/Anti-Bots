@@ -24,4 +24,5 @@ venv/
 .DS_Store
 Thumbs.db
 backend/streamshield.db
+backend-spring/target/
 .cursor/

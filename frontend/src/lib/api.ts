@@ -2,6 +2,7 @@ import { resolveApiBaseUrl, resolveDirectApiBaseUrl } from "@/lib/runtime-urls";
 
 // En Vercel: "" → /api/* mismo origen (rewrite a Render). Ignora localhost en el build.
 const API_URL = resolveApiBaseUrl();
+const SPRING_API_URL = process.env.NEXT_PUBLIC_SPRING_API_URL?.replace(/\/$/, "") ?? "";
 
 /** Token explícito o de sessionStorage; null/undefined si no hay sesión. */
 export type ApiAuthToken = string | null | undefined;
@@ -369,6 +370,7 @@ export const api = {
         "/api/v1/assistant/chat",
         { method: "POST", body: JSON.stringify(body) },
         token,
+        SPRING_API_URL || undefined,
       ),
   },
   powerBiAnalytics: {
