@@ -353,6 +353,17 @@ export const api = {
         token,
       ),
   },
+  assistant: {
+    chat: (
+      token: ApiAuthToken,
+      body: { message: string; history: { role: "user" | "assistant"; content: string }[] },
+    ) =>
+      request<{ answer: string; source: string; disclaimer: string }>(
+        "/api/v1/assistant/chat",
+        { method: "POST", body: JSON.stringify(body) },
+        token,
+      ),
+  },
   powerBiAnalytics: {
     overview: (token: ApiAuthToken, hours = 168) =>
       request<PowerBiOverview>(

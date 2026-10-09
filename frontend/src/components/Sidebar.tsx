@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Shield, LayoutDashboard, AlertTriangle, Ban, Brain, Binary,
+  Shield, LayoutDashboard, AlertTriangle, Ban, Brain, Binary, MessageSquare,
   Fingerprint, Globe, Users, Settings, LogOut, Rocket, Radio, Code, ShieldAlert, Radar, Activity, DatabaseZap,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
@@ -20,6 +20,7 @@ const navItems = [
   { href: "/dashboard/live-intelligence", label: "Live Intel", icon: Radio },
   { href: "/dashboard/power-bi", label: "Power BI SOC", icon: DatabaseZap },
   { href: "/dashboard/ai", label: "AI Predictions", icon: Brain },
+  { href: "/dashboard/assistant", label: "SOC Assistant", icon: MessageSquare },
   { href: "/dashboard/weka", label: "Weka J48", icon: Binary },
   { href: "/dashboard/viewers", label: "Viewers", icon: Users },
   { href: "/dashboard/widget", label: "Widget IP", icon: Code },

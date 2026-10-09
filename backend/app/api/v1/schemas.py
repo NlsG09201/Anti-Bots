@@ -115,6 +115,22 @@ class AIInsightResponse(BaseModel):
     source: str
 
 
+class AssistantHistoryMessage(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant)$")
+    content: str = Field(..., min_length=1, max_length=1000)
+
+
+class AssistantChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000)
+    history: List[AssistantHistoryMessage] = Field(default_factory=list, max_length=6)
+
+
+class AssistantChatResponse(BaseModel):
+    answer: str
+    source: str
+    disclaimer: str
+
+
 class FingerprintSubmit(BaseModel):
     canvas_hash: Optional[str] = None
     webgl_hash: Optional[str] = None

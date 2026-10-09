@@ -11,6 +11,7 @@ from app.api.v1 import (
     auth,
     attacks,
     ai_insights,
+    assistant,
     detection,
     ai_intel,
     enterprise,
@@ -287,6 +288,7 @@ app.include_router(platform_health.router, prefix=API_PREFIX)
 app.include_router(viewer_flow.router, prefix=API_PREFIX)
 app.include_router(events_pipeline.router, prefix=API_PREFIX)
 app.include_router(ai_insights.router, prefix=API_PREFIX)
+app.include_router(assistant.router, prefix=API_PREFIX)
 app.include_router(webhooks.router, prefix=API_PREFIX)
 app.include_router(ws_routes.router)
 
