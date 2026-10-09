@@ -58,6 +58,12 @@ function getCsrfToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+/** Marker no sensible: evita renovar una sesión que no existe por cookie. */
+function hasRefreshSessionHint(): boolean {
+  if (typeof document === "undefined") return false;
+  return /(?:^|;\s*)ss_session_hint=1(?:;|$)/.test(document.cookie);
+}
+
 /** POST/PUT/PATCH al mismo origen (proxy Vercel o API relativa) requieren CSRF si hay cookie de sesión. */
 function shouldAttachCsrf(baseUrl?: string): boolean {
   if (typeof window === "undefined") return false;
@@ -197,6 +203,7 @@ let refreshInFlight: Promise<string | null> | null = null;
 
 /** Silently renew access token using HttpOnly refresh cookie (single-flight). */
 export async function refreshAccessToken(): Promise<string | null> {
+  if (!hasRefreshSessionHint()) return null;
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {
