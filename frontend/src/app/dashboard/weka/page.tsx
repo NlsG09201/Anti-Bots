@@ -64,7 +64,7 @@ export default function WekaJ48Page() {
 
   const { data: streams = [] } = useQuery({
     queryKey: ["streams"],
-    queryFn: () => api.streams.list(token, true),
+    queryFn: () => api.streams.list(token),
     enabled: !!token,
   });
 

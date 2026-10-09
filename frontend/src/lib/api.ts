@@ -713,8 +713,8 @@ export const api = {
     },
   },
   streams: {
-    list: (token: ApiAuthToken, sync = false) =>
-      request<Stream[]>(`/api/v1/streams${sync ? "?sync=true" : ""}`, {}, token),
+    list: (token: ApiAuthToken) =>
+      request<Stream[]>("/api/v1/streams", {}, token),
     watch: (
       token: ApiAuthToken,
       login: string,

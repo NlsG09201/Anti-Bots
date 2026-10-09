@@ -562,29 +562,13 @@ async def viewbot_intelligence_status(
 @router.get("", response_model=List[StreamResponse])
 async def list_streams(
     current_user: CurrentUser,
-    sync: bool = Query(False, description="Actualizar estado live desde Twitch"),
     db: AsyncSession = Depends(get_db),
 ):
+    """Devuelve los canales guardados; los estados live se actualizan en el monitor."""
     result = await db.execute(
         select(Stream).where(Stream.tenant_id == current_user.tenant_id)
     )
     streams = list(result.scalars().all())
-    if sync:
-        try:
-            for stream in streams:
-                if stream_monitor_mode(stream) or stream.platform == Platform.TWITCH:
-                    try:
-                        await sync_stream_live_status(db, stream)
-                    except Exception as exc:
-                        logger.warning(
-                            "stream_sync_failed",
-                            stream_id=str(stream.id),
-                            error=str(exc)[:200],
-                        )
-            await db.commit()
-        except Exception as exc:
-            logger.error("streams_sync_commit_failed", error=str(exc)[:300])
-            await db.rollback()
     return [_as_stream_response(s) for s in streams]
 
 

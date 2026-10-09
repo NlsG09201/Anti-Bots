@@ -93,7 +93,7 @@ function ViewersContent() {
     queryKey: ["streams"],
     // El listado se refresca desde la BD. La sincronización externa se ejecuta
     // al seleccionar/recargar un canal, evitando llamadas a cada plataforma cada 20 s.
-    queryFn: () => api.streams.list(token, false),
+    queryFn: () => api.streams.list(token),
     enabled: !!token,
     refetchInterval: 20000,
   });

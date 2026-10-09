@@ -16,7 +16,7 @@ export default function FingerprintsPage() {
 
   const { data: streams = [] } = useQuery({
     queryKey: ["streams"],
-    queryFn: () => api.streams.list(accessToken!, false),
+    queryFn: () => api.streams.list(accessToken!),
     enabled: !!accessToken,
   });
 

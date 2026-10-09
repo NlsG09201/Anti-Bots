@@ -32,8 +32,8 @@ function ChannelsContent() {
   }, [searchParams, queryClient]);
 
   const { data: streams = [], isLoading } = useQuery({
-    queryKey: ["streams", "sync"],
-    queryFn: () => api.streams.list(token, true),
+    queryKey: ["streams"],
+    queryFn: () => api.streams.list(token),
     enabled: !!token,
     refetchInterval: 30000,
   });

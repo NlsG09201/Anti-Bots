@@ -15,7 +15,7 @@ export default function ViewerFlowPage() {
 
   const { data: streams = [] } = useQuery({
     queryKey: ["streams"],
-    queryFn: () => api.streams.list(accessToken!, true),
+    queryFn: () => api.streams.list(accessToken!),
     enabled: !!accessToken,
     refetchInterval: 20000,
   });

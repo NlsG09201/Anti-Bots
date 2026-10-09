@@ -80,8 +80,7 @@ async def _background_channel_monitor() -> None:
                 result = await db.execute(select(Stream))
                 streams = [
                     s for s in result.scalars().all()
-                    if s.is_live
-                    and (
+                    if (
                         stream_monitor_mode(s)
                         or s.oauth_token_encrypted
                         or s.platform.value in ("kick", "youtube", "tiktok")
