@@ -168,6 +168,7 @@ class ViewerSessionService:
         chatters: List[Dict],
         *,
         full_resync: bool = True,
+        clear_if_empty: bool = False,
     ) -> Dict[str, int]:
         """Importa lista completa del chat; opcionalmente desactiva quien ya no esta."""
         seen_usernames: List[str] = []
@@ -193,15 +194,17 @@ class ViewerSessionService:
 
         await self.deactivate_non_chat_sessions(stream_id)
 
-        if full_resync and seen_usernames:
-            await self.db.execute(
-                update(ViewerSession)
-                .where(
-                    ViewerSession.stream_id == stream_id,
-                    ViewerSession.is_active == True,
-                    func.lower(ViewerSession.platform_username).notin_(seen_usernames),
+        if full_resync and (seen_usernames or clear_if_empty):
+            stale_query = update(ViewerSession).where(
+                ViewerSession.stream_id == stream_id,
+                ViewerSession.is_active == True,
+            )
+            if seen_usernames:
+                stale_query = stale_query.where(
+                    func.lower(ViewerSession.platform_username).notin_(seen_usernames)
                 )
-                .values(
+            await self.db.execute(
+                stale_query.values(
                     is_active=False,
                     left_at=datetime.now(timezone.utc),
                 )

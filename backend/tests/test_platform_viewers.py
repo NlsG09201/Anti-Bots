@@ -3,6 +3,8 @@ import pytest
 from app.infrastructure.database.models import Platform, Stream, Tenant, User
 from app.integrations.twitch.chat_filters import is_valid_chat_presence
 from app.services.detection.viewer_bot_screening import ViewerBotScreeningService
+from app.services.platforms.sync_service import PlatformSyncService
+from app.services.platforms.youtube_adapter import YouTubePlatformAdapter
 from app.services.viewers.session import ViewerSessionService
 
 
@@ -50,6 +52,107 @@ async def test_kick_chat_snapshots_are_listed_without_inflating_join_risk(db_ses
     assert viewers[0].platform_username == "Viewer Name"
     assert viewers[0].risk_score == 0
     assert viewers[0].is_suspected_bot is False
+
+
+@pytest.mark.asyncio
+async def test_full_resync_with_empty_chat_deactivates_previous_participants(db_session):
+    tenant = Tenant(name="Empty Sync Tenant", slug="empty-sync")
+    owner = User(
+        tenant=tenant,
+        email="empty-sync@example.com",
+        username="emptysync",
+        hashed_password="hashed",
+    )
+    stream = Stream(
+        tenant=tenant,
+        owner=owner,
+        platform=Platform.KICK,
+        external_id="kick-channel",
+        channel_name="Kick Channel",
+        settings={},
+    )
+    db_session.add_all([tenant, owner, stream])
+    await db_session.flush()
+
+    sessions = ViewerSessionService(db_session)
+    await sessions.upsert_chat_viewer(
+        stream.id,
+        "Previously Active",
+        platform_user_id="kick-user-1",
+        source="kick_chat",
+    )
+
+    await sessions.sync_chat_presence(
+        stream.id,
+        [],
+        full_resync=True,
+        clear_if_empty=True,
+    )
+
+    assert await sessions.list_active(stream.id) == []
+
+
+@pytest.mark.asyncio
+async def test_platform_sync_uses_youtube_live_video_id_and_lists_chatters(
+    db_session,
+    monkeypatch,
+):
+    tenant = Tenant(name="YouTube Sync Tenant", slug="youtube-sync")
+    owner = User(
+        tenant=tenant,
+        email="youtube-sync@example.com",
+        username="youtubesync",
+        hashed_password="hashed",
+    )
+    stream = Stream(
+        tenant=tenant,
+        owner=owner,
+        platform=Platform.YOUTUBE,
+        external_id="UCchannelidentifier000000",
+        channel_name="YouTube Channel",
+        settings={"login": "youtubehandle", "live_video_id": "old-video-id"},
+    )
+    db_session.add_all([tenant, owner, stream])
+    await db_session.flush()
+
+    class FakeYouTubeClient:
+        requested_video_id = None
+
+        async def search_live_by_channel(self, channel):
+            assert channel == "youtubehandle"
+            return {
+                "id": "current-video-id",
+                "snippet": {"title": "Live stream"},
+                "statistics": {"concurrentViewers": 42},
+            }
+
+        async def list_live_chat_messages(self, video_id, max_results=200):
+            self.requested_video_id = video_id
+            return [{
+                "platform_user_id": "youtube-user-id",
+                "platform_username": "Viewer Name",
+            }]
+
+    client = FakeYouTubeClient()
+    adapter = YouTubePlatformAdapter()
+
+    async def fake_client(_stream):
+        return client
+
+    monkeypatch.setattr(adapter, "_client", fake_client)
+    monkeypatch.setattr(
+        "app.services.platforms.sync_service.get_platform_adapter",
+        lambda _platform: adapter,
+    )
+
+    result = await PlatformSyncService(db_session).sync_viewers(stream)
+
+    viewers = await ViewerSessionService(db_session).list_active(stream.id)
+    assert result["viewer_count"] == 42
+    assert result["chatters_synced"] == 1
+    assert client.requested_video_id == "current-video-id"
+    assert stream.settings["live_video_id"] == "current-video-id"
+    assert viewers[0].platform_username == "Viewer Name"
 
 
 @pytest.mark.asyncio

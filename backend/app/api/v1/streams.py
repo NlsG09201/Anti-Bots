@@ -627,15 +627,15 @@ async def load_full_viewer_list(
     Funciona en tu canal y en canales en modo observacion.
     """
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
-    if not stream.is_live:
-        stream = await sync_stream_live_status(db, stream)
-    if not stream.is_live:
-        return {
-            "status": "offline",
-            "message": "El canal no esta en vivo",
-            "viewer_count": stream.viewer_count,
-        }
     try:
+        if not stream.is_live:
+            stream = await sync_stream_live_status(db, stream)
+        if not stream.is_live:
+            return {
+                "status": "offline",
+                "message": "El canal no esta en vivo",
+                "viewer_count": stream.viewer_count,
+            }
         summary = await ChannelMonitorService(db).run_full_viewer_load(
             stream,
             current_user.tenant_id,

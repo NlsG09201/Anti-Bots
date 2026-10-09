@@ -7,12 +7,9 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.logging import get_logger
-from app.infrastructure.database.models import Stream
+from app.infrastructure.database.models import Platform, Stream
 from app.services.platforms.registry import get_platform_adapter
 from app.services.viewers.session import ViewerSessionService
-
-logger = get_logger(__name__)
 
 
 class PlatformSyncService:
@@ -25,30 +22,37 @@ class PlatformSyncService:
         live = await adapter.fetch_live_status(stream)
         stream.is_live = live.is_live
         stream.viewer_count = live.viewer_count
-        snapshots = await adapter.fetch_viewers(stream)
-
-        synced = 0
-        for snap in snapshots:
-            username = snap.platform_username or snap.platform_user_id
-            if snap.is_in_chat and username:
-                await self.viewers.upsert_chat_viewer(
-                    stream.id,
-                    username,
-                    platform_user_id=snap.platform_user_id,
-                    joins=0,
-                    source=snap.metadata.get("source", stream.platform.value),
-                )
+        if stream.platform == Platform.YOUTUBE:
+            meta = dict(stream.settings or {})
+            if live.external_live_id:
+                # YouTube distingue el ID del canal del ID del video en directo.
+                meta["live_video_id"] = live.external_live_id
             else:
-                await self.viewers.upsert_from_event(
-                    stream.id,
-                    platform_username=snap.platform_username,
-                    platform_user_id=snap.platform_user_id,
-                    ip_address=None,
-                    fingerprint_hash=None,
-                    risk_score=0.0,
-                    event_type="platform_sync",
-                )
-            synced += 1
+                meta.pop("live_video_id", None)
+            stream.settings = meta
+
+        if live.is_live:
+            snapshots = await adapter.fetch_viewers(stream)
+            chatters = [
+                {
+                    "username": snap.platform_username or snap.platform_user_id,
+                    "user_id": snap.platform_user_id,
+                    "source": snap.metadata.get("source", stream.platform.value),
+                }
+                for snap in snapshots
+                if snap.is_in_chat and (snap.platform_username or snap.platform_user_id)
+            ]
+        else:
+            # Un canal confirmado offline no debe conservar participantes activos.
+            chatters = []
+
+        sync_stats = await self.viewers.sync_chat_presence(
+            stream.id,
+            chatters,
+            full_resync=True,
+            clear_if_empty=True,
+        )
+        synced = sync_stats["total_synced"]
 
         return {
             "platform": stream.platform.value,

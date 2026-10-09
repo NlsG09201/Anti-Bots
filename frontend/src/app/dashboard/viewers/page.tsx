@@ -91,7 +91,9 @@ function ViewersContent() {
 
   const { data: streams = [] } = useQuery({
     queryKey: ["streams"],
-    queryFn: () => api.streams.list(token, true),
+    // El listado se refresca desde la BD. La sincronización externa se ejecuta
+    // al seleccionar/recargar un canal, evitando llamadas a cada plataforma cada 20 s.
+    queryFn: () => api.streams.list(token, false),
     enabled: !!token,
     refetchInterval: 20000,
   });
@@ -209,6 +211,7 @@ function ViewersContent() {
       const quick = await api.streams.syncQuick(token, id);
       await queryClient.invalidateQueries({ queryKey: ["viewers"] });
       await queryClient.invalidateQueries({ queryKey: ["monitor-status"] });
+      await queryClient.invalidateQueries({ queryKey: ["streams"] });
       if (quick.status === "offline") {
         setMessage(quick.message || "Canal offline");
         setLoadPhase("idle");

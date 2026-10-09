@@ -251,16 +251,6 @@ app.add_middleware(CSRFMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SecurityGatewayMiddleware)
 app.add_middleware(RequestTimingMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_origin_regex=r"https?://.*",
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Stream-Key"],
-    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-Response-Time"],
-    max_age=3600,
-)
 
 API_PREFIX = f"/api/{settings.app_api_version}"
 app.include_router(auth.router, prefix=API_PREFIX)
@@ -321,3 +311,16 @@ async def root():
         "docs": "/docs",
         "api": API_PREFIX,
     }
+
+
+# CORS rodea la aplicación completa para que también se aplique a respuestas
+# de error generadas por el middleware de excepciones de Starlette.
+app = CORSMiddleware(
+    app=app,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Stream-Key"],
+    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-Response-Time"],
+    max_age=3600,
+)

@@ -111,7 +111,7 @@ class TwitchHelixClient:
                     headers=self._headers(user_access_token),
                 )
                 if response.status_code != 200:
-                    break
+                    response.raise_for_status()
                 payload = response.json()
                 all_chatters.extend(payload.get("data", []))
                 cursor = payload.get("pagination", {}).get("cursor")

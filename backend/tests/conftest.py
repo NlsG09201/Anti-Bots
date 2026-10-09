@@ -18,6 +18,9 @@ from app.infrastructure.database.base import Base
 from app.main import app
 from app.infrastructure.database.session import get_db
 
+# La aplicación exportada envuelve FastAPI con CORS para cubrir también errores 500.
+fastapi_app = app.app
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -53,7 +56,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     async def mock_is_blacklisted(self, jti):
         return False
 
-    app.dependency_overrides[get_db] = override_get_db
+    fastapi_app.dependency_overrides[get_db] = override_get_db
     with patch.object(RedisCache, "check_rate_limit", mock_check_rate_limit), \
          patch.object(RedisCache, "is_blacklisted", mock_is_blacklisted), \
          patch.object(RedisCache, "get", AsyncMock(return_value=None)), \
@@ -62,4 +65,4 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac
-    app.dependency_overrides.clear()
+    fastapi_app.dependency_overrides.clear()

@@ -4,13 +4,10 @@ from __future__ import annotations
 
 from typing import List
 
-from app.core.logging import get_logger
 from app.infrastructure.database.models import Platform, Stream
 from app.integrations.kick.client import KickAPIClient
 from app.services.platforms.base import LiveStatus, PlatformAdapter, ViewerSnapshot
 from app.services.platforms.oauth_tokens import get_stream_access_token
-
-logger = get_logger(__name__)
 
 
 class KickPlatformAdapter(PlatformAdapter):
@@ -26,11 +23,7 @@ class KickPlatformAdapter(PlatformAdapter):
     async def fetch_live_status(self, stream: Stream) -> LiveStatus:
         slug = (stream.settings or {}).get("login") or stream.channel_name.lower()
         client = await self._client(stream)
-        try:
-            live = await client.get_livestream(slug)
-        except Exception as exc:
-            logger.warning("kick_live_status_failed", slug=slug, error=str(exc))
-            return LiveStatus(is_live=False)
+        live = await client.get_livestream(slug)
         if not live:
             return LiveStatus(is_live=False)
         return LiveStatus(
@@ -43,11 +36,7 @@ class KickPlatformAdapter(PlatformAdapter):
     async def fetch_viewers(self, stream: Stream) -> List[ViewerSnapshot]:
         slug = (stream.settings or {}).get("login") or stream.channel_name.lower()
         client = await self._client(stream)
-        try:
-            channel = await client.get_channel(slug)
-        except Exception as exc:
-            logger.warning("kick_channel_failed", slug=slug, error=str(exc))
-            return []
+        channel = await client.get_channel(slug)
 
         chatroom_id = channel.get("chatroom", {}).get("id")
         if not chatroom_id:

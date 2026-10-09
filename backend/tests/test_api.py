@@ -10,6 +10,24 @@ async def test_health(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_api_cors_preflight_allows_configured_frontend(client: AsyncClient):
+    from app.core.config import get_settings
+
+    origin = get_settings().cors_origins_list[0]
+    response = await client.options(
+        "/api/v1/streams/00000000-0000-0000-0000-000000000000/viewers/load-full",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+
+
+@pytest.mark.asyncio
 async def test_register_and_login(client: AsyncClient):
     register_data = {
         "email": "streamer@test.com",

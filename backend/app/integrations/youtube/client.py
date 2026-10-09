@@ -99,6 +99,7 @@ class YouTubeLiveClient:
                     "maxResults": 1,
                 }),
             )
+            response.raise_for_status()
             if response.status_code == 200:
                 items = response.json().get("items", [])
                 if items:
@@ -127,6 +128,7 @@ class YouTubeLiveClient:
                         "maxResults": 1,
                     }),
                 )
+                response.raise_for_status()
                 if response.status_code == 200:
                     items = response.json().get("items", [])
                     if items:
@@ -144,6 +146,7 @@ class YouTubeLiveClient:
                     "maxResults": 1,
                 }),
             )
+            response.raise_for_status()
             if response.status_code == 200:
                 items = response.json().get("items", [])
                 if items:
