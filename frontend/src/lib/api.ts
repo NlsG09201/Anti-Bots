@@ -44,7 +44,10 @@ function parseApiErrorMessage(error: unknown, status: number): string {
   if (body.detail && typeof body.detail === "object") {
     const nested = body.detail as Record<string, unknown>;
     if (typeof nested.message === "string" && nested.message) {
-      return nested.message;
+      const cause = typeof nested.error === "string" ? nested.error.trim() : "";
+      return cause && cause !== nested.message
+        ? `${nested.message} (${cause})`
+        : nested.message;
     }
     if (typeof nested.error === "string" && nested.error) {
       return nested.error;
