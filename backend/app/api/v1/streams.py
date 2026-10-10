@@ -442,6 +442,9 @@ async def sync_platform_chat(
         ) from exc
     if stream.platform not in (Platform.KICK, Platform.YOUTUBE):
         raise ValidationError("La sincronización de chat multi-plataforma aplica a Kick y YouTube")
+    # rollback() expires ORM attributes; keep the platform scalar for logging
+    # so exception handlers do not trigger async lazy loads outside greenlet.
+    platform_name = stream.platform.value
     try:
         from app.services.platforms.sync_service import PlatformSyncService
 
@@ -456,7 +459,7 @@ async def sync_platform_chat(
         logger.warning(
             "platform_viewer_sync_upstream_failed",
             stream_id=str(stream_id),
-            platform=stream.platform.value,
+            platform=platform_name,
             error_type=type(exc).__name__,
             upstream_status=getattr(getattr(exc, "response", None), "status_code", None),
         )
@@ -469,7 +472,7 @@ async def sync_platform_chat(
         logger.exception(
             "platform_viewer_sync_persistence_failed",
             stream_id=str(stream_id),
-            platform=stream.platform.value,
+            platform=platform_name,
         )
         raise HTTPException(
             status_code=503,
@@ -480,7 +483,7 @@ async def sync_platform_chat(
         logger.exception(
             "platform_viewer_sync_failed",
             stream_id=str(stream_id),
-            platform=stream.platform.value,
+            platform=platform_name,
             error_type=type(exc).__name__,
         )
         raise HTTPException(

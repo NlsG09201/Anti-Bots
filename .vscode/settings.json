@@ -6,5 +6,6 @@
             "path": "C:\\Users\\nelso\\.jdks\\openjdk-25",
             "default": true
         }
-    ]
+    ],
+    "java.compile.nullAnalysis.mode": "automatic"
 }
