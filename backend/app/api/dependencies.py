@@ -1,15 +1,19 @@
 from typing import Annotated, List, Optional
 from uuid import UUID
 
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AuthenticationError, AuthorizationError
+from app.core.logging import get_logger
 from app.core.security import verify_token
 from app.infrastructure.cache.redis_client import RedisCache, get_redis
 from app.infrastructure.database.models import User, UserRole
 from app.infrastructure.database.session import get_db
+
+logger = get_logger(__name__)
 
 ROLE_HIERARCHY = {
     UserRole.SUPER_ADMIN: 5,
@@ -37,8 +41,20 @@ async def get_current_user(
     if await cache.is_blacklisted(payload.get("jti", "")):
         raise AuthenticationError("Token has been revoked")
 
-    result = await db.execute(select(User).where(User.id == UUID(payload["sub"])))
-    user = result.scalar_one_or_none()
+    try:
+        user_id = UUID(str(payload.get("sub", "")))
+    except (TypeError, ValueError):
+        raise AuthenticationError("Invalid or expired token")
+
+    try:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+    except SQLAlchemyError as exc:
+        logger.exception("authenticated_user_lookup_failed")
+        raise HTTPException(
+            status_code=503,
+            detail="El servicio de autenticación no está disponible temporalmente.",
+        ) from exc
     if not user or not user.is_active:
         raise AuthenticationError("User not found or inactive")
 
