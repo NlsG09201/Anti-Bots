@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.database.models import ViewerSession
@@ -17,16 +17,29 @@ NON_CHAT_SOURCES = frozenset({"ingest", "widget", "api"})
 
 
 def is_chat_presence_session(session: ViewerSession) -> bool:
-    """Solo usuarios detectados en el chat IRC/Helix, no pings de widget ni IPs sueltas."""
-    if session.ip_address != CHAT_IP_PLACEHOLDER:
-        return False
+    """Acepta presencia de chat de plataformas y excluye pings o IPs sueltas."""
     metrics = session.behavior_metrics or {}
     source = str(metrics.get("source", "")).lower()
+    source = {
+        "platform_kick": "kick_chat",
+        "platform_youtube": "youtube_live_chat",
+        "platform_tiktok": "tiktok_live_chat",
+    }.get(source, source)
     if source in NON_CHAT_SOURCES:
         return False
-    if source and source not in CHAT_PRESENCE_SOURCES:
+    if source in CHAT_PRESENCE_SOURCES:
+        # Los eventos oficiales de chat de Kick/YouTube identifican al usuario
+        # por su ID de plataforma, no por IP. El pipeline puede conservar una
+        # IP de red si otra fuente enriqueció el evento; eso no debe ocultarlo.
+        if source in {"kick_chat", "youtube_live_chat", "tiktok_live_chat"}:
+            return is_valid_chat_presence(session.platform_username or "", source)
+        return (
+            session.ip_address == CHAT_IP_PLACEHOLDER
+            and is_valid_chat_presence(session.platform_username or "", source)
+        )
+    if session.ip_address != CHAT_IP_PLACEHOLDER:
         return False
-    return is_valid_chat_presence(session.platform_username or "", source)
+    return not source and is_valid_chat_presence(session.platform_username or "", source)
 
 
 class ViewerSessionService:
@@ -269,7 +282,19 @@ class ViewerSessionService:
         query = select(ViewerSession).where(
             ViewerSession.stream_id == stream_id,
             ViewerSession.is_active == True,
-            ViewerSession.ip_address == CHAT_IP_PLACEHOLDER,
+            or_(
+                ViewerSession.ip_address == CHAT_IP_PLACEHOLDER,
+                ViewerSession.behavior_metrics["source"].as_string().in_(
+                    (
+                        "kick_chat",
+                        "youtube_live_chat",
+                        "tiktok_live_chat",
+                        "platform_kick",
+                        "platform_youtube",
+                        "platform_tiktok",
+                    )
+                ),
+            ),
         )
         if suspected_only:
             query = query.where(ViewerSession.is_suspected_bot == True)
