@@ -4,10 +4,13 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from app.core.config import get_settings
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import get_settings
 
 from app.api.dependencies import CurrentUser
 from app.api.v1.schemas import (
@@ -415,9 +418,48 @@ async def sync_platform_chat(
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
     if stream.platform not in (Platform.KICK, Platform.YOUTUBE):
         raise ValidationError("La sincronización de chat multi-plataforma aplica a Kick y YouTube")
-    result = await PlatformSyncService(db).sync_viewers(stream)
-    await db.commit()
-    return {"status": "ok", **result}
+    try:
+        result = await PlatformSyncService(db).sync_viewers(stream)
+        await db.commit()
+        return {"status": "ok", **result}
+    except HTTPException:
+        await db.rollback()
+        raise
+    except httpx.HTTPError as exc:
+        await db.rollback()
+        logger.warning(
+            "platform_viewer_sync_upstream_failed",
+            stream_id=str(stream_id),
+            platform=stream.platform.value,
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="La plataforma no respondió correctamente. Verifica la conexión y vuelve a intentar.",
+        ) from exc
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        logger.exception(
+            "platform_viewer_sync_persistence_failed",
+            stream_id=str(stream_id),
+            platform=stream.platform.value,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible guardar la sincronización. Inténtalo de nuevo en unos segundos.",
+        ) from exc
+    except Exception as exc:
+        await db.rollback()
+        logger.exception(
+            "platform_viewer_sync_failed",
+            stream_id=str(stream_id),
+            platform=stream.platform.value,
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible completar la sincronización. Revisa la integración de la plataforma e inténtalo de nuevo.",
+        ) from exc
 
 
 @router.post("/{stream_id}/monitor")
