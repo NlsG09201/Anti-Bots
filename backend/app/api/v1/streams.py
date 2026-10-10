@@ -23,7 +23,7 @@ from app.api.v1.schemas import (
     StreamWatchRequest,
     ViewerSessionResponse,
 )
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, StreamShieldError, ValidationError
 from app.core.logging import get_logger
 from app.infrastructure.database.models import (
     Attack,
@@ -413,12 +413,33 @@ async def sync_platform_chat(
     db: AsyncSession = Depends(get_db),
 ):
     """Sincroniza participantes del chat de Kick o YouTube para su análisis SOC."""
-    from app.services.platforms.sync_service import PlatformSyncService
-
-    stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    try:
+        stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    except (HTTPException, StreamShieldError):
+        raise
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        logger.exception("platform_viewer_sync_lookup_failed", stream_id=str(stream_id))
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible consultar el canal. Inténtalo de nuevo en unos segundos.",
+        ) from exc
+    except Exception as exc:
+        await db.rollback()
+        logger.exception(
+            "platform_viewer_sync_lookup_failed",
+            stream_id=str(stream_id),
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible consultar el canal. Inténtalo de nuevo en unos segundos.",
+        ) from exc
     if stream.platform not in (Platform.KICK, Platform.YOUTUBE):
         raise ValidationError("La sincronización de chat multi-plataforma aplica a Kick y YouTube")
     try:
+        from app.services.platforms.sync_service import PlatformSyncService
+
         result = await PlatformSyncService(db).sync_viewers(stream)
         await db.commit()
         return {"status": "ok", **result}
@@ -687,21 +708,43 @@ async def screen_viewers_with_ai(
     db: AsyncSession = Depends(get_db),
 ):
     """Cruza usuarios en chat con base local + IA y actualiza riesgo/descripcion."""
-    from app.services.detection.viewer_bot_screening import ViewerBotScreeningService
+    try:
+        from app.services.detection.viewer_bot_screening import ViewerBotScreeningService
 
-    stream = await _get_stream(db, stream_id, current_user.tenant_id)
-    svc = ViewerSessionService(db)
-    sessions = await svc.list_active(stream.id, chat_only=True, limit=500)
-    chatters = [
-        {"username": s.platform_username}
-        for s in sessions
-        if s.platform_username
-    ]
-    stats = await ViewerBotScreeningService().screen_and_update_sessions(
-        db, stream.id, stream.channel_name, chatters
-    )
-    await db.commit()
-    return {"status": "ok", **stats}
+        stream = await _get_stream(db, stream_id, current_user.tenant_id)
+        svc = ViewerSessionService(db)
+        sessions = await svc.list_active(stream.id, chat_only=True, limit=500)
+        chatters = [
+            {"username": s.platform_username}
+            for s in sessions
+            if s.platform_username
+        ]
+        stats = await ViewerBotScreeningService().screen_and_update_sessions(
+            db, stream.id, stream.channel_name, chatters
+        )
+        await db.commit()
+        return {"status": "ok", **stats}
+    except (HTTPException, StreamShieldError):
+        await db.rollback()
+        raise
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        logger.exception("viewer_screening_persistence_failed", stream_id=str(stream_id))
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible guardar el análisis de participantes. Inténtalo de nuevo.",
+        ) from exc
+    except Exception as exc:
+        await db.rollback()
+        logger.exception(
+            "viewer_screening_failed",
+            stream_id=str(stream_id),
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible completar el análisis de participantes. Inténtalo de nuevo.",
+        ) from exc
 
 
 @router.get("/{stream_id}/viewers", response_model=List[ViewerSessionResponse])

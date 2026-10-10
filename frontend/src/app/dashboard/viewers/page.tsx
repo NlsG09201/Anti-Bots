@@ -187,10 +187,10 @@ function ViewersContent() {
       setMessage(`Sincronizando participantes del chat de ${platform}…`);
       try {
         const sync = await api.streams.syncPlatform(token, id);
-        const analysis = await api.streams.screenViewers(token, id);
         await queryClient.invalidateQueries({ queryKey: ["viewers", id] });
         await queryClient.invalidateQueries({ queryKey: ["monitor-status", id] });
         await queryClient.invalidateQueries({ queryKey: ["streams"] });
+        const analysis = await api.streams.screenViewers(token, id);
         setMessage(
           `${sync.chatters_synced ?? 0} participantes de chat de ${platform} analizados: ` +
             `${analysis.flagged} coincidencias conocidas, ${analysis.review_required ?? 0} para revisar. ` +
