@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import CurrentUser
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ValidationError
+from app.core.logging import get_logger
 from app.core.security import encrypt_value
 from app.infrastructure.cache.redis_client import RedisCache
 from app.infrastructure.database.models import Platform, Stream
@@ -25,6 +26,7 @@ from app.integrations.kick.oauth import KickOAuth, kick_credentials_valid
 
 router = APIRouter(prefix="/integrations/kick", tags=["Kick Integration"])
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 def _frontend_redirect(path: str) -> RedirectResponse:
@@ -51,6 +53,7 @@ async def kick_setup(_user: CurrentUser):
     cid = settings.kick_client_id or ""
     return {
         "redirect_uri": resolve_kick_redirect_uri(),
+        "webhook_callback_url": settings.kick_webhook_callback_url,
         "client_id_prefix": cid[:12] + "..." if len(cid) > 12 else cid,
         "credentials_ok": kick_credentials_valid(),
         "register_at": "https://kick.com/settings/developer",
@@ -179,6 +182,11 @@ async def kick_callback(
         "auto_mitigate": True,
         "force_monitor": True,
     }
+    expires_in = int(token_data.get("expires_in") or 3600)
+    from datetime import datetime, timedelta, timezone
+    meta["oauth_access_expires_at"] = (
+        datetime.now(timezone.utc) + timedelta(seconds=max(expires_in, 60))
+    ).isoformat()
     if refresh_token:
         meta["refresh_token_encrypted"] = encrypt_value(refresh_token)
 
@@ -202,6 +210,22 @@ async def kick_callback(
         db.add(stream)
 
     await db.commit()
+    try:
+        await oauth.subscribe_chat_events(access_token)
+        meta = dict(stream.settings or {})
+        meta["kick_chat_webhook_subscribed"] = True
+        meta["kick_webhook_callback_url"] = settings.kick_webhook_callback_url
+        stream.settings = meta
+        await db.commit()
+    except httpx.HTTPError as exc:
+        # OAuth connection stays valid if the developer app has not enabled
+        # its public webhook endpoint yet; expose the reason in Render logs.
+        logger.warning(
+            "kick_chat_event_subscription_failed",
+            broadcaster_id=user_id,
+            error_type=type(exc).__name__,
+            status_code=getattr(getattr(exc, "response", None), "status_code", None),
+        )
     if upgrade_id:
         return _frontend_redirect(f"/dashboard/viewers?stream={upgrade_id}&kick=connected")
     return _frontend_redirect("/dashboard/settings?kick=connected")

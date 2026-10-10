@@ -12,6 +12,7 @@ settings = get_settings()
 
 class KickAPIClient:
     BASE_URL = "https://kick.com/api/v2"
+    PUBLIC_API_BASE = "https://api.kick.com/public/v1"
 
     def __init__(self, access_token: Optional[str] = None):
         self.access_token = access_token
@@ -92,6 +93,49 @@ class KickAPIClient:
             "title": livestream.get("session_title"),
             "category": livestream.get("categories", [{}])[0].get("name") if livestream.get("categories") else None,
         }
+
+    async def get_user_livestream(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Read a broadcaster's live status through Kick's supported public API."""
+        if not self.access_token:
+            raise RuntimeError("Reconnecta Kick para consultar el estado del canal.")
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                f"{self.PUBLIC_API_BASE}/users/livestreams",
+                headers={
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Accept": "application/json",
+                },
+                params={"user_id": user_id},
+            )
+            response.raise_for_status()
+            entries = response.json().get("data") or []
+            if not entries:
+                return None
+            live = entries[0]
+            return {
+                "id": live.get("id"),
+                "viewer_count": live.get("viewer_count", 0),
+                "title": live.get("title"),
+            }
+
+    async def get_broadcaster_id_by_slug(self, slug: str) -> Optional[str]:
+        if not self.access_token:
+            return None
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                f"{self.PUBLIC_API_BASE}/channels",
+                headers={
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Accept": "application/json",
+                },
+                params={"slug": slug.strip().lower().lstrip("@")},
+            )
+            response.raise_for_status()
+            channels = response.json().get("data") or []
+            if not channels:
+                return None
+            user_id = channels[0].get("broadcaster_user_id")
+            return str(user_id) if user_id else None
 
     async def get_chat_messages(self, chatroom_id: int, limit: int = 100) -> List[Dict[str, Any]]:
         async with httpx.AsyncClient(timeout=15.0) as client:

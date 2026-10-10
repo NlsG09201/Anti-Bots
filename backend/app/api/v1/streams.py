@@ -160,18 +160,23 @@ async def _watch_channel_impl(
         await db.flush()
         stream = await sync_stream_live_status(db, stream)
         if data.platform == Platform.KICK:
-            from app.services.monitoring.kick_live import resolve_kick_chatroom
+            meta = dict(stream.settings or {})
+            if not meta.get("kick_chat_webhook_subscribed") and stream.external_id.isdigit():
+                try:
+                    from app.integrations.kick.oauth import KickOAuth
 
-            try:
-                cid = await resolve_kick_chatroom(slug)
-            except Exception as exc:
-                logger.debug("kick_chatroom_watch_skip", slug=slug, error=str(exc)[:100])
-                cid = None
-            if cid:
-                meta = dict(stream.settings or {})
-                meta["kick_chatroom_id"] = cid
-                stream.settings = meta
-                await db.flush()
+                    app_token = await KickOAuth().get_app_access_token()
+                    await KickOAuth().subscribe_chat_events(app_token, stream.external_id)
+                    meta["kick_chat_webhook_subscribed"] = True
+                    meta["kick_webhook_callback_url"] = settings.kick_webhook_callback_url
+                    stream.settings = meta
+                    await db.flush()
+                except Exception as exc:
+                    logger.warning(
+                        "kick_watched_channel_subscription_failed",
+                        stream_id=str(stream.id),
+                        error_type=type(exc).__name__,
+                    )
         return _as_stream_response(stream)
 
     helix = TwitchHelixClient()
@@ -453,6 +458,7 @@ async def sync_platform_chat(
             stream_id=str(stream_id),
             platform=stream.platform.value,
             error_type=type(exc).__name__,
+            upstream_status=getattr(getattr(exc, "response", None), "status_code", None),
         )
         raise HTTPException(
             status_code=502,

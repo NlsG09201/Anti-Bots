@@ -110,12 +110,21 @@ class ViewerSessionService:
         fingerprint_hash: Optional[str],
         risk_score: float,
         event_type: str,
+        source: str = "ingest",
     ) -> Optional[ViewerSession]:
         if not platform_username and not platform_user_id:
             return None
 
         username = platform_username or platform_user_id or "unknown"
         ip = ip_address or CHAT_IP_PLACEHOLDER
+        source_name = {
+            "platform_kick": "kick_chat",
+            "platform_youtube": "youtube_live_chat",
+            "platform_tiktok": "tiktok_live_chat",
+            "twitch_eventsub": "helix",
+        }.get(source, source)
+        if event_type == "chat_message" and source_name not in CHAT_PRESENCE_SOURCES:
+            source_name = "ingest"
 
         result = await self.db.execute(
             select(ViewerSession).where(
@@ -145,6 +154,14 @@ class ViewerSessionService:
                 session.fingerprint_hash = fingerprint_hash
             if platform_username:
                 session.platform_username = platform_username
+            if event_type == "chat_message":
+                session.chat_messages += 1
+            metrics = dict(session.behavior_metrics or {})
+            metrics["source"] = source_name
+            if event_type == "chat_message":
+                metrics["messages"] = int(metrics.get("messages", 0)) + 1
+            metrics["last_seen"] = datetime.now(timezone.utc).isoformat()
+            session.behavior_metrics = metrics
         else:
             session = ViewerSession(
                 stream_id=stream_id,
@@ -155,7 +172,11 @@ class ViewerSessionService:
                 risk_score=risk_score,
                 is_suspected_bot=is_bot,
                 is_active=True,
-                behavior_metrics={"source": "ingest"},
+                chat_messages=1 if event_type == "chat_message" else 0,
+                behavior_metrics={
+                    "source": source_name,
+                    "messages": 1 if event_type == "chat_message" else 0,
+                },
             )
             self.db.add(session)
 

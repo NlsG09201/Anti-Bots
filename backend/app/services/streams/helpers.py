@@ -46,9 +46,10 @@ async def sync_stream_live_status(db: AsyncSession, stream: Stream) -> Stream:
         prev_count = stream.viewer_count
         stream.is_live = live.is_live
         stream.viewer_count = live.viewer_count
-        if live.external_live_id:
-            stream.external_id = live.external_live_id
         meta = dict(stream.settings or {})
+        if live.external_live_id:
+            meta_key = "live_video_id" if stream.platform.value == "youtube" else "live_stream_id"
+            meta[meta_key] = live.external_live_id
         meta["last_sync_title"] = live.title
         if live.is_live and live.viewer_count - prev_count >= 50:
             meta["viewer_spike"] = {

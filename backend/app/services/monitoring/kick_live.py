@@ -1,4 +1,4 @@
-"""Monitor Kick: Pusher chat + polling de viewers."""
+"""Monitor Kick live status; chat messages arrive through verified webhooks."""
 
 from __future__ import annotations
 
@@ -7,13 +7,9 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.logging import get_logger
-from app.integrations.kick.client import KickAPIClient
-from app.integrations.kick.pusher_ws import KickPusherClient
 from app.infrastructure.database.models import Platform, Stream
-from app.services.monitoring.platform_events import emit_platform_event, normalize_platform_event
+from app.services.monitoring.platform_events import emit_platform_event
 from app.services.platform_health.registry import drop_tracker, get_or_create_tracker
 from app.services.platforms.registry import get_platform_adapter
 
@@ -21,48 +17,19 @@ logger = get_logger(__name__)
 
 
 class KickLiveMonitor:
-    def __init__(self, stream_id: str, slug: str, chatroom_id: int) -> None:
+    def __init__(self, stream_id: str, slug: str) -> None:
         self.stream_id = stream_id
         self.slug = slug
-        self.chatroom_id = chatroom_id
         self._health = get_or_create_tracker(stream_id, "kick", slug, slug=slug)
-        self._pusher: Optional[KickPusherClient] = None
         self._poll_task: Optional[asyncio.Task] = None
-        self._pusher_task: Optional[asyncio.Task] = None
         self._watchdog_task: Optional[asyncio.Task] = None
         self._running = False
-
-    async def _on_pusher(self, raw_event: str, data: dict) -> None:
-        from app.infrastructure.database.session import AsyncSessionLocal
-        from sqlalchemy import select
-
-        event_type, uid, username, meta = normalize_platform_event(
-            Platform.KICK, raw_event, data
-        )
-        self._health.record_event(event_type)
-        async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                select(Stream).where(Stream.id == UUID(self.stream_id))
-            )
-            stream = result.scalar_one_or_none()
-            if not stream:
-                return
-            await emit_platform_event(
-                db,
-                stream,
-                event_type=event_type,
-                platform_user_id=uid,
-                platform_username=username,
-                metadata=meta,
-            )
-            await db.commit()
 
     async def _poll_viewers(self) -> None:
         from app.infrastructure.database.session import AsyncSessionLocal
         from sqlalchemy import select
         from uuid import UUID
 
-        client = KickAPIClient()
         adapter = get_platform_adapter(Platform.KICK)
         while self._running:
             try:
@@ -106,10 +73,10 @@ class KickLiveMonitor:
                     prev = stream.viewer_count
                     stream.is_live = live.is_live
                     stream.viewer_count = live.viewer_count
-                    if live.external_live_id:
-                        stream.external_id = live.external_live_id
 
                     meta = dict(stream.settings or {})
+                    if live.external_live_id:
+                        meta["live_stream_id"] = live.external_live_id
                     history = list(meta.get("viewer_history", []))[-71:]
                     history.append({
                         "t": datetime.now(timezone.utc).isoformat(),
@@ -184,10 +151,6 @@ class KickLiveMonitor:
     async def _watchdog(self) -> None:
         """Watchdog to ensure tasks are alive."""
         while self._running:
-            if self._pusher_task and self._pusher_task.done():
-                logger.warning("kick_pusher_died_restarting", slug=self.slug)
-                self._pusher_task = asyncio.create_task(self._pusher.run())
-
             if self._poll_task and self._poll_task.done():
                 logger.warning("kick_poll_died_restarting", slug=self.slug)
                 self._poll_task = asyncio.create_task(self._poll_viewers())
@@ -198,24 +161,14 @@ class KickLiveMonitor:
         if self._running:
             return
         self._running = True
-        self._pusher = KickPusherClient(
-            self.chatroom_id,
-            on_event=self._on_pusher,
-            on_connected=lambda: self._health.record_socket(True, "pusher"),
-            on_reconnect=lambda: self._health.record_reconnect(),
-        )
-        self._pusher_task = asyncio.create_task(self._pusher.run())
         self._poll_task = asyncio.create_task(self._poll_viewers())
         self._watchdog_task = asyncio.create_task(self._watchdog())
         logger.info("kick_monitor_started", slug=self.slug)
 
     async def stop(self) -> None:
         self._running = False
-        self._health.record_socket(False, "pusher")
         drop_tracker(self.stream_id)
-        if self._pusher:
-            await self._pusher.stop()
-        for task in (self._pusher_task, self._poll_task, self._watchdog_task):
+        for task in (self._poll_task, self._watchdog_task):
             if task and not task.done():
                 task.cancel()
                 try:
@@ -223,21 +176,3 @@ class KickLiveMonitor:
                 except asyncio.CancelledError:
                     pass
         logger.info("kick_monitor_stopped", slug=self.slug)
-
-
-async def resolve_kick_chatroom(slug: str) -> Optional[int]:
-    try:
-        client = KickAPIClient()
-        channel = await client.get_channel(slug.lower())
-        if not channel or not isinstance(channel, dict):
-            return None
-        chatroom = channel.get("chatroom") or {}
-        cid = chatroom.get("id")
-        return int(cid) if cid else None
-    except Exception as exc:
-        logger.debug(
-            "kick_chatroom_resolve_failed",
-            slug=slug,
-            error=str(exc)[:120],
-        )
-        return None

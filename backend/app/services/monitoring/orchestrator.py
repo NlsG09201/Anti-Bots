@@ -13,7 +13,7 @@ from app.core.logging import get_logger
 from app.infrastructure.database.models import Platform, Stream
 from app.infrastructure.database.session import AsyncSessionLocal
 from app.services.platform_health.registry import drop_tracker
-from app.services.monitoring.kick_live import KickLiveMonitor, resolve_kick_chatroom
+from app.services.monitoring.kick_live import KickLiveMonitor
 from app.services.monitoring.tiktok_live import TikTokLiveMonitor
 from app.services.monitoring.youtube_live import YouTubeLiveMonitor
 from app.services.streams.helpers import stream_monitor_mode
@@ -44,10 +44,8 @@ class PlatformMonitorOrchestrator:
     async def _start_monitor(self, stream: Stream) -> None:
         sid = str(stream.id)
         if sid in self._monitors:
-            # Check if monitor task is still alive
             monitor = self._monitors[sid]
-            # Simple check for Kick monitor pusher task
-            if hasattr(monitor, "_pusher_task") and monitor._pusher_task and monitor._pusher_task.done():
+            if monitor._poll_task and monitor._poll_task.done():
                  logger.warning("monitor_task_dead_restarting", stream_id=sid)
                  await self._stop_monitor(sid)
             else:
@@ -58,13 +56,7 @@ class PlatformMonitorOrchestrator:
 
         try:
             if stream.platform == Platform.KICK:
-                chatroom_id = (stream.settings or {}).get("kick_chatroom_id")
-                if not chatroom_id:
-                    chatroom_id = await resolve_kick_chatroom(slug)
-                if not chatroom_id:
-                    logger.warning("kick_chatroom_missing", slug=slug)
-                    return
-                monitor = KickLiveMonitor(sid, slug, int(chatroom_id))
+                monitor = KickLiveMonitor(sid, slug)
             elif stream.platform == Platform.YOUTUBE:
                 monitor = YouTubeLiveMonitor(
                     sid,

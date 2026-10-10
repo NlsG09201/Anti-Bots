@@ -18,12 +18,33 @@ class KickPlatformAdapter(PlatformAdapter):
 
     async def _client(self, stream: Stream) -> KickAPIClient:
         token = await get_stream_access_token(stream)
+        if not token:
+            from app.integrations.kick.oauth import KickOAuth
+
+            token = await KickOAuth().get_app_access_token()
         return KickAPIClient(access_token=token)
 
     async def fetch_live_status(self, stream: Stream) -> LiveStatus:
-        slug = (stream.settings or {}).get("login") or stream.channel_name.lower()
         client = await self._client(stream)
-        live = await client.get_livestream(slug)
+        broadcaster_id = str(stream.external_id or "")
+        if not broadcaster_id.isdigit():
+            broadcaster_id = await client.get_broadcaster_id_by_slug(
+                (stream.settings or {}).get("login") or stream.channel_name
+            ) or ""
+            if broadcaster_id:
+                stream.external_id = broadcaster_id
+        if not broadcaster_id.isdigit() and client.access_token:
+            # Older monitor builds overwrote external_id with the livestream
+            # UUID. Recover the broadcaster ID from the connected Kick account.
+            from app.integrations.kick.oauth import KickOAuth
+
+            profile = await KickOAuth().fetch_user(client.access_token)
+            broadcaster_id = str(profile.get("id") or profile.get("user_id") or "")
+            if broadcaster_id.isdigit():
+                stream.external_id = broadcaster_id
+        if not broadcaster_id.isdigit():
+            raise RuntimeError("No se pudo resolver el ID del canal Kick; vuelve a conectarlo.")
+        live = await client.get_user_livestream(broadcaster_id)
         if not live:
             return LiveStatus(is_live=False)
         return LiveStatus(

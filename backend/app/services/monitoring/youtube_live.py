@@ -38,7 +38,6 @@ class YouTubeLiveMonitor:
     async def _loop(self) -> None:
         from app.infrastructure.database.session import AsyncSessionLocal
 
-        client = YouTubeLiveClient()
         adapter = get_platform_adapter(Platform.YOUTUBE)
         poll_ms = 5000
 
@@ -57,6 +56,9 @@ class YouTubeLiveMonitor:
                         break
 
                     live = await adapter.fetch_live_status(stream)
+                    # Chat reads require the broadcaster's OAuth token. An API
+                    # key can read public video metadata, but not the live chat.
+                    client = await adapter._client(stream)
                     
                     # Robust validation before stopping
                     if not live.is_live:

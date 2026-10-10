@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.core.logging import get_logger
@@ -20,6 +21,19 @@ async def get_stream_access_token(stream: Stream) -> Optional[str]:
     if not refresh_enc:
         return access
 
+    # OAuth providers rotate refresh tokens. Refresh only when the access token
+    # is near expiry instead of rotating credentials on every API request.
+    expires_at_raw = meta.get("oauth_access_expires_at")
+    if expires_at_raw:
+        try:
+            expires_at = datetime.fromisoformat(str(expires_at_raw).replace("Z", "+00:00"))
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at > datetime.now(timezone.utc) + timedelta(minutes=2):
+                return access
+        except (TypeError, ValueError):
+            logger.warning("oauth_expiry_invalid", platform=stream.platform.value)
+
     refresh = decrypt_value(refresh_enc)
     try:
         if stream.platform == Platform.KICK:
@@ -36,9 +50,13 @@ async def get_stream_access_token(stream: Stream) -> Optional[str]:
         new_refresh = data.get("refresh_token")
         if new_access:
             stream.oauth_token_encrypted = encrypt_value(new_access)
+            expires_in = int(data.get("expires_in") or 3600)
+            meta["oauth_access_expires_at"] = (
+                datetime.now(timezone.utc) + timedelta(seconds=max(expires_in, 60))
+            ).isoformat()
         if new_refresh:
             meta["refresh_token_encrypted"] = encrypt_value(new_refresh)
-            stream.settings = meta
+        stream.settings = meta
         return new_access or access
     except Exception as exc:
         logger.warning(

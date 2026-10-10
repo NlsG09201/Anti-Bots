@@ -278,6 +278,7 @@ async def process_stream_event(
             event.fingerprint_hash,
             risk_score,
             event.event_type,
+            source=source,
         )
 
     attack_payload = None

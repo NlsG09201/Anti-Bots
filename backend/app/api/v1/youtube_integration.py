@@ -156,6 +156,11 @@ async def youtube_callback(
         "auto_mitigate": True,
         "force_monitor": True,
     }
+    from datetime import datetime, timedelta, timezone
+    expires_in = int(token_data.get("expires_in") or 3600)
+    meta["oauth_access_expires_at"] = (
+        datetime.now(timezone.utc) + timedelta(seconds=max(expires_in, 60))
+    ).isoformat()
     if refresh_token:
         meta["refresh_token_encrypted"] = encrypt_value(refresh_token)
 
