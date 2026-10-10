@@ -168,7 +168,6 @@ function ViewersContent() {
     if (fullLoadInFlight.current) return;
     if (!force && lastFullLoadStream.current === id) return;
     fullLoadInFlight.current = true;
-    lastFullLoadStream.current = id;
     setViewFilter("all");
 
     const platform = currentStream?.platform?.toLowerCase();
@@ -176,6 +175,7 @@ function ViewersContent() {
       fullLoadInFlight.current = false;
       return;
     }
+    lastFullLoadStream.current = id;
     if (platform !== "twitch") {
       if (platform !== "kick" && platform !== "youtube") {
         setMessage(`El listado de participantes aún no está disponible para ${platform}.`);
@@ -194,7 +194,9 @@ function ViewersContent() {
         setMessage(
           `${sync.chatters_synced ?? 0} participantes de chat de ${platform} analizados: ` +
             `${analysis.flagged} coincidencias conocidas, ${analysis.review_required ?? 0} para revisar. ` +
-            "Los espectadores silenciosos no son identificables por la plataforma.",
+            (platform === "kick" && sync.chat_subscription === "failed"
+              ? "No se pudo activar la suscripción de chat de Kick. Revisa las credenciales y la configuración de Webhooks de la aplicación Kick."
+              : "Los espectadores silenciosos no son identificables por la plataforma."),
         );
       } catch (e) {
         setMessage(e instanceof Error ? e.message : `No se pudo sincronizar ${platform}`);

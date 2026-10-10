@@ -739,6 +739,7 @@ export const api = {
         viewer_count: number;
         chatters_synced: number;
         source: string;
+        chat_subscription?: "configured" | "failed" | null;
       }>(`/api/v1/streams/${streamId}/sync/platform`, { method: "POST" }, token),
     ingestEvent: (token: ApiAuthToken, streamId: string, body: object) =>
       request<{ event_id: string; risk_score: number; attack_created: boolean }>(
