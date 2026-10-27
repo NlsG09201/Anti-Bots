@@ -30,6 +30,7 @@ from app.api.v1 import (
     viewer_flow,
     twitch_integration,
     kick_integration,
+    kick_bot,
     youtube_integration,
     users,
     webhooks,
@@ -256,6 +257,7 @@ app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(mfa.router, prefix=API_PREFIX)
 app.include_router(twitch_integration.router, prefix=API_PREFIX)
 app.include_router(kick_integration.router, prefix=API_PREFIX)
+app.include_router(kick_bot.router, prefix=API_PREFIX)
 app.include_router(youtube_integration.router, prefix=API_PREFIX)
 app.include_router(users.router, prefix=API_PREFIX)
 app.include_router(streams.router, prefix=API_PREFIX)

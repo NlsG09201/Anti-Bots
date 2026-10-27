@@ -18,7 +18,7 @@ _app_access_token: str | None = None
 _app_access_token_expires_at = 0.0
 
 DEFAULT_SCOPES = (
-    "user:read channel:read chat:write events:subscribe"
+    "user:read channel:read chat:write events:subscribe moderation:ban"
 )
 
 

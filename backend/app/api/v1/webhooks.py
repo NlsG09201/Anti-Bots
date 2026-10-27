@@ -204,7 +204,12 @@ async def kick_webhook(
 
         from app.api.v1.schemas import EventIngest
 
-        message = payload.get("content") or (payload.get("message") or {}).get("content")
+        message_payload = payload.get("message")
+        message = payload.get("content")
+        if not message and isinstance(message_payload, dict):
+            message = message_payload.get("content")
+        elif not message and isinstance(message_payload, str):
+            message = message_payload
         await ingest_event(
             db,
             stream,
@@ -223,6 +228,22 @@ async def kick_webhook(
             source="platform_kick",
         )
         await db.commit()
+        if message:
+            try:
+                from app.api.v1.kick_bot import process_chat_command
+
+                await process_chat_command(
+                    stream,
+                    sender_id=sender_id,
+                    username=str(username or "viewer"),
+                    content=str(message),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "kick_bot_command_failed",
+                    stream_id=str(stream.id),
+                    error_type=type(exc).__name__,
+                )
     except Exception as exc:
         await db.rollback()
         if "redis" in locals() and redis:

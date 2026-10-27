@@ -137,6 +137,56 @@ class KickAPIClient:
             user_id = channels[0].get("broadcaster_user_id")
             return str(user_id) if user_id else None
 
+    async def send_chat_message(self, broadcaster_id: str, content: str) -> Dict[str, Any]:
+        if not self.access_token:
+            raise RuntimeError("Conecta Kick antes de enviar mensajes.")
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"{self.PUBLIC_API_BASE}/chat",
+                headers={
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "broadcaster_user_id": int(broadcaster_id),
+                    "content": content,
+                    "type": "user",
+                },
+            )
+            response.raise_for_status()
+            return response.json() if response.content else {}
+
+    async def moderate_user(
+        self,
+        broadcaster_id: str,
+        user_id: str,
+        *,
+        reason: str,
+        duration_minutes: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        if not self.access_token:
+            raise RuntimeError("Conecta Kick antes de moderar usuarios.")
+        payload: Dict[str, Any] = {
+            "broadcaster_user_id": int(broadcaster_id),
+            "user_id": int(user_id),
+            "reason": reason[:100],
+        }
+        if duration_minutes is not None:
+            payload["duration"] = duration_minutes
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"{self.PUBLIC_API_BASE}/moderation/bans",
+                headers={
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            response.raise_for_status()
+            return response.json() if response.content else {}
+
     async def get_chat_messages(self, chatroom_id: int, limit: int = 100) -> List[Dict[str, Any]]:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(

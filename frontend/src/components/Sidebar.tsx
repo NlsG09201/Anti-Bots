@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Shield, LayoutDashboard, AlertTriangle, Ban, Brain, Binary, MessageSquare,
-  Fingerprint, Globe, Users, Settings, LogOut, Rocket, Radio, Code, ShieldAlert, Radar, Activity, DatabaseZap,
+  Fingerprint, Globe, Users, Settings, LogOut, Rocket, Radio, Code, ShieldAlert, Radar, Activity, DatabaseZap, Bot,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import clsx from "clsx";
@@ -23,6 +23,7 @@ const navItems = [
   { href: "/dashboard/assistant", label: "SOC Assistant", icon: MessageSquare },
   { href: "/dashboard/weka", label: "Weka J48", icon: Binary },
   { href: "/dashboard/viewers", label: "Viewers", icon: Users },
+  { href: "/dashboard/bot", label: "Kick Bot", icon: Bot },
   { href: "/dashboard/widget", label: "Widget IP", icon: Code },
   { href: "/dashboard/ips", label: "Suspicious IPs", icon: Globe },
   { href: "/dashboard/fingerprints", label: "Fingerprints", icon: Fingerprint },

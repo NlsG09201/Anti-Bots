@@ -364,7 +364,10 @@ function ViewersContent() {
       const twitchError = res.twitch_ban?.ok === false
         ? ` Twitch respondió ${res.twitch_ban.status ?? "con error"}: ${res.twitch_ban.detail ?? "revisa permisos y conexión"}`
         : "";
-      setMessage(`${res.message || "Usuario bloqueado"}${twitchError}`);
+      const kickError = res.kick_ban?.ok === false
+        ? ` Kick respondió ${res.kick_ban.status ?? "con error"}: ${res.kick_ban.detail ?? "revisa permisos y conexión"}`
+        : "";
+      setMessage(`${res.message || "Usuario bloqueado"}${twitchError}${kickError}`);
       queryClient.invalidateQueries({ queryKey: ["viewers"] });
     },
     onError: (e: Error) => setMessage(e.message),

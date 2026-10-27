@@ -950,6 +950,7 @@ async def block_viewer(
             ))
 
     twitch_result = None
+    kick_result = None
     can_twitch = (
         body.apply_twitch_ban
         and stream.platform == Platform.TWITCH
@@ -973,6 +974,45 @@ async def block_viewer(
         else:
             twitch_result = {"ok": False, "status": 401, "detail": "Reautoriza Twitch."}
 
+    can_kick = (
+        stream.platform == Platform.KICK
+        and stream.oauth_token_encrypted
+        and session.platform_user_id
+        and session.platform_user_id.isdigit()
+    )
+    if can_kick:
+        from app.integrations.kick.client import KickAPIClient
+        from app.services.platforms.oauth_tokens import get_stream_access_token
+
+        token = await get_stream_access_token(stream)
+        if token:
+            duration_minutes = (
+                min(10080, max(1, (timeout_seconds + 59) // 60))
+                if action == MitigationAction.TIMEOUT and timeout_seconds
+                else None
+            )
+            try:
+                await KickAPIClient(token).moderate_user(
+                    stream.external_id,
+                    session.platform_user_id,
+                    reason=body.reason,
+                    duration_minutes=duration_minutes,
+                )
+                kick_result = {"ok": True}
+            except Exception as exc:
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                kick_result = {
+                    "ok": False,
+                    "status": status_code,
+                    "detail": (
+                        "Vuelve a conectar Kick y acepta moderation:ban."
+                        if status_code in (401, 403)
+                        else f"Kick rechazó la sanción{f' (HTTP {status_code})' if status_code else ''}."
+                    ),
+                }
+        else:
+            kick_result = {"ok": False, "status": 401, "detail": "Reautoriza Kick."}
+
     session.is_active = False
     session.left_at = datetime.now(timezone.utc)
     await db.flush()
@@ -980,26 +1020,34 @@ async def block_viewer(
     tenant_streams = await get_tenant_stream_ids(db, current_user.tenant_id)
     await push_dashboard_realtime(db, current_user.tenant_id, tenant_streams)
 
+    if can_twitch and twitch_result and twitch_result.get("ok"):
+        platform_message = (
+            "Timeout aplicado en Twitch."
+            if action == MitigationAction.TIMEOUT
+            else "Ban permanente aplicado en Twitch."
+        )
+    elif can_kick and kick_result and kick_result.get("ok"):
+        platform_message = (
+            "Timeout aplicado en Kick."
+            if action == MitigationAction.TIMEOUT
+            else "Ban permanente aplicado en Kick."
+        )
+    else:
+        platform_message = "Sanción registrada en StreamShield; la plataforma no la aplicó."
+        if stream.platform == Platform.TWITCH and stream_monitor_mode(stream):
+            platform_message += " El canal está en modo observación."
+
     return {
         "blocked": True,
         "username": session.platform_username,
         "action": action.value,
         "twitch_ban": twitch_result,
-        "local_only": not can_twitch or not twitch_result or not twitch_result.get("ok"),
-        "message": (
-            (
-                "Timeout aplicado en Twitch."
-                if action == MitigationAction.TIMEOUT
-                else "Ban permanente aplicado en Twitch."
-            )
-            if can_twitch and twitch_result and twitch_result.get("ok")
-            else "Sanción registrada en StreamShield; Twitch no la aplicó."
-            + (
-                " El canal está en modo observación, por eso no se sancionó en Twitch."
-                if stream_monitor_mode(stream)
-                else ""
-            )
+        "kick_ban": kick_result,
+        "local_only": not (
+            (can_twitch and twitch_result and twitch_result.get("ok"))
+            or (can_kick and kick_result and kick_result.get("ok"))
         ),
+        "message": platform_message,
     }
 
 

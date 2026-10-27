@@ -868,6 +868,7 @@ export const api = {
         local_only?: boolean;
         username?: string;
         twitch_ban?: { ok: boolean; status?: number; detail?: string } | null;
+        kick_ban?: { ok: boolean; status?: number; detail?: string } | null;
       }>(
         `/api/v1/streams/${streamId}/viewers/${viewerId}/block`,
         { method: "POST", body: JSON.stringify(body) },
@@ -1019,6 +1020,20 @@ export const api = {
       }>("/api/v1/integrations/kick/setup", {}, token),
     authorize: (token: ApiAuthToken) =>
       request<{ authorization_url: string }>("/api/v1/integrations/kick/authorize", {}, token),
+    botSettings: (token: ApiAuthToken, streamId: string) =>
+      request<KickBotSettings>(`/api/v1/kick/bot/${streamId}`, {}, token),
+    saveBotSettings: (token: ApiAuthToken, streamId: string, body: KickBotSettings) =>
+      request<KickBotSettings>(
+        `/api/v1/kick/bot/${streamId}`,
+        { method: "PUT", body: JSON.stringify(body) },
+        token,
+      ),
+    sendBotMessage: (token: ApiAuthToken, streamId: string, content: string) =>
+      request<{ sent: boolean; channel_name: string }>(
+        `/api/v1/kick/bot/${streamId}/message`,
+        { method: "POST", body: JSON.stringify({ content }) },
+        token,
+      ),
   },
   youtube: {
     status: (token: ApiAuthToken) =>
@@ -1813,6 +1828,20 @@ export interface PlatformMonitorHealthStatus {
   worker_last_seen?: string | null;
   redis_ok?: boolean;
   redis_latency_ms?: number | null;
+}
+
+export interface KickBotCommand {
+  command: string;
+  response: string;
+  enabled: boolean;
+}
+
+export interface KickBotSettings {
+  stream_id?: string;
+  channel_name?: string;
+  is_live?: boolean;
+  enabled: boolean;
+  commands: KickBotCommand[];
 }
 
 export interface TwitchBotsOverview {
