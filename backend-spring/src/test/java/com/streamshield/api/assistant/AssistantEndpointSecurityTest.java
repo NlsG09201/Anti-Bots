@@ -38,7 +38,7 @@ class AssistantEndpointSecurityTest {
                 .claim("type", "access")
                 .claim("tenant_id", tokenTenantId.toString())
                 .claim("role", role))
-                .authorities(new SimpleGrantedAuthority("ROLE_" + role)));
+                .authorities(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase(java.util.Locale.ROOT))));
     }
 
     @BeforeEach

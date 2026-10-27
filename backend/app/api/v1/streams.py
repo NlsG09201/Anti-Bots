@@ -548,6 +548,7 @@ async def run_channel_monitor(
 ):
     """Escaneo en vivo: Twitch IRC/Helix o sync multi-plataforma + deteccion."""
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    platform_name = stream.platform.value
     if not stream.is_live:
         try:
             stream = await sync_stream_live_status(db, stream)
@@ -589,6 +590,61 @@ async def run_channel_monitor(
         )
         await db.commit()
         return {"status": "ok", **summary}
+    except httpx.TimeoutException as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                "Kick tardó demasiado en responder al monitor. Intenta de nuevo."
+                if platform_name == "kick"
+                else "La plataforma tardó demasiado en responder al monitor. Intenta de nuevo."
+            ),
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        await db.rollback()
+        upstream_status = exc.response.status_code
+        logger.warning(
+            "channel_monitor_upstream_failed",
+            stream_id=str(stream_id),
+            platform=platform_name,
+            upstream_status=upstream_status,
+        )
+        if platform_name == "kick" and upstream_status in (401, 403):
+            raise HTTPException(
+                status_code=424,
+                detail="Kick rechazó la autorización. Vuelve a conectar el canal y acepta los permisos solicitados.",
+            ) from exc
+        if upstream_status == 429:
+            raise HTTPException(
+                status_code=503,
+                detail="Kick limitó temporalmente las solicitudes. Espera unos segundos y vuelve a intentar.",
+                headers={"Retry-After": exc.response.headers.get("Retry-After", "10")},
+            ) from exc
+        if platform_name == "kick":
+            raise HTTPException(
+                status_code=502,
+                detail=f"La API de Kick devolvió HTTP {upstream_status} al iniciar el monitor.",
+            ) from exc
+        raise HTTPException(
+            status_code=502,
+            detail="La plataforma respondió con un error al iniciar el monitor.",
+        ) from exc
+    except httpx.HTTPError as exc:
+        await db.rollback()
+        logger.warning(
+            "channel_monitor_upstream_failed",
+            stream_id=str(stream_id),
+            platform=platform_name,
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "No se pudo conectar con la API de Kick al iniciar el monitor."
+                if platform_name == "kick"
+                else "No se pudo conectar con la plataforma al iniciar el monitor."
+            ),
+        ) from exc
     except asyncio.TimeoutError as exc:
         logger.warning(
             "channel_monitor_timeout",
