@@ -12,7 +12,7 @@ from typing import Deque, Dict, Tuple
 class StreamRates:
     messages: Deque[float] = field(default_factory=lambda: deque(maxlen=600))
     follows: Deque[float] = field(default_factory=lambda: deque(maxlen=600))
-    chatters: set[str] = field(default_factory=set)
+    chatter_last_seen: Dict[str, float] = field(default_factory=dict)
     live_started_at: float | None = None
     peak_viewers: int = 0
 
@@ -39,7 +39,7 @@ class LiveIntelTracker:
         if et in ("chat_message", "message", "chat"):
             st.messages.append(now)
             if username:
-                st.chatters.add(username.lower())
+                st.chatter_last_seen[username.lower()] = now
         elif et in ("follow", "subscription"):
             st.follows.append(now)
 
@@ -57,13 +57,18 @@ class LiveIntelTracker:
         now = time.time()
         msgs = [t for t in st.messages if now - t <= window_sec]
         flws = [t for t in st.follows if now - t <= window_sec]
+        st.chatter_last_seen = {
+            user: seen_at
+            for user, seen_at in st.chatter_last_seen.items()
+            if now - seen_at <= window_sec
+        }
         duration = 0
         if st.live_started_at:
             duration = int(now - st.live_started_at)
         return {
             "messages_per_minute": float(len(msgs)),
             "follows_per_minute": float(len(flws)),
-            "active_chatters": len(st.chatters),
+            "active_chatters": len(st.chatter_last_seen),
             "duration_seconds": duration,
             "peak_viewers": st.peak_viewers,
         }

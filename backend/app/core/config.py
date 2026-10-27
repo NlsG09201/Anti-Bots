@@ -186,7 +186,7 @@ class Settings(BaseSettings):
     twitchbots_info_max_retries: int = 3
     twitchbots_info_cache_warm_on_startup: bool = True
 
-    auto_twitch_ban_enabled: bool = True
+    auto_twitch_ban_enabled: bool = False
     bot_suspected_attack_threshold: int = 5
     background_attack_scan_interval: int = 3
     viewer_load_irc_seconds: float = 35.0

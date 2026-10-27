@@ -53,6 +53,7 @@ class TwitchOAuth:
         "moderator:read:chatters",
         "channel:read:stream_key",
         "user:read:email",
+        "user:read:chat",
         "channel:manage:moderators",
         "moderator:manage:banned_users",
     ]

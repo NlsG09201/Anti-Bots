@@ -853,9 +853,21 @@ export const api = {
       token: ApiAuthToken,
       streamId: string,
       viewerId: string,
-      body: { reason?: string; duration_hours?: number; apply_twitch_ban?: boolean },
+      body: {
+        reason?: string;
+        action?: "timeout" | "ban";
+        duration_seconds?: number | null;
+        duration_hours?: number | null;
+        apply_twitch_ban?: boolean;
+      },
     ) =>
-      request<{ blocked: boolean; message: string; local_only?: boolean; username?: string }>(
+      request<{
+        blocked: boolean;
+        action: "timeout" | "ban";
+        message: string;
+        local_only?: boolean;
+        username?: string;
+      }>(
         `/api/v1/streams/${streamId}/viewers/${viewerId}/block`,
         { method: "POST", body: JSON.stringify(body) },
         token,

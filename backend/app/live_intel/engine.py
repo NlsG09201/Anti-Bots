@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -14,7 +15,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.realtime import publish_realtime
 from app.infrastructure.cache.redis_client import optional_get_redis
-from app.infrastructure.database.models import Stream
+from app.infrastructure.database.models import AttackType, Stream
 from app.infrastructure.database.session import AsyncSessionLocal
 from app.live_intel.analyzer import LiveIntelAnalyzer
 from app.live_intel.comparator import compare_streams, detect_comparison_anomalies
@@ -48,6 +49,7 @@ class LiveIntelEngine:
         self._snapshots: Dict[str, LiveStreamSnapshot] = {}
         self._prev_viewers: Dict[str, int] = {}
         self._was_live: Dict[str, bool] = {}
+        self._last_sample_at: Dict[str, float] = {}
         self._sample_task: Optional[asyncio.Task] = None
         self._running = False
 
@@ -71,7 +73,13 @@ class LiveIntelEngine:
             stream_id, event_type, username=username
         )
 
-    async def sample_stream(self, stream: Stream) -> Optional[LiveStreamSnapshot]:
+    async def sample_stream(
+        self,
+        stream: Stream,
+        *,
+        db: Any = None,
+        live_status: Any = None,
+    ) -> Optional[LiveStreamSnapshot]:
         if not self.enabled:
             return None
 
@@ -80,7 +88,7 @@ class LiveIntelEngine:
         adapter = get_platform_adapter(stream.platform)
 
         try:
-            live = await adapter.fetch_live_status(stream)
+            live = live_status or await adapter.fetch_live_status(stream)
         except Exception as exc:
             logger.debug("live_intel_fetch_failed", stream_id=sid, error=str(exc)[:120])
             return self._snapshots.get(sid)
@@ -104,6 +112,8 @@ class LiveIntelEngine:
             get_live_intel_tracker().mark_offline(sid)
             await self._store.end_session(tid, sid)
             self._was_live[sid] = False
+            self._prev_viewers.pop(sid, None)
+            self._last_sample_at.pop(sid, None)
             snap = self._snapshots.get(sid)
             if snap:
                 snap.is_live = False
@@ -127,6 +137,12 @@ class LiveIntelEngine:
                 vpm = float(max(0, live.viewer_count - prev))
 
         rates = get_live_intel_tracker().compute_rates(sid)
+        sampled_at = time.monotonic()
+        elapsed = max(sampled_at - self._last_sample_at.get(sid, sampled_at), 1.0)
+        self._last_sample_at[sid] = sampled_at
+        viewer_delta = live.viewer_count - prev
+        joins_per_minute = max(0.0, viewer_delta) * 60.0 / elapsed
+        growth_rate = abs(viewer_delta) * 60.0 / elapsed
         partial, flags = self._analyzer.analyze(
             viewers=live.viewer_count,
             prev_viewers=prev,
@@ -172,6 +188,18 @@ class LiveIntelEngine:
             },
         )
 
+        if db is not None and prev > 0 and abs(viewer_delta) >= max(20, int(prev * 0.15)):
+            await self._assess_viewer_change(
+                db,
+                stream,
+                snap,
+                flags,
+                viewer_delta=viewer_delta,
+                joins_per_minute=joins_per_minute,
+                growth_rate=growth_rate,
+                rates=rates,
+            )
+
         if snap.suspicious_growth or snap.viewbot_probability > 0.65:
             await self._store.record_anomaly(
                 tid,
@@ -200,6 +228,105 @@ class LiveIntelEngine:
 
         return snap
 
+    async def _assess_viewer_change(
+        self,
+        db: Any,
+        stream: Stream,
+        snap: LiveStreamSnapshot,
+        flags: List[str],
+        *,
+        viewer_delta: int,
+        joins_per_minute: float,
+        growth_rate: float,
+        rates: Dict[str, float | int],
+    ) -> None:
+        """Assess material viewer-count changes and persist actionable alerts."""
+        from app.ai_intel.orchestrator import get_ai_orchestrator
+        from app.services.correlation.service import CorrelationService
+        from app.services.dashboard.metrics import get_tenant_stream_ids
+        from app.services.realtime.notify import push_dashboard_realtime
+
+        active_chatters = int(rates["active_chatters"])
+        metadata = {
+            "joins_per_minute": joins_per_minute,
+            "viewer_growth_rate": growth_rate,
+            "follow_velocity": float(rates["follows_per_minute"]),
+            "chat_message_rate": float(rates["messages_per_minute"]),
+            "silent_viewer_ratio": max(0.0, 1.0 - active_chatters / max(snap.viewers, 1)),
+            "viewer_delta": viewer_delta,
+            "viewer_count": snap.viewers,
+            "heuristic_risk": snap.suspicious_activity_score,
+            "heuristic_flags": flags,
+        }
+        assessment = await get_ai_orchestrator().assess_event(
+            db,
+            stream_id=stream.id,
+            tenant_id=stream.tenant_id,
+            event_type="viewer_pulse",
+            metadata=metadata,
+        )
+        score = max(float(assessment.risk_score), float(snap.suspicious_activity_score))
+        if viewer_delta < 0:
+            drop_ratio = abs(viewer_delta) / max(snap.viewers - viewer_delta, 1)
+            if drop_ratio >= 0.25:
+                score = max(score, min(90.0, 65.0 + (drop_ratio - 0.25) * 100))
+        if score < 65 and not assessment.early_warning:
+            return
+
+        correlation = CorrelationService(db)
+        attack = await correlation.get_active_attack(stream.id, AttackType.VIEWBOT)
+        should_broadcast = attack is None
+        evidence = {
+            "source": "viewer_flow_ai",
+            "viewer_delta": viewer_delta,
+            "viewer_count": snap.viewers,
+            "risk_score": score,
+            "ai_assessment": assessment.to_dict(),
+            "heuristic_flags": flags,
+            "channel_name": stream.channel_name,
+        }
+        if attack:
+            should_broadcast = score >= float(attack.risk_score) + 10
+            attack.risk_score = max(float(attack.risk_score), score)
+            attack.confidence = max(float(attack.confidence), float(assessment.confidence))
+            attack.evidence = {**(attack.evidence or {}), **evidence}
+            attack.severity = correlation._score_to_severity(attack.risk_score)
+        else:
+            attack = await correlation.create_attack_record(
+                stream_id=stream.id,
+                attack_type=AttackType.VIEWBOT,
+                risk_score=score,
+                confidence=float(assessment.confidence),
+                evidence=evidence,
+                source_ips=[],
+                fingerprints=[],
+            )
+            await correlation.create_alert(
+                stream.tenant_id,
+                attack,
+                "Anomalía en el flujo de viewers",
+                (
+                    f"{stream.channel_name}: cambio de {viewer_delta:+d} viewers "
+                    f"en el último intervalo; riesgo estimado {score:.0f}/100."
+                ),
+            )
+
+        await db.flush()
+        if should_broadcast:
+            await push_dashboard_realtime(
+                db,
+                stream.tenant_id,
+                await get_tenant_stream_ids(db, stream.tenant_id),
+                alert={
+                    "type": "viewer_anomaly",
+                    "stream_id": str(stream.id),
+                    "risk_score": score,
+                    "viewer_delta": viewer_delta,
+                    "flags": flags,
+                },
+                attack={"attack_id": str(attack.id), "stream_id": str(stream.id)},
+            )
+
     async def reconcile_tenant(self, tenant_id: UUID) -> None:
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -209,7 +336,7 @@ class LiveIntelEngine:
             for stream in streams[: _settings.live_intel_max_streams]:
                 try:
                     stream = await sync_stream_live_status(db, stream)
-                    await self.sample_stream(stream)
+                    await self.sample_stream(stream, db=db)
                 except Exception as exc:
                     logger.debug(
                         "live_intel_sample_skip",
@@ -226,7 +353,7 @@ class LiveIntelEngine:
             for stream in streams[: _settings.live_intel_max_streams]:
                 try:
                     stream = await sync_stream_live_status(db, stream)
-                    snap = await self.sample_stream(stream)
+                    snap = await self.sample_stream(stream, db=db)
                     if snap:
                         await self._broadcast_tenant(str(stream.tenant_id))
                 except Exception as exc:

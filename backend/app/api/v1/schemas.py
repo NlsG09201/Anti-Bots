@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -294,7 +294,9 @@ class ViewerSessionResponse(BaseModel):
 
 class BlockViewerRequest(BaseModel):
     reason: str = "Actividad sospechosa detectada por StreamShield"
-    duration_hours: Optional[int] = 24
+    action: Literal["timeout", "ban"] = "timeout"
+    duration_seconds: Optional[int] = Field(default=None, ge=1, le=1_209_600)
+    duration_hours: Optional[int] = Field(default=24, ge=1, le=336)
     apply_twitch_ban: bool = True
 
 
@@ -306,7 +308,7 @@ class MitigationTarget(BaseModel):
 class MitigationRequest(BaseModel):
     action: Optional[MitigationAction] = None
     targets: List[MitigationTarget] = Field(default_factory=list)
-    duration_hours: Optional[int] = Field(default=None, ge=1, le=8760)
+    duration_hours: Optional[int] = Field(default=None, ge=1, le=336)
     full_mitigation: bool = Field(
         False,
         description="Bloquea usuarios sospechosos, IPs proxy y fingerprints del ataque",

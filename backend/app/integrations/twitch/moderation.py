@@ -7,6 +7,7 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 settings = get_settings()
+MAX_TIMEOUT_SECONDS = 14 * 24 * 60 * 60
 
 
 async def ban_user_on_twitch(
@@ -23,7 +24,13 @@ async def ban_user_on_twitch(
             "reason": reason[:500],
         }
     }
-    if duration_seconds and duration_seconds > 0:
+    if duration_seconds is not None:
+        if not 1 <= duration_seconds <= MAX_TIMEOUT_SECONDS:
+            return {
+                "ok": False,
+                "status": 422,
+                "detail": "La duración del timeout debe estar entre 1 segundo y 14 días.",
+            }
         body["data"]["duration"] = duration_seconds
 
     async with httpx.AsyncClient(timeout=20.0) as client:
@@ -31,6 +38,8 @@ async def ban_user_on_twitch(
             "https://api.twitch.tv/helix/moderation/bans",
             params={
                 "broadcaster_id": broadcaster_id,
+                # The OAuth flow connects the broadcaster account, so the token
+                # user ID and moderator ID are the same for this integration.
                 "moderator_id": broadcaster_id,
             },
             headers={

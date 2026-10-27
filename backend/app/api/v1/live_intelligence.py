@@ -107,7 +107,7 @@ async def stream_live_intel(
 ) -> Dict[str, Any]:
     stream = await _assert_stream(db, stream_id, current_user.tenant_id)
     engine = get_live_intel_engine()
-    snap = await engine.sample_stream(stream)
+    snap = await engine.sample_stream(stream, db=db)
     await db.commit()
     history = await LiveIntelMongoStore().get_history(
         str(current_user.tenant_id), str(stream_id), limit=120
@@ -145,7 +145,7 @@ async def compare_streams_api(
         result = await db.execute(select(Stream).where(Stream.id == sid))
         stream = result.scalar_one_or_none()
         if stream:
-            await engine.sample_stream(stream)
+            await engine.sample_stream(stream, db=db)
     await db.commit()
     return engine.compare(tid, [str(s) for s in body.stream_ids])
 

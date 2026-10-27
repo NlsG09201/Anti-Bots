@@ -71,12 +71,16 @@ class MitigationService:
         evidence: Dict[str, Any],
         duration_hours: Optional[int] = None,
         *,
+        duration_seconds: Optional[int] = None,
         stream: Optional[Stream] = None,
         mark_attack_mitigated: bool = True,
+        allow_twitch_moderation: bool = False,
     ) -> List[Ban]:
         bans: List[Ban] = []
         expires_at = None
-        if duration_hours:
+        if duration_seconds:
+            expires_at = datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)
+        elif duration_hours:
             expires_at = datetime.now(timezone.utc) + timedelta(hours=duration_hours)
 
         ban_type_map = {
@@ -111,13 +115,16 @@ class MitigationService:
             bans.append(ban)
 
             cache_key = f"ban:{stream_id}:{target_type}:{target_value}"
+            cache_ttl = duration_seconds or (
+                duration_hours * 3600 if duration_hours else 86400
+            )
             await self.cache.set(
                 cache_key,
                 {
                     "ban_type": ban.ban_type,
                     "expires_at": expires_at.isoformat() if expires_at else None,
                 },
-                ttl=duration_hours * 3600 if duration_hours else 86400,
+                ttl=cache_ttl,
             )
 
         update_values: Dict[str, Any] = {
@@ -153,13 +160,14 @@ class MitigationService:
                     )
 
         twitch_results: List[Dict[str, Any]] = []
-        if stream and settings.auto_twitch_ban_enabled:
+        if stream and (allow_twitch_moderation or settings.auto_twitch_ban_enabled):
             twitch_results = await self._apply_twitch_bans(
                 stream,
                 targets,
                 action,
                 evidence.get("reason", "StreamShield: ataque de bots detectado"),
                 duration_hours,
+                duration_seconds,
             )
         if twitch_results:
             evidence["twitch_bans"] = twitch_results
@@ -181,6 +189,7 @@ class MitigationService:
         action: MitigationAction,
         reason: str,
         duration_hours: Optional[int],
+        duration_seconds: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         if stream_monitor_mode(stream):
             return []
@@ -194,11 +203,12 @@ class MitigationService:
             return []
 
         token = decrypt_value(stream.oauth_token_encrypted)
-        duration_seconds = None
-        if duration_hours:
-            duration_seconds = duration_hours * 3600
-        elif action == MitigationAction.TIMEOUT:
-            duration_seconds = 3600
+        timeout_seconds = None
+        if action == MitigationAction.TIMEOUT:
+            timeout_seconds = duration_seconds or (
+                duration_hours * 3600 if duration_hours else 3600
+            )
+            timeout_seconds = min(timeout_seconds, 1_209_600)
 
         results: List[Dict[str, Any]] = []
         seen_ids: set[str] = set()
@@ -214,7 +224,7 @@ class MitigationService:
                 token,
                 user_id,
                 reason=reason[:500],
-                duration_seconds=duration_seconds,
+                duration_seconds=timeout_seconds,
             )
             results.append({"user_id": user_id, **res})
         return results

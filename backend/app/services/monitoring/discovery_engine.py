@@ -176,6 +176,17 @@ class LiveDiscoveryEngine:
                 logger.warning("metrics_poll_failed", stream_id=stream_id, error=str(exc))
                 return {"error": str(exc)}
 
+            stream.viewer_count = live.viewer_count
+            stream.is_live = live.is_live
+            if live.external_live_id:
+                stream.external_id = live.external_live_id
+            stream_meta = dict(stream.settings or {})
+            history = list(stream_meta.get("viewer_history", []))
+            history.append({"count": live.viewer_count, "at": datetime.now(timezone.utc).isoformat()})
+            stream_meta["viewer_history"] = history[-120:]
+            stream_meta["stream_title"] = live.title
+            stream.settings = stream_meta
+
             # Update metrics in Redis for real-time dashboard
             redis = await get_redis()
             metrics_key = live_metrics_key(stream_id)
@@ -202,7 +213,7 @@ class LiveDiscoveryEngine:
 
             # Update Live Intel Engine
             from app.live_intel.engine import get_live_intel_engine
-            await get_live_intel_engine().sample_stream(stream)
+            await get_live_intel_engine().sample_stream(stream, db=db, live_status=live)
 
             # Broadcast update via Pub/Sub
             from app.events.realtime import publish_realtime
@@ -217,10 +228,8 @@ class LiveDiscoveryEngine:
                 }
             )
 
-            # If stream went offline during poll, update DB
+            await db.commit()
             if not live.is_live:
-                stream.is_live = False
-                await db.commit()
                 logger.info("stream_went_offline_during_poll", stream_id=stream_id)
 
             return metrics_data

@@ -1,6 +1,6 @@
 import asyncio
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional
 from uuid import UUID
 
@@ -787,7 +787,7 @@ async def ban_all_suspected_viewers(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
     apply_twitch_ban: bool = Query(True),
-    duration_hours: Optional[int] = Query(24, ge=1, le=8760),
+    duration_hours: Optional[int] = Query(24, ge=1, le=336),
 ):
     """
     Bloquea y banea en bloque todos los viewers marcados como sospechosos/bots.
@@ -830,7 +830,7 @@ async def ban_all_suspected_viewers(
         )
 
     mitigation = MitigationService(db)
-    action = MitigationAction.TIMEOUT if stream_monitor_mode(stream) else MitigationAction.BAN
+    action = MitigationAction.TIMEOUT
     evidence = {
         "risk_score": 90.0,
         "reason": "StreamShield: bloqueo masivo de viewers sospechosos",
@@ -845,6 +845,7 @@ async def ban_all_suspected_viewers(
         evidence=evidence,
         duration_hours=duration_hours,
         stream=stream if apply_twitch_ban else None,
+        allow_twitch_moderation=True,
     )
 
     await ViewerSessionService(db).deactivate_suspected(stream.id)
@@ -903,23 +904,33 @@ async def block_viewer(
     attack = attack_result.scalar_one_or_none()
     attack_id = attack.id if attack else None
 
+    action = (
+        MitigationAction.BAN
+        if body.action == "ban"
+        else MitigationAction.TIMEOUT
+    )
+    timeout_seconds = None
+    timeout_hours = None
+    if action == MitigationAction.TIMEOUT:
+        timeout_seconds = body.duration_seconds or (body.duration_hours or 24) * 3600
+        timeout_hours = (timeout_seconds + 3599) // 3600
+
     if attack_id:
         await mitigation.apply_mitigation(
             stream_id=stream.id,
             tenant_id=current_user.tenant_id,
             attack_id=attack_id,
-            action=MitigationAction.TIMEOUT if stream_monitor_mode(stream) else MitigationAction.BAN,
+            action=action,
             targets=targets,
             evidence={
                 "blocked_viewer": session.platform_username,
                 "risk_score": session.risk_score,
                 "reason": body.reason,
             },
-            duration_hours=body.duration_hours,
-            stream=stream if body.apply_twitch_ban else None,
+            duration_hours=timeout_hours,
+            duration_seconds=timeout_seconds,
+            mark_attack_mitigated=False,
         )
-        if attack:
-            attack.status = "mitigated"
     else:
         from app.infrastructure.database.models import Ban
         for t in targets:
@@ -929,7 +940,12 @@ async def block_viewer(
                 target_type=t["type"],
                 target_value=t["value"],
                 reason=body.reason,
-                ban_type="timeout" if stream_monitor_mode(stream) else "ban",
+                ban_type=action.value,
+                expires_at=(
+                    datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
+                    if timeout_seconds
+                    else None
+                ),
                 is_automated=False,
                 created_by=current_user.id,
             ))
@@ -937,6 +953,7 @@ async def block_viewer(
     twitch_result = None
     can_twitch = (
         body.apply_twitch_ban
+        and stream.platform == Platform.TWITCH
         and stream.oauth_token_encrypted
         and not stream_monitor_mode(stream)
         and session.platform_user_id
@@ -949,7 +966,7 @@ async def block_viewer(
             token,
             session.platform_user_id,
             reason=body.reason,
-            duration_seconds=(body.duration_hours or 24) * 3600,
+            duration_seconds=timeout_seconds,
         )
 
     session.is_active = False
@@ -962,12 +979,19 @@ async def block_viewer(
     return {
         "blocked": True,
         "username": session.platform_username,
+        "action": action.value,
         "twitch_ban": twitch_result,
-        "local_only": stream_monitor_mode(stream) or not can_twitch,
+        "local_only": not can_twitch or not twitch_result or not twitch_result.get("ok"),
         "message": (
-            "Bloqueo registrado en StreamShield."
+            (
+                "Timeout aplicado en Twitch."
+                if action == MitigationAction.TIMEOUT
+                else "Ban permanente aplicado en Twitch."
+            )
+            if can_twitch and twitch_result and twitch_result.get("ok")
+            else "Sanción registrada en StreamShield; Twitch no la aplicó."
             + (
-                " En canal ajeno no se puede banear en Twitch sin permisos del broadcaster."
+                " El canal está en modo observación, por eso no se sancionó en Twitch."
                 if stream_monitor_mode(stream)
                 else ""
             )

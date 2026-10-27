@@ -352,10 +352,12 @@ function ViewersContent() {
   });
 
   const blockMutation = useMutation({
-    mutationFn: (viewer: Viewer) =>
+    mutationFn: ({ viewer, action }: { viewer: Viewer; action: "timeout" | "ban" }) =>
       api.streams.blockViewer(token, streamId, viewer.id, {
-        reason: "Bloqueado desde panel SOC — actividad sospechosa",
-        duration_hours: 24,
+        reason: "Sanción desde panel SOC — actividad sospechosa",
+        action,
+        duration_seconds: action === "timeout" ? 600 : null,
+        duration_hours: null,
         apply_twitch_ban: currentStream?.platform === "twitch" && !currentStream.monitor_mode,
       }),
     onSuccess: (res) => {
@@ -560,8 +562,8 @@ function ViewersContent() {
           >
             <Ban size={16} />
             {banSuspectedMutation.isPending
-              ? "Baneando..."
-              : `Banear bots conocidos (${knownBotCount})`}
+              ? "Aplicando timeout..."
+              : `Timeout 24 h a bots conocidos (${knownBotCount})`}
           </button>
         )}
         {activeAttacks > 0 && (
@@ -682,15 +684,29 @@ function ViewersContent() {
                   </div>
                 </td>
                 <td className="py-3 px-2 text-right">
-                  {assessment.label === "Bot conocido" && currentStream?.platform === "twitch" && (
-                    <button
-                      type="button"
-                      disabled={blockMutation.isPending}
-                      onClick={() => blockMutation.mutate(v)}
-                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-cyber-danger/50 text-cyber-danger"
-                    >
-                      <Ban size={12} /> Bloquear
-                    </button>
+                  {(assessment.label === "Bot conocido" || v.is_suspected_bot) && currentStream?.platform === "twitch" && !currentStream.monitor_mode && (
+                    <div className="flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        disabled={blockMutation.isPending}
+                        onClick={() => blockMutation.mutate({ viewer: v, action: "timeout" })}
+                        className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-amber-500/50 text-amber-300 disabled:opacity-50"
+                      >
+                        <Ban size={12} /> Timeout 10 min
+                      </button>
+                      <button
+                        type="button"
+                        disabled={blockMutation.isPending}
+                        onClick={() => {
+                          if (window.confirm(`¿Aplicar un ban permanente a ${v.platform_username ?? "este usuario"} en Twitch?`)) {
+                            blockMutation.mutate({ viewer: v, action: "ban" });
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-cyber-danger/50 text-cyber-danger disabled:opacity-50"
+                      >
+                        <Ban size={12} /> Ban permanente
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>

@@ -132,6 +132,7 @@ async def mitigate_attack(
         evidence=evidence_payload,
         duration_hours=data.duration_hours,
         stream=stream,
+        allow_twitch_moderation=True,
     )
     attack.status = "mitigated"
     await db.flush()
