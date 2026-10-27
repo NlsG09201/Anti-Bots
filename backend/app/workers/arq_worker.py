@@ -37,6 +37,17 @@ async def process_pipeline_event_job(
 
 async def startup(ctx: dict) -> None:
     logger.info("arq_worker_startup", queues=list(QUEUE_BY_CATEGORY.values()))
+    cfg = get_settings()
+    if cfg.live_intel_enabled and cfg.platform_monitor_worker_mode_resolved:
+        from app.live_intel import get_live_intel_engine
+
+        engine = get_live_intel_engine()
+        ctx["live_intel_engine"] = engine
+        try:
+            await engine.start()
+            logger.info("live_intel_sampler_in_worker")
+        except Exception as exc:
+            logger.exception("live_intel_worker_start_failed", error=str(exc)[:180])
     # Schedule discovery batch every minute
     from arq import create_pool
     from arq.connections import RedisSettings
@@ -48,6 +59,9 @@ async def startup(ctx: dict) -> None:
 
 
 async def shutdown(ctx: dict) -> None:
+    engine = ctx.get("live_intel_engine")
+    if engine:
+        await engine.stop()
     logger.info("arq_worker_shutdown")
 
 

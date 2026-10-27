@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.core.security import decrypt_value
 from app.infrastructure.database.models import Attack, AttackType, Platform, Stream
 from app.integrations.twitch.helix import TwitchHelixClient
+from app.services.platforms.oauth_tokens import get_stream_access_token
 from app.integrations.twitch.chat_filters import is_valid_chatter_username
 from app.integrations.twitch.irc_chat import collect_chat_presence, score_username_risk
 from app.services.ai.service import AIService
@@ -104,22 +104,23 @@ class ChannelMonitorService:
 
         if stream.oauth_token_encrypted and stream.platform == Platform.TWITCH:
             try:
-                token = decrypt_value(stream.oauth_token_encrypted)
-                names = await self.helix.get_chatters(
-                    stream.external_id,
-                    stream.external_id,
-                    token,
-                )
-                for item in names:
-                    login_name = item.get("user_login") or item.get("user_name", "")
-                    if login_name and is_valid_chatter_username(login_name):
-                        by_login[login_name.lower()] = {
-                            "username": login_name,
-                            "user_id": item.get("user_id"),
-                            "joins": 0,
-                            "messages": 0,
-                            "source": "helix",
-                        }
+                token = await get_stream_access_token(stream)
+                if token:
+                    names = await self.helix.get_chatters(
+                        stream.external_id,
+                        stream.external_id,
+                        token,
+                    )
+                    for item in names:
+                        login_name = item.get("user_login") or item.get("user_name", "")
+                        if login_name and is_valid_chatter_username(login_name):
+                            by_login[login_name.lower()] = {
+                                "username": login_name,
+                                "user_id": item.get("user_id"),
+                                "joins": 0,
+                                "messages": 0,
+                                "source": "helix",
+                            }
             except Exception as exc:
                 logger.warning("helix_chatters_failed", stream=str(stream.id), error=str(exc))
 
@@ -190,7 +191,9 @@ class ChannelMonitorService:
         helix_count = 0
         if has_oauth:
             try:
-                token = decrypt_value(stream.oauth_token_encrypted)
+                token = await get_stream_access_token(stream)
+                if not token:
+                    raise RuntimeError("Twitch OAuth token unavailable; reconnect Twitch")
                 names = await self.helix.get_chatters(
                     stream.external_id,
                     stream.external_id,

@@ -181,9 +181,6 @@ class LiveDiscoveryEngine:
             if live.external_live_id:
                 stream.external_id = live.external_live_id
             stream_meta = dict(stream.settings or {})
-            history = list(stream_meta.get("viewer_history", []))
-            history.append({"count": live.viewer_count, "at": datetime.now(timezone.utc).isoformat()})
-            stream_meta["viewer_history"] = history[-120:]
             stream_meta["stream_title"] = live.title
             stream.settings = stream_meta
 

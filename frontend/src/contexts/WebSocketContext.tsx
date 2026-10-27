@@ -11,6 +11,8 @@ import {
 } from "react";
 import { useApiToken } from "@/stores/authStore";
 import { resolveWsBaseUrl } from "@/lib/runtime-urls";
+import { useQueryClient } from "@tanstack/react-query";
+import type { Alert } from "@/lib/api";
 
 export interface WSMessage {
   type: string;
@@ -30,6 +32,7 @@ const WebSocketContext = createContext<WebSocketContextValue | null>(null);
 
 export function WebSocketProvider({ children }: { children: ReactNode }) {
   const accessToken = useApiToken();
+  const queryClient = useQueryClient();
   const [connected, setConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<WSMessage | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -58,6 +61,25 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       const msg: WSMessage = JSON.parse(event.data);
       setLastMessage(msg);
       handlersRef.current.forEach((fn) => fn(msg));
+      if (msg.type === "alert" && msg.data) {
+        const candidate = msg.data as Partial<Alert>;
+        if (
+          candidate.id && candidate.title && candidate.message &&
+          candidate.severity && candidate.status && candidate.created_at
+        ) {
+          void queryClient.cancelQueries({ queryKey: ["alerts"] }).then(() => {
+            queryClient.setQueryData<Alert[]>(["alerts"], (previous = []) => [
+              candidate as Alert,
+              ...previous.filter((alert) => alert.id !== candidate.id),
+            ].slice(0, 100));
+          });
+        } else {
+          void queryClient.invalidateQueries({ queryKey: ["alerts"] });
+        }
+      }
+      if (msg.type === "attack_detected") {
+        void queryClient.invalidateQueries({ queryKey: ["attacks"] });
+      }
     };
 
     ws.onclose = () => {
@@ -66,7 +88,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     };
 
     ws.onerror = () => ws.close();
-  }, [accessToken]);
+  }, [accessToken, queryClient]);
 
   useEffect(() => {
     connect();

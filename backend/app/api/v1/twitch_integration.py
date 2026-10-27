@@ -1,5 +1,6 @@
 import secrets
-from typing import List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 from urllib.parse import quote
 from uuid import UUID
 
@@ -12,11 +13,11 @@ import httpx
 from app.api.dependencies import CurrentUser
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ValidationError
+from app.core.logging import get_logger
 from app.core.security import encrypt_value
 from app.infrastructure.cache.redis_client import RedisCache
 from app.infrastructure.database.models import Platform, Stream
 from app.infrastructure.database.session import get_db
-from app.integrations.twitch.constants import PRODUCTION_CALLBACK_URL
 from app.integrations.twitch.oauth import (
     TwitchOAuth,
     resolve_twitch_redirect_uri,
@@ -26,6 +27,7 @@ from app.integrations.twitch.eventsub import TwitchEventSubClient
 
 router = APIRouter(prefix="/integrations/twitch", tags=["Twitch Integration"])
 settings = get_settings()
+logger = get_logger(__name__)
 
 EVENT_TYPES = [
     "channel.follow",
@@ -60,6 +62,42 @@ async def _start_oauth(state_payload: dict) -> str:
     await cache.set(f"state:{state}", state_payload, ttl=900)
     oauth = TwitchOAuth()
     return oauth.get_authorization_url(state)
+
+
+async def _ensure_stream_eventsub(stream: Stream, access_token: str) -> dict:
+    if not settings.twitch_eventsub_callback_url or not settings.twitch_webhook_secret:
+        report = {
+            event_type: {"status": "not_configured"}
+            for event_type in EVENT_TYPES
+        }
+    else:
+        eventsub = TwitchEventSubClient(access_token)
+        report = {}
+        for event_type in EVENT_TYPES:
+            try:
+                result = await eventsub.ensure_subscription(event_type, stream.external_id)
+                item = result.get("data", [{}])[0]
+                report[event_type] = {
+                    "status": "enabled",
+                    "id": item.get("id"),
+                    "existing": bool(result.get("existing")),
+                }
+            except Exception as exc:
+                report[event_type] = {
+                    "status": "error",
+                    "message": str(exc)[:240],
+                }
+                logger.warning(
+                    "twitch_eventsub_subscription_failed",
+                    stream_id=str(stream.id),
+                    event_type=event_type,
+                    error=str(exc)[:180],
+                )
+
+    metadata = dict(stream.settings or {})
+    metadata["eventsub_subscriptions"] = report
+    stream.settings = metadata
+    return report
 
 
 @router.get("/authorize")
@@ -166,6 +204,10 @@ async def twitch_callback(
         )
     access_token = token_data["access_token"]
     refresh_token = token_data.get("refresh_token", "")
+    token_expires_at = (
+        datetime.now(timezone.utc)
+        + timedelta(seconds=max(int(token_data.get("expires_in") or 14400), 60))
+    ).isoformat()
 
     user_info = await _get_twitch_user(access_token)
     if not user_info:
@@ -210,6 +252,7 @@ async def twitch_callback(
         stream.oauth_token_encrypted = encrypt_value(access_token)
         meta = stream.settings or {}
         meta["refresh_token_encrypted"] = encrypt_value(refresh_token) if refresh_token else None
+        meta["oauth_access_expires_at"] = token_expires_at
         meta["monitor_mode"] = False
         meta["is_owned"] = True
         meta["auto_mitigate"] = True
@@ -226,6 +269,7 @@ async def twitch_callback(
             oauth_token_encrypted=encrypt_value(access_token),
             settings={
                 "refresh_token_encrypted": encrypt_value(refresh_token) if refresh_token else None,
+                "oauth_access_expires_at": token_expires_at,
                 "login": login,
                 "monitor_mode": False,
                 "is_owned": True,
@@ -236,13 +280,7 @@ async def twitch_callback(
 
     await db.flush()
 
-    if settings.twitch_eventsub_callback_url and settings.twitch_webhook_secret:
-        eventsub = TwitchEventSubClient(access_token)
-        for event_type in EVENT_TYPES:
-            try:
-                await eventsub.create_subscription(event_type, broadcaster_id)
-            except Exception:
-                pass
+    await _ensure_stream_eventsub(stream, access_token)
 
     if stored.get("invite") or stored.get("upgrade_stream_id"):
         await cache.delete(f"invite:{stored['invite']}") if stored.get("invite") else None
@@ -277,6 +315,14 @@ async def twitch_status(
                 "channel_name": s.channel_name,
                 "external_id": s.external_id,
                 "is_live": s.is_live,
+                "chat_events_ready": (
+                    (s.settings or {}).get("eventsub_subscriptions", {})
+                    .get("channel.chat.message", {})
+                    .get("status") == "enabled"
+                ),
+                "eventsub_subscriptions": (s.settings or {}).get(
+                    "eventsub_subscriptions", {}
+                ),
             }
             for s in streams
         ],
@@ -289,8 +335,6 @@ async def subscribe_events(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    from app.core.security import decrypt_value
-
     result = await db.execute(
         select(Stream).where(
             Stream.id == stream_id,
@@ -302,17 +346,14 @@ async def subscribe_events(
     if not stream or not stream.oauth_token_encrypted:
         raise NotFoundError("Stream")
 
-    access_token = decrypt_value(stream.oauth_token_encrypted)
-    eventsub = TwitchEventSubClient(access_token)
-    subs = []
-    for event_type in EVENT_TYPES:
-        try:
-            sub = await eventsub.create_subscription(event_type, stream.external_id)
-            subs.append({"type": event_type, "status": "ok", "id": sub.get("data", [{}])[0].get("id")})
-        except Exception as e:
-            subs.append({"type": event_type, "status": "error", "message": str(e)})
+    from app.services.platforms.oauth_tokens import get_stream_access_token
 
-    return {"subscriptions": subs}
+    access_token = await get_stream_access_token(stream)
+    if not access_token:
+        raise ValidationError("Vuelve a conectar Twitch para renovar sus permisos")
+    report = await _ensure_stream_eventsub(stream, access_token)
+    await db.flush()
+    return {"subscriptions": report}
 
 
 async def _get_twitch_user(access_token: str) -> Optional[dict]:

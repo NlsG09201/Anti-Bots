@@ -78,3 +78,14 @@ def require_roles(*roles: UserRole):
 CurrentUser = Annotated[User, Depends(get_current_user)]
 AdminUser = Annotated[User, Depends(require_roles(UserRole.ADMIN, UserRole.SUPER_ADMIN))]
 AnalystUser = Annotated[User, Depends(require_roles(UserRole.ANALYST, UserRole.ADMIN, UserRole.SUPER_ADMIN))]
+StreamModeratorUser = Annotated[
+    User,
+    Depends(
+        require_roles(
+            UserRole.STREAMER,
+            UserRole.ANALYST,
+            UserRole.ADMIN,
+            UserRole.SUPER_ADMIN,
+        )
+    ),
+]

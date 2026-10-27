@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import AnalystUser, CurrentUser
+from app.api.dependencies import AnalystUser, CurrentUser, StreamModeratorUser
 from app.api.v1.schemas import AttackResponse, AlertResponse, BanCreate, BanResponse, MitigationRequest
 from app.core.exceptions import NotFoundError, ValidationError
 from app.infrastructure.database.models import Alert, Attack, Ban, Stream
@@ -65,7 +65,7 @@ async def get_attack(
 async def mitigate_attack(
     attack_id: UUID,
     data: MitigationRequest,
-    current_user: AnalystUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(

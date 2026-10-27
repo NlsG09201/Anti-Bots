@@ -33,27 +33,31 @@ async def ban_user_on_twitch(
             }
         body["data"]["duration"] = duration_seconds
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.post(
-            "https://api.twitch.tv/helix/moderation/bans",
-            params={
-                "broadcaster_id": broadcaster_id,
-                # The OAuth flow connects the broadcaster account, so the token
-                # user ID and moderator ID are the same for this integration.
-                "moderator_id": broadcaster_id,
-            },
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Client-Id": settings.twitch_client_id,
-                "Content-Type": "application/json",
-            },
-            json=body,
-        )
-        if response.status_code not in (200, 201):
-            logger.warning(
-                "twitch_ban_failed",
-                status=response.status_code,
-                body=response.text[:300],
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                "https://api.twitch.tv/helix/moderation/bans",
+                params={
+                    "broadcaster_id": broadcaster_id,
+                    # This OAuth integration authorizes the broadcaster account.
+                    "moderator_id": broadcaster_id,
+                },
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Client-Id": settings.twitch_client_id,
+                    "Content-Type": "application/json",
+                },
+                json=body,
             )
-            return {"ok": False, "status": response.status_code, "detail": response.text}
-        return {"ok": True, "data": response.json()}
+    except httpx.HTTPError as exc:
+        logger.warning("twitch_ban_request_failed", error=str(exc)[:200])
+        return {"ok": False, "status": 502, "detail": str(exc)[:240]}
+
+    if response.status_code not in (200, 201):
+        logger.warning(
+            "twitch_ban_failed",
+            status=response.status_code,
+            body=response.text[:300],
+        )
+        return {"ok": False, "status": response.status_code, "detail": response.text}
+    return {"ok": True, "data": response.json()}

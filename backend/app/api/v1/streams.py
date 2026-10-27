@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 
-from app.api.dependencies import CurrentUser
+from app.api.dependencies import CurrentUser, StreamModeratorUser
 from app.api.v1.schemas import (
     BlockViewerRequest,
     DashboardCharts,
@@ -784,7 +784,7 @@ async def list_viewers(
 @router.post("/{stream_id}/viewers/ban-suspected")
 async def ban_all_suspected_viewers(
     stream_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
     apply_twitch_ban: bool = Query(True),
     duration_hours: Optional[int] = Query(24, ge=1, le=336),
@@ -867,10 +867,9 @@ async def block_viewer(
     stream_id: UUID,
     viewer_id: UUID,
     body: BlockViewerRequest,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
-    from app.core.security import decrypt_value
     from app.integrations.twitch.moderation import ban_user_on_twitch
     from app.infrastructure.database.models import MitigationAction
 
@@ -960,14 +959,19 @@ async def block_viewer(
         and session.platform_user_id.isdigit()
     )
     if can_twitch:
-        token = decrypt_value(stream.oauth_token_encrypted)
-        twitch_result = await ban_user_on_twitch(
-            stream.external_id,
-            token,
-            session.platform_user_id,
-            reason=body.reason,
-            duration_seconds=timeout_seconds,
-        )
+        from app.services.platforms.oauth_tokens import get_stream_access_token
+
+        token = await get_stream_access_token(stream)
+        if token:
+            twitch_result = await ban_user_on_twitch(
+                stream.external_id,
+                token,
+                session.platform_user_id,
+                reason=body.reason,
+                duration_seconds=timeout_seconds,
+            )
+        else:
+            twitch_result = {"ok": False, "status": 401, "detail": "Reautoriza Twitch."}
 
     session.is_active = False
     session.left_at = datetime.now(timezone.utc)

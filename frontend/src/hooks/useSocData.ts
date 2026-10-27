@@ -42,7 +42,6 @@ export function useSocData() {
   const queryClient = useQueryClient();
   const [liveStats, setLiveStats] = useState<DashboardStats | null>(null);
   const [liveCharts, setLiveCharts] = useState<DashboardCharts | null>(null);
-  const [liveAlerts, setLiveAlerts] = useState<Alert[]>([]);
   const [liveEvents, setLiveEvents] = useState<
     { time: string; label: string; risk: number; platform?: string }[]
   >([]);
@@ -50,13 +49,6 @@ export function useSocData() {
 
   const onWsMessage = useCallback(
     (msg: { type: string; data?: Record<string, unknown> }) => {
-      if (msg.type === "alert" && msg.data) {
-        setLiveAlerts((prev) => [msg.data as unknown as Alert, ...prev].slice(0, 30));
-        queryClient.invalidateQueries({ queryKey: ["alerts"] });
-      }
-      if (msg.type === "attack_detected") {
-        queryClient.invalidateQueries({ queryKey: ["attacks"] });
-      }
       if (msg.type === "stats_update" && msg.data) {
         const d = msg.data;
         const chartsPayload = d.charts as DashboardCharts | undefined;
@@ -178,7 +170,7 @@ export function useSocData() {
   const displayStats = liveStats ?? stats;
   const timeline = liveCharts?.timeline ?? charts?.timeline ?? [];
   const heatmap = liveCharts?.heatmap ?? charts?.heatmap ?? [];
-  const displayAlerts = liveAlerts.length > 0 ? liveAlerts : alerts;
+  const displayAlerts = alerts;
 
   const mapThreats: MapThreat[] = useMemo(() => {
     const points: MapThreat[] = [];

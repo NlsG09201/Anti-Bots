@@ -24,7 +24,6 @@ from app.live_intel.rankings import build_rankings
 from app.live_intel.schemas import LiveIntelOverview, LiveStreamSnapshot
 from app.live_intel.tracker import get_live_intel_tracker
 from app.services.platforms.registry import get_platform_adapter
-from app.services.streams.helpers import sync_stream_live_status
 
 logger = get_logger(__name__)
 _settings = get_settings()
@@ -39,6 +38,7 @@ def is_competitive_stream(stream: Stream) -> bool:
         meta.get("competitive_intel")
         or meta.get("soc_monitor")
         or meta.get("monitor_mode")
+        or (meta.get("is_owned") and bool(stream.oauth_token_encrypted))
     )
 
 
@@ -93,8 +93,21 @@ class LiveIntelEngine:
             logger.debug("live_intel_fetch_failed", stream_id=sid, error=str(exc)[:120])
             return self._snapshots.get(sid)
 
-        prev = self._prev_viewers.get(sid, stream.viewer_count)
+        prev = self._prev_viewers.get(sid, live.viewer_count)
         was_live = self._was_live.get(sid, False)
+        stream.is_live = live.is_live
+        stream.viewer_count = live.viewer_count if live.is_live else 0
+        stream_meta = dict(stream.settings or {})
+        stream_meta["stream_title"] = live.title
+        if live.is_live:
+            history = (
+                list(stream_meta.get("viewer_history", [])) if was_live else []
+            )
+            history.append(
+                {"count": live.viewer_count, "at": datetime.now(timezone.utc).isoformat()}
+            )
+            stream_meta["viewer_history"] = history[-120:]
+        stream.settings = stream_meta
 
         if live.is_live and not was_live:
             await self._store.start_session(
@@ -276,6 +289,7 @@ class LiveIntelEngine:
         correlation = CorrelationService(db)
         attack = await correlation.get_active_attack(stream.id, AttackType.VIEWBOT)
         should_broadcast = attack is None
+        alert_payload = None
         evidence = {
             "source": "viewer_flow_ai",
             "viewer_delta": viewer_delta,
@@ -301,7 +315,7 @@ class LiveIntelEngine:
                 source_ips=[],
                 fingerprints=[],
             )
-            await correlation.create_alert(
+            alert = await correlation.create_alert(
                 stream.tenant_id,
                 attack,
                 "Anomalía en el flujo de viewers",
@@ -310,6 +324,15 @@ class LiveIntelEngine:
                     f"en el último intervalo; riesgo estimado {score:.0f}/100."
                 ),
             )
+            alert.source = "live_intel"
+            alert_payload = {
+                "id": str(alert.id),
+                "title": alert.title,
+                "message": alert.message,
+                "severity": alert.severity.value,
+                "status": alert.status,
+                "created_at": alert.created_at.isoformat(),
+            }
 
         await db.flush()
         if should_broadcast:
@@ -317,16 +340,9 @@ class LiveIntelEngine:
                 db,
                 stream.tenant_id,
                 await get_tenant_stream_ids(db, stream.tenant_id),
-                alert={
-                    "type": "viewer_anomaly",
-                    "stream_id": str(stream.id),
-                    "risk_score": score,
-                    "viewer_delta": viewer_delta,
-                    "flags": flags,
-                },
+                alert=alert_payload,
                 attack={"attack_id": str(attack.id), "stream_id": str(stream.id)},
             )
-
     async def reconcile_tenant(self, tenant_id: UUID) -> None:
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -335,7 +351,6 @@ class LiveIntelEngine:
             streams = [s for s in result.scalars().all() if is_competitive_stream(s)]
             for stream in streams[: _settings.live_intel_max_streams]:
                 try:
-                    stream = await sync_stream_live_status(db, stream)
                     await self.sample_stream(stream, db=db)
                 except Exception as exc:
                     logger.debug(
@@ -352,7 +367,6 @@ class LiveIntelEngine:
             streams.sort(key=lambda s: (not s.is_live, s.channel_name))
             for stream in streams[: _settings.live_intel_max_streams]:
                 try:
-                    stream = await sync_stream_live_status(db, stream)
                     snap = await self.sample_stream(stream, db=db)
                     if snap:
                         await self._broadcast_tenant(str(stream.tenant_id))

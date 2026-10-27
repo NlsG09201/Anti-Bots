@@ -40,6 +40,10 @@ async def get_stream_access_token(stream: Stream) -> Optional[str]:
             from app.integrations.kick.oauth import KickOAuth
 
             data = await KickOAuth().refresh_token(refresh)
+        elif stream.platform == Platform.TWITCH:
+            from app.integrations.twitch.oauth import TwitchOAuth
+
+            data = await TwitchOAuth().refresh_token(refresh)
         elif stream.platform == Platform.YOUTUBE:
             from app.integrations.youtube.oauth import YouTubeOAuth
 

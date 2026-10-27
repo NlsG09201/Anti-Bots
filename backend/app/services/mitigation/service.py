@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.core.security import decrypt_value
 from app.infrastructure.cache.redis_client import RedisCache
 from app.infrastructure.database.models import (
     Attack,
@@ -20,6 +19,7 @@ from app.infrastructure.database.models import (
 from app.integrations.cloudflare.firewall import CloudflareFirewall
 from app.integrations.twitch.moderation import ban_user_on_twitch
 from app.services.streams.helpers import stream_monitor_mode
+from app.services.platforms.oauth_tokens import get_stream_access_token
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -78,7 +78,9 @@ class MitigationService:
     ) -> List[Ban]:
         bans: List[Ban] = []
         expires_at = None
-        if duration_seconds:
+        if action == MitigationAction.BAN:
+            expires_at = None
+        elif duration_seconds:
             expires_at = datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)
         elif duration_hours:
             expires_at = datetime.now(timezone.utc) + timedelta(hours=duration_hours)
@@ -202,7 +204,9 @@ class MitigationService:
         ):
             return []
 
-        token = decrypt_value(stream.oauth_token_encrypted)
+        token = await get_stream_access_token(stream)
+        if not token:
+            return []
         timeout_seconds = None
         if action == MitigationAction.TIMEOUT:
             timeout_seconds = duration_seconds or (

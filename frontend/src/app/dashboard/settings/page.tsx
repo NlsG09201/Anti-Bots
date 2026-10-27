@@ -33,7 +33,7 @@ function SettingsContent() {
 
   useEffect(() => {
     if (searchParams.get("twitch") === "connected") {
-      setMessage("Twitch conectado correctamente. EventSub suscripciones activadas.");
+      setMessage("Twitch conectado. Se actualizó el estado de permisos y EventSub.");
       queryClient.invalidateQueries({ queryKey: ["twitch-status"] });
     }
     if (searchParams.get("kick") === "connected") {
@@ -142,7 +142,7 @@ function SettingsContent() {
   });
 
   const connectTwitch = useMutation({
-    mutationFn: () => api.twitch.authorize(token),
+    mutationFn: (streamId?: string) => api.twitch.authorize(token, streamId),
     onSuccess: (data) => {
       if (!data.authorization_url) {
         setMessage("No se recibió URL de autorización de Twitch.");
@@ -152,6 +152,22 @@ function SettingsContent() {
     },
     onError: (err: unknown) => {
       setMessage(err instanceof Error ? err.message : "Error al conectar con Twitch");
+    },
+  });
+
+  const retryTwitchEventSub = useMutation({
+    mutationFn: (streamId: string) => api.twitch.subscribe(token, streamId),
+    onSuccess: (result) => {
+      const chatReady = result.subscriptions["channel.chat.message"]?.status === "enabled";
+      setMessage(
+        chatReady
+          ? "EventSub de chat quedó activo."
+          : "EventSub sigue pendiente; revisa el error y actualiza los permisos Twitch si hace falta.",
+      );
+      queryClient.invalidateQueries({ queryKey: ["twitch-status"] });
+    },
+    onError: (err: unknown) => {
+      setMessage(err instanceof Error ? err.message : "No se pudo reintentar EventSub");
     },
   });
 
@@ -242,16 +258,46 @@ function SettingsContent() {
             {twitchStatus.channels.map((ch) => (
               <div
                 key={ch.id}
-                className="flex items-center justify-between p-3 bg-cyber-bg rounded border border-cyber-border"
+                className="flex flex-wrap items-center justify-between gap-3 p-3 bg-cyber-bg rounded border border-cyber-border"
               >
-                <span className="text-white font-medium">{ch.channel_name}</span>
-                <span
-                  className={
-                    ch.is_live ? "text-cyber-accent text-xs" : "text-cyber-muted text-xs"
-                  }
-                >
-                  {ch.is_live ? "EN VIVO" : "Offline"}
-                </span>
+                <div>
+                  <span className="text-white font-medium">{ch.channel_name}</span>
+                  <p className={ch.chat_events_ready ? "text-cyber-accent text-xs" : "text-cyber-warning text-xs"}>
+                    {ch.chat_events_ready
+                      ? "EventSub chat activo · permisos listos"
+                      : ch.eventsub_subscriptions?.["channel.chat.message"]?.status === "not_configured"
+                        ? "Webhook no configurado en el servidor"
+                        : "Chat EventSub pendiente · reintenta o actualiza permisos de Twitch"}
+                  </p>
+                  {!ch.chat_events_ready && ch.eventsub_subscriptions?.["channel.chat.message"]?.message && (
+                    <p className="text-xs text-cyber-muted mt-1">
+                      {ch.eventsub_subscriptions["channel.chat.message"].message}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={ch.is_live ? "text-cyber-accent text-xs" : "text-cyber-muted text-xs"}>
+                    {ch.is_live ? "EN VIVO" : "Offline"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => connectTwitch.mutate(ch.id)}
+                    disabled={connectTwitch.isPending}
+                    className="text-xs px-3 py-2 rounded border border-cyber-info/40 text-cyber-info hover:bg-cyber-info/10 disabled:opacity-50"
+                  >
+                    {connectTwitch.isPending ? "Conectando…" : "Actualizar permisos"}
+                  </button>
+                  {!ch.chat_events_ready && (
+                    <button
+                      type="button"
+                      onClick={() => retryTwitchEventSub.mutate(ch.id)}
+                      disabled={retryTwitchEventSub.isPending}
+                      className="text-xs px-3 py-2 rounded border border-cyber-warning/40 text-cyber-warning hover:bg-cyber-warning/10 disabled:opacity-50"
+                    >
+                      {retryTwitchEventSub.isPending ? "Reintentando…" : "Reintentar EventSub"}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

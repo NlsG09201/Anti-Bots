@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import List
 
-from app.core.security import decrypt_value
 from app.infrastructure.database.models import Platform, Stream
 from app.integrations.twitch.helix import TwitchHelixClient
 from app.services.platforms.base import LiveStatus, PlatformAdapter, ViewerSnapshot
+from app.services.platforms.oauth_tokens import get_stream_access_token
 
 
 class TwitchPlatformAdapter(PlatformAdapter):
@@ -37,18 +37,25 @@ class TwitchPlatformAdapter(PlatformAdapter):
     async def fetch_viewers(self, stream: Stream) -> List[ViewerSnapshot]:
         if not stream.oauth_token_encrypted or not stream.external_id:
             return []
-        token = decrypt_value(stream.oauth_token_encrypted)
+        token = await get_stream_access_token(stream)
+        if not token:
+            return []
         names = await self._helix.get_chatters(
             stream.external_id,
             stream.external_id,
             token,
         )
-        return [
-            ViewerSnapshot(
-                platform_user_id=name.lower(),
-                platform_username=name,
-                is_in_chat=True,
-                metadata={"source": "helix_chatters"},
+        snapshots = []
+        for chatter in names:
+            username = chatter.get("user_login") or chatter.get("user_name")
+            if not username:
+                continue
+            snapshots.append(
+                ViewerSnapshot(
+                    platform_user_id=str(chatter.get("user_id") or username),
+                    platform_username=username,
+                    is_in_chat=True,
+                    metadata={"source": "helix_chatters"},
+                )
             )
-            for name in names
-        ]
+        return snapshots

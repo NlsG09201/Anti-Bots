@@ -867,6 +867,7 @@ export const api = {
         message: string;
         local_only?: boolean;
         username?: string;
+        twitch_ban?: { ok: boolean; status?: number; detail?: string } | null;
       }>(
         `/api/v1/streams/${streamId}/viewers/${viewerId}/block`,
         { method: "POST", body: JSON.stringify(body) },
@@ -966,7 +967,14 @@ export const api = {
         configured: boolean;
         credentials_ok: boolean;
         redirect_uri: string;
-        channels: { id: string; channel_name: string; external_id: string; is_live: boolean }[];
+        channels: {
+          id: string;
+          channel_name: string;
+          external_id: string;
+          is_live: boolean;
+          chat_events_ready: boolean;
+          eventsub_subscriptions: Record<string, { status: string; message?: string }>;
+        }[];
       }>("/api/v1/integrations/twitch/status", {}, token),
     setup: (token: ApiAuthToken) =>
       request<{
@@ -977,8 +985,16 @@ export const api = {
         register_at: string;
         hint: string;
       }>("/api/v1/integrations/twitch/setup", {}, token),
-    authorize: (token: ApiAuthToken) =>
-      request<{ authorization_url: string }>("/api/v1/integrations/twitch/authorize", {}, token),
+    authorize: (token: ApiAuthToken, streamId?: string) =>
+      request<{ authorization_url: string }>(
+        `/api/v1/integrations/twitch/authorize${streamId ? `?upgrade_stream_id=${streamId}` : ""}`,
+        {},
+        token,
+      ),
+    subscribe: (token: ApiAuthToken, streamId: string) =>
+      request<{
+        subscriptions: Record<string, { status: string; message?: string }>;
+      }>(`/api/v1/integrations/twitch/subscribe/${streamId}`, { method: "POST" }, token),
   },
   kick: {
     status: (token: ApiAuthToken) =>

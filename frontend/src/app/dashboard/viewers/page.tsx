@@ -361,7 +361,10 @@ function ViewersContent() {
         apply_twitch_ban: currentStream?.platform === "twitch" && !currentStream.monitor_mode,
       }),
     onSuccess: (res) => {
-      setMessage(res.message || "Usuario bloqueado");
+      const twitchError = res.twitch_ban?.ok === false
+        ? ` Twitch respondió ${res.twitch_ban.status ?? "con error"}: ${res.twitch_ban.detail ?? "revisa permisos y conexión"}`
+        : "";
+      setMessage(`${res.message || "Usuario bloqueado"}${twitchError}`);
       queryClient.invalidateQueries({ queryKey: ["viewers"] });
     },
     onError: (e: Error) => setMessage(e.message),
