@@ -509,7 +509,9 @@ class ThreatIntelligenceEngine:
         if engagement.growth_anomaly:
             insights.append("Anomalía de crecimiento de viewers detectada.")
         if engagement.engagement_health_score < 35:
-            insights.append("Engagement health crítico — posible viewbotting.")
+            insights.append(
+                "Engagement health crítico; revisar junto con otras señales."
+            )
         if engagement.synthetic_engagement_score > 60:
             insights.append("Engagement sintético elevado.")
         if graph.coordination_score > 0.5:

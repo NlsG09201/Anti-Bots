@@ -34,7 +34,7 @@ export function EngagementHealthPanel({ metrics }: Props) {
   const chartData = [
     { name: "Viewers", value: metrics.viewers_total },
     { name: "Sospechosos", value: metrics.viewers_suspected },
-    { name: "Reales (est.)", value: metrics.viewers_real_estimate },
+    { name: "Sin señal sospechosa (est.)", value: metrics.viewers_real_estimate },
     { name: "Chat activo", value: metrics.active_chatters },
     { name: "Chat único", value: metrics.unique_chatters },
   ];
@@ -61,15 +61,47 @@ export function EngagementHealthPanel({ metrics }: Props) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Metric label="Engagement %" value={`${metrics.engagement_percent.toFixed(1)}%`} />
         <Metric label="Msg / min" value={metrics.messages_per_minute.toFixed(1)} />
-        <Metric label="Ratio viewer/chat" value={metrics.viewer_to_chat_ratio.toFixed(4)} />
-        <Metric label="Synth. engagement" value={`${metrics.synthetic_engagement_score.toFixed(0)}`} danger={metrics.synthetic_engagement_score > 50} />
+        <Metric label="Ratio chat/viewers" value={metrics.viewer_to_chat_ratio.toFixed(4)} />
+        <Metric
+          label="Señal de engagement sintético"
+          value={metrics.synthetic_engagement_score.toFixed(0)}
+          danger={metrics.synthetic_engagement_score > 50}
+        />
       </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <Metric
+          label={`Identificados (${metrics.measurement_window_seconds}s)`}
+          value={String(metrics.identified_viewers)}
+        />
+        <Metric
+          label="Cobertura observable"
+          value={
+            metrics.viewer_count_source === "platform"
+              ? `${metrics.data_coverage_percent.toFixed(1)}%`
+              : "No disponible"
+          }
+        />
+        <Metric label="Calidad de datos" value={`${metrics.data_quality_score.toFixed(0)}/100`} />
+      </div>
+
+      <p className="text-xs text-cyber-muted">
+        La cobertura compara viewers con evento reciente y el conteo reportado por la
+        plataforma. Calidad resume tamaño, frescura y cobertura de la muestra; no es
+        una probabilidad de fraude.
+      </p>
+
+      {metrics.signals.length > 0 && (
+        <ul className="space-y-1 text-xs text-cyber-muted list-disc pl-5">
+          {metrics.signals.map((signal) => <li key={signal}>{signal}</li>)}
+        </ul>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {metrics.growth_anomaly && (
           <Badge variant="danger">Anomalía de crecimiento</Badge>
         )}
-        {metrics.lexical_diversity < 0.2 && (
+        {metrics.lexical_diversity > 0 && metrics.lexical_diversity < 0.2 && (
           <Badge variant="warning">Baja diversidad léxica</Badge>
         )}
         {metrics.synthetic_engagement_score > 60 && (

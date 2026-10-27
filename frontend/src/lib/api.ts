@@ -1897,6 +1897,8 @@ export interface LiveIntelAnomaly {
 export interface EngagementMetrics {
   stream_id: string;
   viewers_total: number;
+  identified_viewers: number;
+  viewer_count_source: "platform" | "event_sample" | "unavailable";
   viewers_suspected: number;
   viewers_real_estimate: number;
   engagement_percent: number;
@@ -1904,6 +1906,10 @@ export interface EngagementMetrics {
   unique_chatters: number;
   messages_per_minute: number;
   viewer_to_chat_ratio: number;
+  measurement_window_seconds: number;
+  data_coverage_percent: number;
+  data_quality_score: number;
+  signals: string[];
   engagement_health_score: number;
   growth_anomaly: boolean;
   lexical_diversity: number;

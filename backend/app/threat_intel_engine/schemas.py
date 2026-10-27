@@ -31,6 +31,8 @@ class EntityReputation(BaseModel):
 class EngagementMetrics(BaseModel):
     stream_id: str
     viewers_total: int = 0
+    identified_viewers: int = 0
+    viewer_count_source: str = "unavailable"
     viewers_suspected: int = 0
     viewers_real_estimate: int = 0
     engagement_percent: float = 0.0
@@ -38,6 +40,14 @@ class EngagementMetrics(BaseModel):
     unique_chatters: int = 0
     messages_per_minute: float = 0.0
     viewer_to_chat_ratio: float = 0.0
+    measurement_window_seconds: int = 60
+    data_coverage_percent: float = 0.0
+    data_quality_score: float = 0.0
+    signals: List[str] = Field(
+        default_factory=lambda: [
+            "Las señales son estimaciones basadas en eventos observados; no prueban viewbotting."
+        ]
+    )
     engagement_health_score: float = 50.0
     growth_anomaly: bool = False
     lexical_diversity: float = 0.0

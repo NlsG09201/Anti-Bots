@@ -13,11 +13,22 @@ from app.api.dependencies import AnalystUser, get_db
 from app.infrastructure.database.models import Stream
 from app.threat_intel_engine import get_threat_intel_engine
 from app.threat_intel_engine.mongo_store import ThreatIntelMongoStore
+from app.threat_intel_engine.schemas import EngagementMetrics
 
 router = APIRouter(
     prefix="/streaming-intelligence",
     tags=["Streaming Threat Intelligence"],
 )
+
+
+def _normalize_engagement(doc: Dict[str, Any], stream_id: UUID) -> Dict[str, Any]:
+    payload = {
+        key: value for key, value in doc.items()
+        if key in EngagementMetrics.model_fields and key != "updated_at"
+    }
+    payload["stream_id"] = str(stream_id)
+    payload["updated_at"] = str(doc.get("updated_at") or "")
+    return EngagementMetrics.model_validate(payload).model_dump()
 
 
 @router.get("/overview")
@@ -67,10 +78,13 @@ async def stream_intelligence(
     edges = await store.get_graph_edges(
         str(current_user.tenant_id), str(stream_id)
     )
+    normalized_engagement = (
+        _normalize_engagement(engagement, stream_id) if engagement else None
+    )
     return {
         "stream_id": str(stream_id),
         "cached": cached,
-        "engagement": engagement,
+        "engagement": normalized_engagement,
         "graph_edge_count": len(edges),
     }
 
@@ -88,7 +102,11 @@ async def stream_engagement(
     if not doc:
         live = get_threat_intel_engine().live_engagement(str(stream_id))
         return {"stream_id": str(stream_id), "engagement": live.model_dump(), "source": "live"}
-    return {"stream_id": str(stream_id), "engagement": doc, "source": "mongodb"}
+    return {
+        "stream_id": str(stream_id),
+        "engagement": _normalize_engagement(doc, stream_id),
+        "source": "mongodb",
+    }
 
 
 @router.get("/streams/{stream_id}/graph")
