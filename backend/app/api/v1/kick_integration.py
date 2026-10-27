@@ -65,11 +65,28 @@ async def kick_setup(_user: CurrentUser):
 async def kick_authorize(
     current_user: CurrentUser,
     upgrade_stream_id: Optional[UUID] = Query(None),
+    db: AsyncSession = Depends(get_db),
 ):
     if not kick_credentials_valid():
         raise ValidationError(
             "Kick OAuth no configurado. Define KICK_CLIENT_ID en Render."
         )
+    if upgrade_stream_id:
+        result = await db.execute(
+            select(Stream).where(
+                Stream.id == upgrade_stream_id,
+                Stream.tenant_id == current_user.tenant_id,
+                Stream.platform == Platform.KICK,
+            )
+        )
+        stream = result.scalar_one_or_none()
+        if not stream:
+            raise NotFoundError("Kick account")
+        if stream.owner_id != current_user.id and current_user.role not in (
+            UserRole.ADMIN,
+            UserRole.SUPER_ADMIN,
+        ):
+            raise AuthorizationError("Only the account owner or a tenant administrator can reconnect it")
     oauth = KickOAuth()
     url, state, verifier = oauth.build_authorize_payload()
     cache = RedisCache(prefix="oauth")
@@ -162,6 +179,11 @@ async def kick_callback(
             )
         )
         stream = result.scalar_one_or_none()
+        if stream and str(stream.external_id) != user_id:
+            return _frontend_redirect(
+                "/dashboard/settings?kick_error=account_mismatch"
+                "&kick_msg=La+cuenta+Kick+autorizada+no+coincide+con+el+canal+seleccionado"
+            )
 
     if not stream:
         result = await db.execute(

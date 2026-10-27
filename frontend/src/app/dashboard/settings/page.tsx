@@ -172,7 +172,7 @@ function SettingsContent() {
   });
 
   const connectKick = useMutation({
-    mutationFn: () => api.kick.authorize(token),
+    mutationFn: (streamId?: string) => api.kick.authorize(token, streamId),
     onSuccess: (data) => {
       if (data.authorization_url) window.location.href = data.authorization_url;
     },
@@ -403,7 +403,7 @@ function SettingsContent() {
             <code className="text-cyber-info break-all">{kickSetup.redirect_uri}</code>
           </p>
         )}
-        {kickStatus?.connected ? (
+        {kickStatus?.channels?.length ? (
           <div className="space-y-2">
             {kickStatus.channels.map((ch) => (
               <div
@@ -416,15 +416,27 @@ function SettingsContent() {
                     {ch.is_live ? "LIVE" : "Offline"} · OAuth {ch.has_oauth ? "✓" : "—"}
                   </p>
                 </div>
-                {ch.has_oauth && ch.can_disconnect && (
-                  <button
-                    type="button"
-                    onClick={() => requestDisconnect("Kick", ch.id)}
-                    disabled={disconnectKick.isPending}
-                    className="text-xs px-3 py-2 rounded border border-red-400/40 text-red-300 hover:bg-red-400/10 disabled:opacity-50"
-                  >
-                    {disconnectKick.isPending ? "Desconectando..." : "Desconectar"}
-                  </button>
+                {ch.can_disconnect && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => connectKick.mutate(ch.id)}
+                      disabled={!kickStatus?.configured || connectKick.isPending}
+                      className="text-xs px-3 py-2 rounded border border-cyber-accent/40 text-cyber-accent hover:bg-cyber-accent/10 disabled:opacity-50"
+                    >
+                      {connectKick.isPending ? "Conectando..." : ch.has_oauth ? "Reconectar" : "Conectar"}
+                    </button>
+                    {ch.has_oauth && (
+                      <button
+                        type="button"
+                        onClick={() => requestDisconnect("Kick", ch.id)}
+                        disabled={disconnectKick.isPending}
+                        className="text-xs px-3 py-2 rounded border border-red-400/40 text-red-300 hover:bg-red-400/10 disabled:opacity-50"
+                      >
+                        {disconnectKick.isPending ? "Desconectando..." : "Desconectar"}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}

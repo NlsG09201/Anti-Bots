@@ -1047,8 +1047,12 @@ export const api = {
         register_at: string;
         hint: string;
       }>("/api/v1/integrations/kick/setup", {}, token),
-    authorize: (token: ApiAuthToken) =>
-      request<{ authorization_url: string }>("/api/v1/integrations/kick/authorize", {}, token),
+    authorize: (token: ApiAuthToken, streamId?: string) =>
+      request<{ authorization_url: string }>(
+        `/api/v1/integrations/kick/authorize${streamId ? `?upgrade_stream_id=${encodeURIComponent(streamId)}` : ""}`,
+        {},
+        token,
+      ),
     disconnect: (token: ApiAuthToken, streamId: string) =>
       request<{ disconnected: boolean; provider_revoked: boolean }>(
         `/api/v1/integrations/kick/disconnect/${streamId}`,
