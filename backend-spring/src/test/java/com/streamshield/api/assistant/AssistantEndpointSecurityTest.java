@@ -1,11 +1,11 @@
 package com.streamshield.api.assistant;
 
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Objects;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -28,6 +29,16 @@ class AssistantEndpointSecurityTest {
     private final UUID streamId = UUID.fromString("50b64ad4-e324-4d9d-9a34-01b649b67e1a");
     private final UUID otherStreamId = UUID.fromString("e2ea1e97-4f10-45b0-9f05-d4ac08398d83");
     private final UUID otherTenantId = UUID.fromString("e6862350-779e-4c75-89ad-19126f62e477");
+
+    private RequestPostProcessor jwtForTenant(UUID tokenTenantId, String role) {
+        return Objects.requireNonNull(jwt().jwt(token -> token
+                .subject(userId.toString())
+                .claim("jti", "test-token-id")
+                .claim("type", "access")
+                .claim("tenant_id", tokenTenantId.toString())
+                .claim("role", role))
+                .authorities(new SimpleGrantedAuthority("ROLE_" + role)));
+    }
 
     @BeforeEach
     void insertActiveUser() {
@@ -52,13 +63,7 @@ class AssistantEndpointSecurityTest {
     @Test
     void analystReceivesCompatibleAssistantResponse() throws Exception {
         mvc.perform(post("/api/v1/assistant/chat")
-                        .with(jwt().jwt(token -> token
-                                .subject(userId.toString())
-                                .claim("jti", "test-token-id")
-                                .claim("type", "access")
-                                .claim("tenant_id", tenantId.toString())
-                                .claim("role", "analyst"))
-                                .authorities(new SimpleGrantedAuthority("ROLE_ANALYST")))
+                        .with(jwtForTenant(tenantId, "analyst"))
                         .contentType("application/json")
                         .content("{\"message\":\"¿Cómo detecto un viewbot?\",\"history\":[]}"))
                 .andExpect(status().isOk())
@@ -70,13 +75,7 @@ class AssistantEndpointSecurityTest {
     @Test
     void deniesUserFromDifferentTenant() throws Exception {
         mvc.perform(post("/api/v1/assistant/chat")
-                        .with(jwt().jwt(token -> token
-                                .subject(userId.toString())
-                                .claim("jti", "test-token-id")
-                                .claim("type", "access")
-                                .claim("tenant_id", otherTenantId.toString())
-                                .claim("role", "analyst"))
-                                .authorities(new SimpleGrantedAuthority("ROLE_ANALYST")))
+                        .with(jwtForTenant(otherTenantId, "analyst"))
                         .contentType("application/json")
                         .content("{\"message\":\"¿Cómo detecto un viewbot?\",\"history\":[]}"))
                 .andExpect(status().isUnauthorized());
@@ -85,13 +84,7 @@ class AssistantEndpointSecurityTest {
     @Test
     void jpaStreamQueryReturnsOnlyTheAuthenticatedTenant() throws Exception {
         mvc.perform(get("/api/v1/spring/streams")
-                        .with(jwt().jwt(token -> token
-                                .subject(userId.toString())
-                                .claim("jti", "test-token-id")
-                                .claim("type", "access")
-                                .claim("tenant_id", tenantId.toString())
-                                .claim("role", "analyst"))
-                                .authorities(new SimpleGrantedAuthority("ROLE_ANALYST"))))
+                        .with(jwtForTenant(tenantId, "analyst")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(streamId.toString()))
                 .andExpect(jsonPath("$[0].channelName").value("streamshield-test"))
@@ -102,13 +95,7 @@ class AssistantEndpointSecurityTest {
     @Test
     void deniesRolesBelowAnalyst() throws Exception {
         mvc.perform(post("/api/v1/assistant/chat")
-                        .with(jwt().jwt(token -> token
-                                .subject(userId.toString())
-                                .claim("jti", "test-token-id")
-                                .claim("type", "access")
-                                .claim("tenant_id", tenantId.toString())
-                                .claim("role", "streamer"))
-                                .authorities(new SimpleGrantedAuthority("ROLE_STREAMER")))
+                        .with(jwtForTenant(tenantId, "streamer"))
                         .contentType("application/json")
                         .content("{\"message\":\"¿Cómo detecto un viewbot?\",\"history\":[]}"))
                 .andExpect(status().isForbidden());
