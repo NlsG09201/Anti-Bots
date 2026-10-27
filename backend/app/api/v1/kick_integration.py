@@ -15,11 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.core.security import encrypt_value
 from app.infrastructure.cache.redis_client import RedisCache
-from app.infrastructure.database.models import Platform, Stream
+from app.infrastructure.database.models import Platform, Stream, UserRole
 from app.infrastructure.database.session import get_db
 from app.integrations.kick.constants import resolve_kick_redirect_uri
 from app.integrations.kick.oauth import KickOAuth, kick_credentials_valid
@@ -251,10 +251,43 @@ async def kick_status(current_user: CurrentUser, db: AsyncSession = Depends(get_
                 "external_id": s.external_id,
                 "is_live": s.is_live,
                 "has_oauth": bool(s.oauth_token_encrypted),
+                "can_disconnect": s.owner_id == current_user.id or current_user.role in (
+                    UserRole.ADMIN,
+                    UserRole.SUPER_ADMIN,
+                ),
             }
             for s in streams
         ],
     }
+
+
+@router.delete("/disconnect/{stream_id}")
+async def disconnect_kick_account(
+    stream_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Stream).where(
+            Stream.id == stream_id,
+            Stream.tenant_id == current_user.tenant_id,
+            Stream.platform == Platform.KICK,
+        )
+    )
+    stream = result.scalar_one_or_none()
+    if not stream:
+        raise NotFoundError("Kick account")
+    if stream.owner_id != current_user.id and current_user.role not in (
+        UserRole.ADMIN,
+        UserRole.SUPER_ADMIN,
+    ):
+        raise AuthorizationError("Only the account owner or a tenant administrator can disconnect it")
+
+    from app.services.platforms.oauth_revocation import disconnect_stream_account
+
+    response = await disconnect_stream_account(stream)
+    await db.commit()
+    return response
 
 
 async def _fetch_kick_profile_public(access_token: str) -> dict:

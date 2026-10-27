@@ -191,6 +191,55 @@ function SettingsContent() {
     },
   });
 
+  const disconnectTwitch = useMutation({
+    mutationFn: (streamId: string) => api.twitch.disconnect(token, streamId),
+    onSuccess: ({ provider_revoked }) => {
+      setMessage(
+        provider_revoked
+          ? "Twitch se desconectó de StreamShield y se revocó el permiso."
+          : "Twitch se desconectó de StreamShield. No se pudo confirmar la revocación en Twitch.",
+      );
+      queryClient.invalidateQueries({ queryKey: ["twitch-status"] });
+      queryClient.invalidateQueries({ queryKey: ["streams"] });
+    },
+    onError: (err: unknown) => setMessage(err instanceof Error ? err.message : "No se pudo desconectar Twitch"),
+  });
+
+  const disconnectKick = useMutation({
+    mutationFn: (streamId: string) => api.kick.disconnect(token, streamId),
+    onSuccess: ({ provider_revoked }) => {
+      setMessage(
+        provider_revoked
+          ? "Kick se desconectó de StreamShield y se revocó el permiso."
+          : "Kick se desconectó de StreamShield. No se pudo confirmar la revocación en Kick.",
+      );
+      queryClient.invalidateQueries({ queryKey: ["kick-status"] });
+      queryClient.invalidateQueries({ queryKey: ["streams"] });
+    },
+    onError: (err: unknown) => setMessage(err instanceof Error ? err.message : "No se pudo desconectar Kick"),
+  });
+
+  const disconnectYoutube = useMutation({
+    mutationFn: (streamId: string) => api.youtube.disconnect(token, streamId),
+    onSuccess: ({ provider_revoked }) => {
+      setMessage(
+        provider_revoked
+          ? "YouTube se desconectó de StreamShield y se revocó el permiso."
+          : "YouTube se desconectó de StreamShield. No se pudo confirmar la revocación en Google.",
+      );
+      queryClient.invalidateQueries({ queryKey: ["youtube-status"] });
+      queryClient.invalidateQueries({ queryKey: ["streams"] });
+    },
+    onError: (err: unknown) => setMessage(err instanceof Error ? err.message : "No se pudo desconectar YouTube"),
+  });
+
+  const requestDisconnect = (platform: "Twitch" | "Kick" | "YouTube", streamId: string) => {
+    if (!window.confirm(`¿Desconectar ${platform} de StreamShield?`)) return;
+    if (platform === "Twitch") disconnectTwitch.mutate(streamId);
+    if (platform === "Kick") disconnectKick.mutate(streamId);
+    if (platform === "YouTube") disconnectYoutube.mutate(streamId);
+  };
+
   return (
     <div className="space-y-8 max-w-3xl">
       <div>
@@ -297,6 +346,16 @@ function SettingsContent() {
                       {retryTwitchEventSub.isPending ? "Reintentando…" : "Reintentar EventSub"}
                     </button>
                   )}
+                  {ch.has_oauth && ch.can_disconnect && (
+                    <button
+                      type="button"
+                      onClick={() => requestDisconnect("Twitch", ch.id)}
+                      disabled={disconnectTwitch.isPending}
+                      className="text-xs px-3 py-2 rounded border border-red-400/40 text-red-300 hover:bg-red-400/10 disabled:opacity-50"
+                    >
+                      {disconnectTwitch.isPending ? "Desconectando..." : "Desconectar"}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -349,12 +408,24 @@ function SettingsContent() {
             {kickStatus.channels.map((ch) => (
               <div
                 key={ch.id}
-                className="flex items-center justify-between p-3 bg-cyber-bg rounded border border-cyber-border"
+                className="flex flex-wrap items-center justify-between gap-3 p-3 bg-cyber-bg rounded border border-cyber-border"
               >
-                <span className="text-white">{ch.channel_name}</span>
-                <span className="text-xs text-cyber-muted">
-                  {ch.is_live ? "LIVE" : "Offline"} · OAuth {ch.has_oauth ? "✓" : "—"}
-                </span>
+                <div>
+                  <span className="text-white">{ch.channel_name}</span>
+                  <p className="text-xs text-cyber-muted">
+                    {ch.is_live ? "LIVE" : "Offline"} · OAuth {ch.has_oauth ? "✓" : "—"}
+                  </p>
+                </div>
+                {ch.has_oauth && ch.can_disconnect && (
+                  <button
+                    type="button"
+                    onClick={() => requestDisconnect("Kick", ch.id)}
+                    disabled={disconnectKick.isPending}
+                    className="text-xs px-3 py-2 rounded border border-red-400/40 text-red-300 hover:bg-red-400/10 disabled:opacity-50"
+                  >
+                    {disconnectKick.isPending ? "Desconectando..." : "Desconectar"}
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -417,12 +488,24 @@ function SettingsContent() {
             {youtubeStatus.channels.map((ch) => (
               <div
                 key={ch.id}
-                className="flex items-center justify-between p-3 bg-cyber-bg rounded border border-cyber-border"
+                className="flex flex-wrap items-center justify-between gap-3 p-3 bg-cyber-bg rounded border border-cyber-border"
               >
-                <span className="text-white">{ch.channel_name}</span>
-                <span className="text-xs text-cyber-muted">
-                  {ch.is_live ? "LIVE" : "Offline"} · OAuth {ch.has_oauth ? "✓" : "—"}
-                </span>
+                <div>
+                  <span className="text-white">{ch.channel_name}</span>
+                  <p className="text-xs text-cyber-muted">
+                    {ch.is_live ? "LIVE" : "Offline"} · OAuth {ch.has_oauth ? "✓" : "—"}
+                  </p>
+                </div>
+                {ch.has_oauth && ch.can_disconnect && (
+                  <button
+                    type="button"
+                    onClick={() => requestDisconnect("YouTube", ch.id)}
+                    disabled={disconnectYoutube.isPending}
+                    className="text-xs px-3 py-2 rounded border border-red-400/40 text-red-300 hover:bg-red-400/10 disabled:opacity-50"
+                  >
+                    {disconnectYoutube.isPending ? "Desconectando..." : "Desconectar"}
+                  </button>
+                )}
               </div>
             ))}
           </div>

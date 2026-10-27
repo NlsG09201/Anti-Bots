@@ -993,6 +993,8 @@ export const api = {
           channel_name: string;
           external_id: string;
           is_live: boolean;
+          has_oauth: boolean;
+          can_disconnect: boolean;
           chat_events_ready: boolean;
           eventsub_subscriptions: Record<string, { status: string; message?: string }>;
         }[];
@@ -1016,6 +1018,12 @@ export const api = {
       request<{
         subscriptions: Record<string, { status: string; message?: string }>;
       }>(`/api/v1/integrations/twitch/subscribe/${streamId}`, { method: "POST" }, token),
+    disconnect: (token: ApiAuthToken, streamId: string) =>
+      request<{ disconnected: boolean; provider_revoked: boolean }>(
+        `/api/v1/integrations/twitch/disconnect/${streamId}`,
+        { method: "DELETE" },
+        token,
+      ),
   },
   kick: {
     status: (token: ApiAuthToken) =>
@@ -1029,6 +1037,7 @@ export const api = {
           external_id: string;
           is_live: boolean;
           has_oauth: boolean;
+          can_disconnect: boolean;
         }[];
       }>("/api/v1/integrations/kick/status", {}, token),
     setup: (token: ApiAuthToken) =>
@@ -1040,6 +1049,12 @@ export const api = {
       }>("/api/v1/integrations/kick/setup", {}, token),
     authorize: (token: ApiAuthToken) =>
       request<{ authorization_url: string }>("/api/v1/integrations/kick/authorize", {}, token),
+    disconnect: (token: ApiAuthToken, streamId: string) =>
+      request<{ disconnected: boolean; provider_revoked: boolean }>(
+        `/api/v1/integrations/kick/disconnect/${streamId}`,
+        { method: "DELETE" },
+        token,
+      ),
     botSettings: (token: ApiAuthToken, streamId: string) =>
       request<KickBotSettings>(`/api/v1/kick/bot/${streamId}`, {}, token),
     saveBotSettings: (token: ApiAuthToken, streamId: string, body: KickBotSettings) =>
@@ -1068,6 +1083,7 @@ export const api = {
           external_id: string;
           is_live: boolean;
           has_oauth: boolean;
+          can_disconnect: boolean;
         }[];
       }>("/api/v1/integrations/youtube/status", {}, token),
     setup: (token: ApiAuthToken) =>
@@ -1079,6 +1095,12 @@ export const api = {
       }>("/api/v1/integrations/youtube/setup", {}, token),
     authorize: (token: ApiAuthToken) =>
       request<{ authorization_url: string }>("/api/v1/integrations/youtube/authorize", {}, token),
+    disconnect: (token: ApiAuthToken, streamId: string) =>
+      request<{ disconnected: boolean; provider_revoked: boolean }>(
+        `/api/v1/integrations/youtube/disconnect/${streamId}`,
+        { method: "DELETE" },
+        token,
+      ),
   },
   aiIntel: {
     health: (token: ApiAuthToken) =>

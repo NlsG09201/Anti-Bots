@@ -12,11 +12,11 @@ import httpx
 
 from app.api.dependencies import CurrentUser
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.core.security import encrypt_value
 from app.infrastructure.cache.redis_client import RedisCache
-from app.infrastructure.database.models import Platform, Stream
+from app.infrastructure.database.models import Platform, Stream, UserRole
 from app.infrastructure.database.session import get_db
 from app.integrations.twitch.oauth import (
     TwitchOAuth,
@@ -305,7 +305,7 @@ async def twitch_status(
     )
     streams = result.scalars().all()
     return {
-        "connected": len(streams) > 0,
+        "connected": any(s.oauth_token_encrypted for s in streams),
         "configured": twitch_credentials_valid(),
         "redirect_uri": resolve_twitch_redirect_uri(),
         "credentials_ok": twitch_credentials_valid(),
@@ -315,6 +315,11 @@ async def twitch_status(
                 "channel_name": s.channel_name,
                 "external_id": s.external_id,
                 "is_live": s.is_live,
+                "has_oauth": bool(s.oauth_token_encrypted),
+                "can_disconnect": s.owner_id == current_user.id or current_user.role in (
+                    UserRole.ADMIN,
+                    UserRole.SUPER_ADMIN,
+                ),
                 "chat_events_ready": (
                     (s.settings or {}).get("eventsub_subscriptions", {})
                     .get("channel.chat.message", {})
@@ -327,6 +332,35 @@ async def twitch_status(
             for s in streams
         ],
     }
+
+
+@router.delete("/disconnect/{stream_id}")
+async def disconnect_twitch_account(
+    stream_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Stream).where(
+            Stream.id == stream_id,
+            Stream.tenant_id == current_user.tenant_id,
+            Stream.platform == Platform.TWITCH,
+        )
+    )
+    stream = result.scalar_one_or_none()
+    if not stream:
+        raise NotFoundError("Twitch account")
+    if stream.owner_id != current_user.id and current_user.role not in (
+        UserRole.ADMIN,
+        UserRole.SUPER_ADMIN,
+    ):
+        raise AuthorizationError("Only the account owner or a tenant administrator can disconnect it")
+
+    from app.services.platforms.oauth_revocation import disconnect_stream_account
+
+    response = await disconnect_stream_account(stream)
+    await db.commit()
+    return response
 
 
 @router.post("/subscribe/{stream_id}")

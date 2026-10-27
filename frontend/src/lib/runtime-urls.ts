@@ -50,37 +50,41 @@ export function resolveApiBaseUrl(): string {
  * Auth va por Bearer; no depende de cookies cross-origin.
  */
 export function resolveDirectApiBaseUrl(): string {
-  const direct =
-    process.env.NEXT_PUBLIC_API_DIRECT_URL?.replace(/\/$/, "") ||
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-    "";
+  const direct = process.env.NEXT_PUBLIC_API_DIRECT_URL?.replace(/\/$/, "") ?? "";
+  const configured = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
   if (typeof window === "undefined") {
-    return direct && !isLocalUrl(direct) ? direct : "http://localhost:8000";
+    if (direct && !isLocalUrl(direct)) return direct;
+    return configured && !isLocalUrl(configured) ? configured : "http://localhost:8000";
   }
 
   if (isLocalHost(window.location.hostname)) {
-    return direct || "http://localhost:8000";
+    return direct || configured || "http://localhost:8000";
   }
 
-  if (direct && !isLocalUrl(direct)) {
+  const frontendHost = window.location.hostname;
+  const directHost = direct ? configuredApiHost(direct) : null;
+  const configuredHost = configured ? configuredApiHost(configured) : null;
+  const isVercelHost = frontendHost.endsWith(".vercel.app");
+
+  if (direct && !isLocalUrl(direct) && directHost && directHost !== frontendHost) {
     return direct;
   }
 
-  const proxied = resolveApiBaseUrl();
-  if (proxied && !isLocalUrl(proxied)) {
-    return proxied;
-  }
-
-  // Mismo origen (proxy Vercel → Render): no usar vercel.app para llamadas largas
-  if (
-    window.location.hostname.endsWith(".vercel.app") ||
-    window.location.hostname === "anti-bots.vercel.app"
-  ) {
+  // Never treat the Vercel same-origin rewrite as the direct API target.
+  if (isVercelHost || directHost === frontendHost || configuredHost === frontendHost) {
+    if (configured && !isLocalUrl(configured) && configuredHost !== frontendHost) {
+      return configured;
+    }
     return "https://anti-bots.onrender.com";
   }
 
-  return window.location.origin;
+  if (configured && !isLocalUrl(configured)) {
+    return configured;
+  }
+
+  const proxied = resolveApiBaseUrl();
+  return proxied && !isLocalUrl(proxied) ? proxied : "https://anti-bots.onrender.com";
 }
 
 export function resolveWsBaseUrl(): string {
