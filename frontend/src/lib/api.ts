@@ -2,6 +2,8 @@ import { resolveApiBaseUrl, resolveDirectApiBaseUrl } from "@/lib/runtime-urls";
 
 // En Vercel: "" → /api/* mismo origen (rewrite a Render). Ignora localhost en el build.
 const API_URL = resolveApiBaseUrl();
+// Bearer requests go directly to Render; cookie-session endpoints stay on Vercel's proxy.
+const DIRECT_API_URL = resolveDirectApiBaseUrl();
 const SPRING_API_URL = process.env.NEXT_PUBLIC_SPRING_API_URL?.replace(/\/$/, "") ?? "";
 
 /** Token explícito o de sessionStorage; null/undefined si no hay sesión. */
@@ -95,7 +97,7 @@ async function request<T>(
   if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
 
   const csrf = getCsrfToken();
-  const apiBase = baseUrl ?? API_URL;
+  const apiBase = baseUrl ?? DIRECT_API_URL;
   if (
     csrf &&
     options.method &&
@@ -125,9 +127,13 @@ async function request<T>(
   }
 
   if (response.status === 502 || response.status === 504) {
+    const error = await response.json().catch(() => null);
+    const message = parseApiErrorMessage(error, response.status);
     throw new ApiError(
       response.status,
-      "El servidor tardó demasiado (timeout del proxy). La petición larga debe ir directo al API; recarga la página e inténtalo de nuevo.",
+      message !== `HTTP ${response.status}`
+        ? message
+        : "La API no esta disponible temporalmente. Intentalo de nuevo en unos segundos.",
     );
   }
 
@@ -313,7 +319,12 @@ export const api = {
         expires_in: number;
         mfa_required?: boolean;
         mfa_token?: string;
-      }>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+      }>(
+        "/api/v1/auth/login",
+        { method: "POST", body: JSON.stringify({ email, password }) },
+        undefined,
+        API_URL,
+      );
       if (!data.mfa_required) setAccessToken(data.access_token);
       return data;
     },
@@ -321,6 +332,8 @@ export const api = {
       const data = await request<{ access_token: string }>(
         "/api/v1/auth/mfa/verify",
         { method: "POST", body: JSON.stringify({ mfa_token: mfaToken, code }) },
+        undefined,
+        API_URL,
       );
       setAccessToken(data.access_token);
       return data;
@@ -335,12 +348,14 @@ export const api = {
       const data = await request<{ access_token: string }>(
         "/api/v1/auth/register",
         { method: "POST", body: JSON.stringify(body) },
+        undefined,
+        API_URL,
       );
       setAccessToken(data.access_token);
       return data;
     },
     logout: async (token: ApiAuthToken) => {
-      await request("/api/v1/auth/logout", { method: "POST" }, token);
+      await request("/api/v1/auth/logout", { method: "POST" }, token, API_URL);
       setAccessToken(null);
     },
     me: (token: ApiAuthToken) =>
@@ -740,7 +755,12 @@ export const api = {
         chatters_synced: number;
         source: string;
         chat_subscription?: "configured" | "failed" | null;
-      }>(`/api/v1/streams/${streamId}/sync/platform`, { method: "POST" }, token),
+      }>(
+        `/api/v1/streams/${streamId}/sync/platform`,
+        { method: "POST" },
+        token,
+        resolveDirectApiBaseUrl(),
+      ),
     ingestEvent: (token: ApiAuthToken, streamId: string, body: object) =>
       request<{ event_id: string; risk_score: number; attack_created: boolean }>(
         `/api/v1/streams/${streamId}/events`,

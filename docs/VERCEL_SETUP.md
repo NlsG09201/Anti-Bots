@@ -88,8 +88,13 @@ En **Vercel** → tu proyecto → **Settings** → **Environment Variables**:
 
 ```
 NEXT_PUBLIC_API_URL = https://tu-servicio.onrender.com
+NEXT_PUBLIC_API_DIRECT_URL = https://tu-servicio.onrender.com
 NEXT_PUBLIC_WS_URL = wss://tu-servicio.onrender.com
 ```
+
+Las llamadas con `Authorization: Bearer` van directas a Render. Login, registro,
+logout y renovación de sesión siguen usando el proxy de Vercel para conservar
+las cookies HttpOnly.
 
 **Deployments** → los tres puntos del último deploy → **Redeploy**
 

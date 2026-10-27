@@ -6,7 +6,7 @@
 - [ ] **2.** Manual Deploy en Render
 - [ ] **3.** Log: `Preflight OK — starting uvicorn`
 - [ ] **4.** `curl https://anti-bots.onrender.com/health` → healthy
-- [ ] **5.** Variables en Vercel (`API_PROXY_TARGET`, `NEXT_PUBLIC_WS_URL`)
+- [ ] **5.** Variables en Vercel (`API_PROXY_TARGET`, `NEXT_PUBLIC_API_DIRECT_URL`, `NEXT_PUBLIC_WS_URL`)
 - [ ] **6.** Redeploy Vercel
 - [ ] **7.** Login en https://anti-bots.vercel.app
 
@@ -149,7 +149,12 @@ Pega en Vercel → **Environment Variables** → **Production**:
 | Variable | Valor |
 |----------|--------|
 | `API_PROXY_TARGET` | `https://anti-bots.onrender.com` |
+| `NEXT_PUBLIC_API_DIRECT_URL` | `https://anti-bots.onrender.com` |
 | `NEXT_PUBLIC_WS_URL` | `wss://anti-bots.onrender.com` |
+
+Las llamadas con Bearer usan Render directamente. Login, registro, logout y renovaciÃ³n
+siguen usando el proxy para conservar las cookies HttpOnly. Configura la URL en Vercel,
+no en `render.env`, y aplica la variable a Production y Preview si usas ambos entornos.
 
 Elimina `NEXT_PUBLIC_API_URL` si es `localhost`.
 
