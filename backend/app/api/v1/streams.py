@@ -454,6 +454,51 @@ async def sync_platform_chat(
     except HTTPException:
         await db.rollback()
         raise
+    except httpx.TimeoutException as exc:
+        await db.rollback()
+        logger.warning(
+            "platform_viewer_sync_timeout",
+            stream_id=str(stream_id),
+            platform=platform_name,
+        )
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                "Kick tardó demasiado en responder. Intenta sincronizar de nuevo."
+                if platform_name == "kick"
+                else "La plataforma tardó demasiado en responder. Intenta de nuevo."
+            ),
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        await db.rollback()
+        upstream_status = exc.response.status_code
+        logger.warning(
+            "platform_viewer_sync_upstream_failed",
+            stream_id=str(stream_id),
+            platform=platform_name,
+            upstream_status=upstream_status,
+        )
+        if platform_name == "kick" and upstream_status in (401, 403):
+            raise HTTPException(
+                status_code=424,
+                detail="Kick rechazó la autorización. Vuelve a conectar el canal y acepta los permisos solicitados.",
+            ) from exc
+        if upstream_status == 429:
+            retry_after = exc.response.headers.get("Retry-After", "10")
+            raise HTTPException(
+                status_code=503,
+                detail="Kick limitó temporalmente las solicitudes. Espera unos segundos y vuelve a sincronizar.",
+                headers={"Retry-After": retry_after},
+            ) from exc
+        if platform_name == "kick":
+            raise HTTPException(
+                status_code=502,
+                detail=f"La API de Kick devolvió HTTP {upstream_status}. Intenta de nuevo; si persiste, revisa el canal autorizado.",
+            ) from exc
+        raise HTTPException(
+            status_code=502,
+            detail="La plataforma no respondió correctamente. Verifica la conexión y vuelve a intentar.",
+        ) from exc
     except httpx.HTTPError as exc:
         await db.rollback()
         logger.warning(
@@ -461,11 +506,14 @@ async def sync_platform_chat(
             stream_id=str(stream_id),
             platform=platform_name,
             error_type=type(exc).__name__,
-            upstream_status=getattr(getattr(exc, "response", None), "status_code", None),
         )
         raise HTTPException(
             status_code=502,
-            detail="La plataforma no respondió correctamente. Verifica la conexión y vuelve a intentar.",
+            detail=(
+                "No se pudo conectar con la API de Kick. Intenta de nuevo en unos segundos."
+                if platform_name == "kick"
+                else "La plataforma no respondió correctamente. Verifica la conexión y vuelve a intentar."
+            ),
         ) from exc
     except SQLAlchemyError as exc:
         await db.rollback()

@@ -1,5 +1,7 @@
-from typing import Any, Dict, List, Optional
+import asyncio
+import asyncio
 import time
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -98,25 +100,42 @@ class KickAPIClient:
         """Read a broadcaster's live status through Kick's supported public API."""
         if not self.access_token:
             raise RuntimeError("Reconnecta Kick para consultar el estado del canal.")
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(
-                f"{self.PUBLIC_API_BASE}/users/livestreams",
-                headers={
-                    "Authorization": f"Bearer {self.access_token}",
-                    "Accept": "application/json",
-                },
-                params={"user_id": user_id},
-            )
-            response.raise_for_status()
-            entries = response.json().get("data") or []
-            if not entries:
-                return None
-            live = entries[0]
-            return {
-                "id": live.get("id"),
-                "viewer_count": live.get("viewer_count", 0),
-                "title": live.get("title"),
-            }
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            for attempt in range(2):
+                try:
+                    response = await client.get(
+                        f"{self.PUBLIC_API_BASE}/users/livestreams",
+                        headers={
+                            "Authorization": f"Bearer {self.access_token}",
+                            "Accept": "application/json",
+                        },
+                        params={"user_id": user_id},
+                    )
+                except (httpx.TimeoutException, httpx.NetworkError):
+                    if attempt == 1:
+                        raise
+                    await asyncio.sleep(0.4)
+                    continue
+
+                if (response.status_code == 429 or response.status_code >= 500) and attempt == 0:
+                    await asyncio.sleep(0.5)
+                    continue
+                response.raise_for_status()
+                payload = response.json()
+                entries = payload.get("data") if isinstance(payload, dict) else None
+                if not isinstance(entries, list):
+                    raise RuntimeError("Kick devolvió una respuesta de directos no válida.")
+                if not entries:
+                    return None
+                live = entries[0]
+                if not isinstance(live, dict):
+                    raise RuntimeError("Kick devolvió datos de directo no válidos.")
+                return {
+                    "id": live.get("id"),
+                    "viewer_count": live.get("viewer_count", 0),
+                    "title": live.get("title"),
+                }
+        raise RuntimeError("No fue posible consultar el estado del canal Kick.")
 
     async def get_broadcaster_id_by_slug(self, slug: str) -> Optional[str]:
         if not self.access_token:
