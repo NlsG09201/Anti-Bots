@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -214,19 +215,27 @@ async def refresh_token_endpoint(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
+    def invalid_refresh(message: str) -> JSONResponse:
+        # Returning (instead of raising) preserves Set-Cookie deletions on the
+        # actual response, so stale refresh cookies do not trigger 401s forever.
+        invalid_response = JSONResponse(
+            status_code=401,
+            content={"error": "AUTH_ERROR", "message": message},
+        )
+        clear_auth_cookies(invalid_response)
+        return invalid_response
+
     token = request.cookies.get(REFRESH_COOKIE)
     if not token:
-        raise AuthenticationError("Refresh token missing")
+        return invalid_refresh("Refresh token missing")
 
     payload = verify_token(token, "refresh")
     if not payload:
-        clear_auth_cookies(response)
-        raise AuthenticationError("Invalid refresh token")
+        return invalid_refresh("Invalid refresh token")
 
     cache = RedisCache()
     if await cache.is_blacklisted(payload.get("jti", "")):
-        clear_auth_cookies(response)
-        raise AuthenticationError("Token revoked")
+        return invalid_refresh("Token revoked")
 
     result = await db.execute(
         select(RefreshToken).where(
@@ -236,14 +245,12 @@ async def refresh_token_endpoint(
     )
     stored = result.scalar_one_or_none()
     if not stored or _as_utc(stored.expires_at) < _utc_now():
-        clear_auth_cookies(response)
-        raise AuthenticationError("Refresh token expired")
+        return invalid_refresh("Refresh token expired")
 
     result = await db.execute(select(User).where(User.id == UUID(payload["sub"])))
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
-        clear_auth_cookies(response)
-        raise AuthenticationError("User not found")
+        return invalid_refresh("User not found")
 
     stored.is_revoked = True
     access_token = create_access_token(str(user.id), str(user.tenant_id), user.role.value)
