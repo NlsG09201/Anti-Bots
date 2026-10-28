@@ -79,6 +79,8 @@ class StreamResponse(BaseModel):
     monitor_mode: bool = False
     is_owned: bool = True
     login: Optional[str] = None
+    has_broadcaster_oauth: bool = False
+    can_manage: bool = False
 
     model_config = {"from_attributes": True}
 

@@ -104,6 +104,7 @@ async def _ensure_stream_eventsub(stream: Stream, access_token: str) -> dict:
 async def twitch_authorize(
     current_user: CurrentUser,
     upgrade_stream_id: Optional[UUID] = Query(None),
+    db: AsyncSession = Depends(get_db),
 ):
     if not settings.twitch_client_id:
         raise ValidationError("Twitch integration is not configured")
@@ -113,6 +114,23 @@ async def twitch_authorize(
             "no pueden ser iguales. Crea una app en https://dev.twitch.tv/console/apps "
             "y actualiza TWITCH_CLIENT_ID y TWITCH_CLIENT_SECRET en Render."
         )
+
+    if upgrade_stream_id:
+        result = await db.execute(
+            select(Stream).where(
+                Stream.id == upgrade_stream_id,
+                Stream.tenant_id == current_user.tenant_id,
+                Stream.platform == Platform.TWITCH,
+            )
+        )
+        stream = result.scalar_one_or_none()
+        if not stream:
+            raise NotFoundError("Twitch account")
+        if stream.owner_id != current_user.id and current_user.role not in (
+            UserRole.ADMIN,
+            UserRole.SUPER_ADMIN,
+        ):
+            raise AuthorizationError("Only the account owner or a tenant administrator can reconnect it")
 
     payload = {
         "user_id": str(current_user.id),
@@ -285,9 +303,7 @@ async def twitch_callback(
     if stored.get("invite") or stored.get("upgrade_stream_id"):
         await cache.delete(f"invite:{stored['invite']}") if stored.get("invite") else None
         if upgrade_id:
-            return _frontend_redirect(
-                f"/dashboard/viewers?stream={upgrade_id}&twitch=connected"
-            )
+            return _frontend_redirect("/dashboard/channels?twitch=connected")
         return _frontend_redirect("/dashboard/channels?twitch=connected")
     return _frontend_redirect("/dashboard/settings?twitch=connected")
 

@@ -31,6 +31,7 @@ from app.infrastructure.database.models import (
     Platform,
     Stream,
     StreamEvent,
+    UserRole,
     ViewerSession,
 )
 from app.infrastructure.database.session import get_db
@@ -65,8 +66,13 @@ detection_engine = BotDetectionEngine()
 ai_service = AIService()
 
 
-def _as_stream_response(stream: Stream) -> StreamResponse:
+def _as_stream_response(stream: Stream, current_user=None) -> StreamResponse:
     data = stream_to_response_dict(stream)
+    if current_user is not None:
+        data["can_manage"] = stream.owner_id == current_user.id or current_user.role in (
+            UserRole.ADMIN,
+            UserRole.SUPER_ADMIN,
+        )
     return StreamResponse(**data)
 
 
@@ -86,7 +92,7 @@ async def create_stream(
     )
     db.add(stream)
     await db.flush()
-    return _as_stream_response(stream)
+    return _as_stream_response(stream, current_user)
 
 
 @router.post("/watch", response_model=StreamResponse)
@@ -177,7 +183,7 @@ async def _watch_channel_impl(
                         stream_id=str(stream.id),
                         error_type=type(exc).__name__,
                     )
-        return _as_stream_response(stream)
+        return _as_stream_response(stream, current_user)
 
     helix = TwitchHelixClient()
     if not helix.configured:
@@ -233,7 +239,7 @@ async def _watch_channel_impl(
 
     await db.flush()
     stream = await sync_stream_live_status(db, stream)
-    return _as_stream_response(stream)
+    return _as_stream_response(stream, current_user)
 
 
 @router.post("/{stream_id}/channel-invite")
@@ -301,7 +307,7 @@ async def sync_stream(
         tenant_streams = await get_tenant_stream_ids(db, current_user.tenant_id)
         await push_dashboard_realtime(db, current_user.tenant_id, tenant_streams)
     await db.refresh(stream)
-    return _as_stream_response(stream)
+    return _as_stream_response(stream, current_user)
 
 
 @router.post("/{stream_id}/sync/quick")
@@ -745,7 +751,7 @@ async def list_streams(
         select(Stream).where(Stream.tenant_id == current_user.tenant_id)
     )
     streams = list(result.scalars().all())
-    return [_as_stream_response(s) for s in streams]
+    return [_as_stream_response(s, current_user) for s in streams]
 
 
 @router.get("/{stream_id}", response_model=StreamResponse)
@@ -755,7 +761,7 @@ async def get_stream(
     db: AsyncSession = Depends(get_db),
 ):
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
-    return _as_stream_response(stream)
+    return _as_stream_response(stream, current_user)
 
 
 @router.post("/{stream_id}/events")

@@ -30,6 +30,7 @@ def stream_to_response_dict(stream: Stream) -> Dict[str, Any]:
         "created_at": stream.created_at,
         "monitor_mode": monitor,
         "is_owned": owned,
+        "has_broadcaster_oauth": bool(stream.oauth_token_encrypted),
         "login": (stream.settings or {}).get("login"),
     }
 

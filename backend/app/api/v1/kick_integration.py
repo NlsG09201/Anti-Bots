@@ -249,7 +249,7 @@ async def kick_callback(
             status_code=getattr(getattr(exc, "response", None), "status_code", None),
         )
     if upgrade_id:
-        return _frontend_redirect(f"/dashboard/viewers?stream={upgrade_id}&kick=connected")
+        return _frontend_redirect("/dashboard/channels?kick=connected")
     return _frontend_redirect("/dashboard/settings?kick=connected")
 
 

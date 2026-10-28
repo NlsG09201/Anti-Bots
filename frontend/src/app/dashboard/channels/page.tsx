@@ -25,9 +25,17 @@ function ChannelsContent() {
       setMessage("Twitch del canal conectado. Ya puedes usar Helix chatters y ban en Twitch.");
       queryClient.invalidateQueries({ queryKey: ["streams"] });
     }
+    if (searchParams.get("kick") === "connected") {
+      setMessage("Kick conectado. Ya puedes sincronizar este canal desde aquí.");
+      queryClient.invalidateQueries({ queryKey: ["streams"] });
+    }
     const err = searchParams.get("twitch_error");
     if (err) {
       setMessage(searchParams.get("twitch_msg") || err);
+    }
+    const kickError = searchParams.get("kick_error");
+    if (kickError) {
+      setMessage(searchParams.get("kick_msg") || kickError);
     }
   }, [searchParams, queryClient]);
 
@@ -71,6 +79,35 @@ function ChannelsContent() {
   const unwatchMutation = useMutation({
     mutationFn: (id: string) => api.streams.unwatch(token, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["streams"] }),
+  });
+
+  const connectOwnedMutation = useMutation({
+    mutationFn: async ({ platform: provider, id }: { platform: string; id: string }) => {
+      if (provider === "twitch") return api.twitch.authorize(token, id);
+      if (provider === "kick") return api.kick.authorize(token, id);
+      throw new Error("La conexión OAuth no está disponible para esta plataforma.");
+    },
+    onSuccess: ({ authorization_url }) => {
+      window.location.href = authorization_url;
+    },
+    onError: (error: Error) => setMessage(error.message),
+  });
+
+  const disconnectOwnedMutation = useMutation({
+    mutationFn: async ({ platform: provider, id }: { platform: string; id: string }) => {
+      if (provider === "twitch") return api.twitch.disconnect(token, id);
+      if (provider === "kick") return api.kick.disconnect(token, id);
+      throw new Error("La desconexión no está disponible para esta plataforma.");
+    },
+    onSuccess: ({ provider_revoked }) => {
+      setMessage(provider_revoked
+        ? "Cuenta desconectada y permiso revocado en la plataforma."
+        : "Cuenta desconectada de StreamShield; la plataforma no confirmó la revocación.");
+      queryClient.invalidateQueries({ queryKey: ["streams"] });
+      queryClient.invalidateQueries({ queryKey: ["kick-status"] });
+      queryClient.invalidateQueries({ queryKey: ["twitch-status"] });
+    },
+    onError: (error: Error) => setMessage(error.message),
   });
 
   const inviteMutation = useMutation({
@@ -166,6 +203,14 @@ function ChannelsContent() {
         scanningId={scanningId}
         showUnwatch={false}
         onUnwatch={() => {}}
+        showOAuthActions
+        onConnect={(platform, id) => connectOwnedMutation.mutate({ platform, id })}
+        onDisconnect={(platform, id) => {
+          if (window.confirm(`¿Desconectar ${platform} de StreamShield y revocar su autorización?`)) {
+            disconnectOwnedMutation.mutate({ platform, id });
+          }
+        }}
+        oauthPending={connectOwnedMutation.isPending || disconnectOwnedMutation.isPending}
       />
 
       <ChannelSection
@@ -214,6 +259,10 @@ function ChannelSection({
   onInvite,
   showUnwatch,
   showInvite,
+  showOAuthActions = false,
+  onConnect,
+  onDisconnect,
+  oauthPending = false,
 }: {
   title: string;
   icon: typeof Tv;
@@ -226,6 +275,10 @@ function ChannelSection({
   onInvite?: (id: string) => void;
   showUnwatch: boolean;
   showInvite?: boolean;
+  showOAuthActions?: boolean;
+  onConnect?: (platform: string, id: string) => void;
+  onDisconnect?: (platform: string, id: string) => void;
+  oauthPending?: boolean;
 }) {
   return (
     <div className="cyber-card">
@@ -256,6 +309,28 @@ function ChannelSection({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              {showOAuthActions && stream.can_manage && (stream.platform === "twitch" || stream.platform === "kick") && (
+                <>
+                  <button
+                    type="button"
+                    disabled={oauthPending}
+                    onClick={() => onConnect?.(stream.platform, stream.id)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-cyber-info/40 text-cyber-info hover:bg-cyber-info/10 disabled:opacity-40"
+                  >
+                    {stream.has_broadcaster_oauth ? "Reconectar" : "Conectar cuenta"}
+                  </button>
+                  {stream.has_broadcaster_oauth && (
+                    <button
+                      type="button"
+                      disabled={oauthPending}
+                      onClick={() => onDisconnect?.(stream.platform, stream.id)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-cyber-danger/40 text-cyber-danger hover:bg-cyber-danger/10 disabled:opacity-40"
+                    >
+                      Desconectar
+                    </button>
+                  )}
+                </>
+              )}
               <button
                 type="button"
                 disabled={!stream.is_live || scanningId === stream.id}

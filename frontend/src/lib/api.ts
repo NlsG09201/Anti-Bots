@@ -2149,6 +2149,8 @@ export interface Stream {
   monitor_mode?: boolean;
   is_owned?: boolean;
   login?: string;
+  has_broadcaster_oauth?: boolean;
+  can_manage?: boolean;
 }
 
 export interface TenantUser {
