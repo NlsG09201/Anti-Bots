@@ -768,7 +768,12 @@ export const api = {
         token,
       ),
     viewers: (token: ApiAuthToken, streamId: string, filter: "all" | "talking" | "suspected" = "all") =>
-      request<Viewer[]>(`/api/v1/streams/${streamId}/viewers?filter=${filter}`, {}, token),
+      request<Viewer[]>(
+        `/api/v1/streams/${streamId}/viewers?filter=${filter}`,
+        {},
+        token,
+        API_URL,
+      ),
     screenViewers: (token: ApiAuthToken, streamId: string) =>
       request<{
         status: string;
