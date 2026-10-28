@@ -149,6 +149,7 @@ async def authorize_bot(
     url = TwitchOAuth().get_authorization_url(
         state,
         scopes=TwitchOAuth.CHAT_MODERATOR_SCOPES,
+        force_verify=True,
     )
     return {"authorization_url": url}
 

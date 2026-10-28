@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import time
 from typing import Any, Dict, Optional
 
 import httpx
@@ -9,18 +10,61 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 settings = get_settings()
+_app_access_token: Optional[str] = None
+_app_access_token_expires_at = 0.0
 
 
 class TwitchEventSubClient:
     BASE_URL = "https://api.twitch.tv/helix"
 
     def __init__(self, access_token: str):
+        # Kept in the constructor for call-site compatibility. Webhook
+        # EventSub endpoints require an app access token, not this user token.
         self.access_token = access_token
-        self.headers = {
+
+    @staticmethod
+    async def _get_app_access_token() -> str:
+        global _app_access_token, _app_access_token_expires_at
+        if _app_access_token and time.monotonic() < _app_access_token_expires_at:
+            return _app_access_token
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                "https://id.twitch.tv/oauth2/token",
+                data={
+                    "client_id": settings.twitch_client_id,
+                    "client_secret": settings.twitch_client_secret,
+                    "grant_type": "client_credentials",
+                },
+            )
+            if response.is_error:
+                raise RuntimeError(
+                    f"Twitch app token HTTP {response.status_code}: {response.text[:400]}"
+                )
+            token_data = response.json()
+        token = token_data.get("access_token")
+        if not token:
+            raise RuntimeError("Twitch did not return an app access token")
+        _app_access_token = str(token)
+        expires_in = max(int(token_data.get("expires_in") or 3600), 60)
+        _app_access_token_expires_at = time.monotonic() + expires_in - 60
+        return _app_access_token
+
+    @staticmethod
+    def _headers(access_token: str) -> Dict[str, str]:
+        return {
             "Authorization": f"Bearer {access_token}",
             "Client-Id": settings.twitch_client_id,
             "Content-Type": "application/json",
         }
+
+    @staticmethod
+    def _raise_for_twitch(response: httpx.Response) -> None:
+        if response.is_error:
+            raise httpx.HTTPStatusError(
+                f"Twitch EventSub HTTP {response.status_code}: {response.text[:500]}",
+                request=response.request,
+                response=response,
+            )
 
     @staticmethod
     def _subscription_condition(
@@ -52,6 +96,7 @@ class TwitchEventSubClient:
         """Reuse an enabled matching webhook subscription before creating one."""
         condition = self._subscription_condition(event_type, broadcaster_user_id, chat_user_id)
         cursor = None
+        app_token = await self._get_app_access_token()
         async with httpx.AsyncClient(timeout=30.0) as client:
             while True:
                 params: Dict[str, str] = {"first": "100", "type": event_type}
@@ -59,16 +104,15 @@ class TwitchEventSubClient:
                     params["after"] = cursor
                 response = await client.get(
                     f"{self.BASE_URL}/eventsub/subscriptions",
-                    headers=self.headers,
+                    headers=self._headers(app_token),
                     params=params,
                 )
-                response.raise_for_status()
+                self._raise_for_twitch(response)
                 result = response.json()
                 for subscription in result.get("data", []):
                     transport = subscription.get("transport", {})
                     if (
-                        subscription.get("status") == "enabled"
-                        and subscription.get("type") == event_type
+                        subscription.get("type") == event_type
                         and subscription.get("condition") == condition
                         and transport.get("method") == "webhook"
                         and transport.get("callback") == settings.twitch_eventsub_callback_url
@@ -105,24 +149,26 @@ class TwitchEventSubClient:
             },
         }
 
+        app_token = await self._get_app_access_token()
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{self.BASE_URL}/eventsub/subscriptions",
-                headers=self.headers,
+                headers=self._headers(app_token),
                 json=payload,
             )
-            response.raise_for_status()
+            self._raise_for_twitch(response)
             return response.json()
 
     async def delete_subscription(self, subscription_id: str) -> None:
+        app_token = await self._get_app_access_token()
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.delete(
                 f"{self.BASE_URL}/eventsub/subscriptions",
-                headers=self.headers,
+                headers=self._headers(app_token),
                 params={"id": subscription_id},
             )
             if response.status_code not in (204, 404):
-                response.raise_for_status()
+                self._raise_for_twitch(response)
 
     @staticmethod
     def verify_signature(

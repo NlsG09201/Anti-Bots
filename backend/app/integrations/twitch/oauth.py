@@ -60,6 +60,7 @@ class TwitchOAuth:
 
     CHAT_MODERATOR_SCOPES = [
         "user:read:chat",
+        "user:bot",
         "moderator:manage:banned_users",
         "moderator:manage:chat_messages",
     ]
