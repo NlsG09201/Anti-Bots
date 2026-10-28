@@ -56,12 +56,12 @@ async def twitch_setup(current_user: CurrentUser):
     }
 
 
-async def _start_oauth(state_payload: dict) -> str:
+async def _start_oauth(state_payload: dict, *, force_verify: bool = False) -> str:
     state = secrets.token_urlsafe(32)
     cache = RedisCache(prefix="oauth")
     await cache.set(f"state:{state}", state_payload, ttl=900)
     oauth = TwitchOAuth()
-    return oauth.get_authorization_url(state)
+    return oauth.get_authorization_url(state, force_verify=force_verify)
 
 
 async def _ensure_stream_eventsub(stream: Stream, access_token: str) -> dict:
@@ -154,7 +154,10 @@ async def twitch_authorize(
         payload["upgrade_stream_id"] = str(upgrade_stream_id)
     if return_to == "/dashboard/twitch-moderator":
         payload["return_to"] = return_to
-    url = await _start_oauth(payload)
+    url = await _start_oauth(
+        payload,
+        force_verify=payload.get("return_to") == "/dashboard/twitch-moderator",
+    )
     return {"authorization_url": url}
 
 
@@ -215,6 +218,14 @@ async def twitch_callback(
                 return _frontend_redirect(
                     f"/dashboard/twitch-moderator?stream={stream_id}"
                     f"&bot_error={quote(error)}&bot_msg={msg}"
+                )
+            if stored_error and stored_error.get("return_to") == "/dashboard/twitch-moderator":
+                await cache.delete(f"state:{state}")
+                stream_id = quote(str(stored_error.get("upgrade_stream_id") or ""))
+                return _frontend_redirect(
+                    f"/dashboard/twitch-moderator?stream={stream_id}"
+                    "&bot_error=channel_scope_denied&bot_msg="
+                    + quote("Debes autorizar channel:manage:moderators para añadir el bot desde StreamShield.")
                 )
         return _frontend_redirect(f"/dashboard/settings?twitch_error={quote(error)}&twitch_msg={msg}")
 
@@ -339,6 +350,19 @@ async def twitch_callback(
             return _frontend_redirect(
                 f"/dashboard/channels?twitch_error=wrong_account"
                 f"&twitch_msg={quote(f'Debes conectar la cuenta @{expected}')}"
+            )
+        if (
+            stream
+            and stored.get("return_to") == "/dashboard/twitch-moderator"
+            and "channel:manage:moderators" not in set(token_data.get("scope") or [])
+        ):
+            stream_id = quote(str(stream.id))
+            message = quote(
+                "Twitch no concedió channel:manage:moderators. Vuelve a autorizar este permiso para que StreamShield pueda añadir el bot."
+            )
+            return _frontend_redirect(
+                f"/dashboard/twitch-moderator?stream={stream_id}"
+                f"&bot_error=channel_scope_missing&bot_msg={message}"
             )
 
     if not stream:

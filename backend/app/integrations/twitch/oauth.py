@@ -64,7 +64,13 @@ class TwitchOAuth:
         "moderator:manage:chat_messages",
     ]
 
-    def get_authorization_url(self, state: str, scopes: Optional[list[str]] = None) -> str:
+    def get_authorization_url(
+        self,
+        state: str,
+        scopes: Optional[list[str]] = None,
+        *,
+        force_verify: bool = False,
+    ) -> str:
         params = {
             "client_id": settings.twitch_client_id,
             "redirect_uri": resolve_twitch_redirect_uri(),
@@ -72,6 +78,8 @@ class TwitchOAuth:
             "scope": " ".join(scopes or self.SCOPES),
             "state": state,
         }
+        if force_verify:
+            params["force_verify"] = "true"
         return f"{self.AUTH_URL}?{urlencode(params)}"
 
     async def exchange_code(self, code: str) -> Dict[str, Any]:
