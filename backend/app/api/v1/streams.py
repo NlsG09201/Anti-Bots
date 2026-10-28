@@ -28,6 +28,7 @@ from app.core.logging import get_logger
 from app.infrastructure.database.models import (
     Attack,
     AttackType,
+    AuditLog,
     Platform,
     Stream,
     StreamEvent,
@@ -1146,6 +1147,25 @@ async def block_viewer(
         platform_message = "Sanción registrada en StreamShield; la plataforma no la aplicó."
         if stream.platform == Platform.TWITCH and stream_monitor_mode(stream):
             platform_message += " El canal está en modo observación."
+
+    platform_result = twitch_result if stream.platform == Platform.TWITCH else kick_result
+    db.add(AuditLog(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action=f"stream_moderation.{action.value}",
+        resource_type="viewer_session",
+        resource_id=str(session.id),
+        details={
+            "stream_id": str(stream.id),
+            "platform": stream.platform.value,
+            "platform_user_id": session.platform_user_id,
+            "platform_username": session.platform_username,
+            "duration_seconds": timeout_seconds,
+            "reason": body.reason,
+            "platform_applied": bool(platform_result and platform_result.get("ok")),
+            "platform_status": platform_result.get("status") if platform_result else None,
+        },
+    ))
 
     return {
         "blocked": True,
