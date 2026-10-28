@@ -29,6 +29,7 @@ from app.api.v1 import (
     platform_health,
     viewer_flow,
     twitch_integration,
+    twitch_chat_bot,
     kick_integration,
     kick_bot,
     youtube_integration,
@@ -256,6 +257,7 @@ API_PREFIX = f"/api/{settings.app_api_version}"
 app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(mfa.router, prefix=API_PREFIX)
 app.include_router(twitch_integration.router, prefix=API_PREFIX)
+app.include_router(twitch_chat_bot.router, prefix=API_PREFIX)
 app.include_router(kick_integration.router, prefix=API_PREFIX)
 app.include_router(kick_bot.router, prefix=API_PREFIX)
 app.include_router(youtube_integration.router, prefix=API_PREFIX)

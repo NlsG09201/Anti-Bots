@@ -24,6 +24,7 @@ const navItems = [
   { href: "/dashboard/weka", label: "Weka J48", icon: Binary },
   { href: "/dashboard/viewers", label: "Viewers", icon: Users },
   { href: "/dashboard/bot", label: "Kick Bot", icon: Bot },
+  { href: "/dashboard/twitch-moderator", label: "Twitch Moderator", icon: ShieldAlert },
   { href: "/dashboard/widget", label: "Widget IP", icon: Code },
   { href: "/dashboard/ips", label: "Suspicious IPs", icon: Globe },
   { href: "/dashboard/fingerprints", label: "Fingerprints", icon: Fingerprint },

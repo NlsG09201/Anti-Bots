@@ -23,7 +23,11 @@ class TwitchEventSubClient:
         }
 
     @staticmethod
-    def _subscription_condition(event_type: str, broadcaster_user_id: str) -> Dict[str, str]:
+    def _subscription_condition(
+        event_type: str,
+        broadcaster_user_id: str,
+        chat_user_id: Optional[str] = None,
+    ) -> Dict[str, str]:
         conditions = {
             "channel.follow": {
                 "broadcaster_user_id": broadcaster_user_id,
@@ -34,7 +38,7 @@ class TwitchEventSubClient:
             "stream.offline": {"broadcaster_user_id": broadcaster_user_id},
             "channel.chat.message": {
                 "broadcaster_user_id": broadcaster_user_id,
-                "user_id": broadcaster_user_id,
+                "user_id": chat_user_id or broadcaster_user_id,
             },
         }
         return conditions.get(event_type, {"broadcaster_user_id": broadcaster_user_id})
@@ -43,9 +47,10 @@ class TwitchEventSubClient:
         self,
         event_type: str,
         broadcaster_user_id: str,
+        chat_user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Reuse an enabled matching webhook subscription before creating one."""
-        condition = self._subscription_condition(event_type, broadcaster_user_id)
+        condition = self._subscription_condition(event_type, broadcaster_user_id, chat_user_id)
         cursor = None
         async with httpx.AsyncClient(timeout=30.0) as client:
             while True:
@@ -72,13 +77,14 @@ class TwitchEventSubClient:
                 cursor = result.get("pagination", {}).get("cursor")
                 if not cursor:
                     break
-        return await self.create_subscription(event_type, broadcaster_user_id)
+        return await self.create_subscription(event_type, broadcaster_user_id, chat_user_id=chat_user_id)
 
     async def create_subscription(
         self,
         event_type: str,
         broadcaster_user_id: str,
         session_id: Optional[str] = None,
+        chat_user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         version_map = {
             "channel.follow": "2",
@@ -91,7 +97,7 @@ class TwitchEventSubClient:
         payload = {
             "type": event_type,
             "version": version_map.get(event_type, "1"),
-            "condition": self._subscription_condition(event_type, broadcaster_user_id),
+            "condition": self._subscription_condition(event_type, broadcaster_user_id, chat_user_id),
             "transport": {
                 "method": "webhook",
                 "callback": settings.twitch_eventsub_callback_url,
@@ -107,6 +113,16 @@ class TwitchEventSubClient:
             )
             response.raise_for_status()
             return response.json()
+
+    async def delete_subscription(self, subscription_id: str) -> None:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.delete(
+                f"{self.BASE_URL}/eventsub/subscriptions",
+                headers=self.headers,
+                params={"id": subscription_id},
+            )
+            if response.status_code not in (204, 404):
+                response.raise_for_status()
 
     @staticmethod
     def verify_signature(
@@ -140,4 +156,5 @@ class TwitchEventSubClient:
                 or event.get("chatter_user_login")
             ),
             "timestamp": headers.get("twitch-eventsub-message-timestamp"),
+            "chat_user_id": (body.get("subscription", {}).get("condition") or {}).get("user_id"),
         }

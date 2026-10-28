@@ -75,7 +75,20 @@ async def _ensure_stream_eventsub(stream: Stream, access_token: str) -> dict:
         report = {}
         for event_type in EVENT_TYPES:
             try:
-                result = await eventsub.ensure_subscription(event_type, stream.external_id)
+                subscription_client = eventsub
+                chat_user_id = None
+                if event_type == "channel.chat.message":
+                    from app.services.twitch_chat_moderation import get_twitch_bot_credentials
+
+                    bot_token, bot_id, _ = await get_twitch_bot_credentials(stream)
+                    if bot_token and bot_id:
+                        subscription_client = TwitchEventSubClient(bot_token)
+                        chat_user_id = bot_id
+                result = await subscription_client.ensure_subscription(
+                    event_type,
+                    stream.external_id,
+                    chat_user_id=chat_user_id,
+                )
                 item = result.get("data", [{}])[0]
                 report[event_type] = {
                     "status": "enabled",
@@ -190,6 +203,16 @@ async def twitch_callback(
 ):
     if error:
         msg = quote((error_description or error)[:200])
+        if state:
+            cache = RedisCache(prefix="oauth")
+            stored_error = await cache.get(f"state:{state}")
+            if stored_error and stored_error.get("flow") == "twitch_chat_moderator_bot":
+                await cache.delete(f"state:{state}")
+                stream_id = quote(str(stored_error.get("stream_id") or ""))
+                return _frontend_redirect(
+                    f"/dashboard/twitch-moderator?stream={stream_id}"
+                    f"&bot_error={quote(error)}&bot_msg={msg}"
+                )
         return _frontend_redirect(f"/dashboard/settings?twitch_error={quote(error)}&twitch_msg={msg}")
 
     if not code or not state:
@@ -233,6 +256,70 @@ async def twitch_callback(
 
     broadcaster_id = user_info["id"]
     login = user_info["login"]
+
+    if stored.get("flow") == "twitch_chat_moderator_bot":
+        granted_scopes = set(token_data.get("scope") or [])
+        required_scopes = set(TwitchOAuth.CHAT_MODERATOR_SCOPES)
+        if not required_scopes.issubset(granted_scopes):
+            missing = ", ".join(sorted(required_scopes - granted_scopes))
+            return _frontend_redirect(
+                f"/dashboard/twitch-moderator?stream={quote(str(stored.get('stream_id') or ''))}"
+                f"&bot_error=missing_scopes&bot_msg={quote('Faltan permisos de Twitch: ' + missing)}"
+            )
+        result = await db.execute(
+            select(Stream).where(
+                Stream.id == UUID(stored["stream_id"]),
+                Stream.tenant_id == UUID(stored["tenant_id"]),
+                Stream.platform == Platform.TWITCH,
+            )
+        )
+        stream = result.scalar_one_or_none()
+        if not stream:
+            return _frontend_redirect("/dashboard/twitch-moderator?bot_error=channel_missing")
+        if broadcaster_id == stream.external_id:
+            return _frontend_redirect(
+                f"/dashboard/twitch-moderator?stream={stream.id}&bot_error=same_account"
+                "&bot_msg=Conecta+una+cuenta+separada+para+el+bot+moderador"
+            )
+        metadata = dict(stream.settings or {})
+        metadata.update({
+            "twitch_bot_access_token_encrypted": encrypt_value(access_token),
+            "twitch_bot_refresh_token_encrypted": encrypt_value(refresh_token) if refresh_token else None,
+            "twitch_bot_access_expires_at": token_expires_at,
+            "twitch_bot_user_id": broadcaster_id,
+            "twitch_bot_login": login,
+        })
+        stream.settings = metadata
+        await db.flush()
+        try:
+            result = await TwitchEventSubClient(access_token).ensure_subscription(
+                "channel.chat.message",
+                stream.external_id,
+                chat_user_id=broadcaster_id,
+            )
+            metadata = dict(stream.settings or {})
+            metadata["twitch_bot_eventsub_status"] = "enabled"
+            report = dict(metadata.get("eventsub_subscriptions", {}))
+            item = result.get("data", [{}])[0]
+            report["channel.chat.message"] = {
+                "status": "enabled",
+                "id": item.get("id"),
+                "existing": bool(result.get("existing")),
+            }
+            metadata["eventsub_subscriptions"] = report
+            stream.settings = metadata
+        except Exception as exc:
+            logger.warning(
+                "twitch_moderator_bot_eventsub_failed",
+                stream_id=str(stream.id),
+                error_type=type(exc).__name__,
+            )
+            metadata = dict(stream.settings or {})
+            metadata["twitch_bot_eventsub_status"] = "error"
+            stream.settings = metadata
+        await db.commit()
+        return _frontend_redirect(f"/dashboard/twitch-moderator?stream={stream.id}&bot=connected")
+
     upgrade_id = stored.get("upgrade_stream_id")
 
     stream = None

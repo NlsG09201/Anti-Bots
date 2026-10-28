@@ -58,12 +58,18 @@ class TwitchOAuth:
         "moderator:manage:banned_users",
     ]
 
-    def get_authorization_url(self, state: str) -> str:
+    CHAT_MODERATOR_SCOPES = [
+        "user:read:chat",
+        "moderator:manage:banned_users",
+        "moderator:manage:chat_messages",
+    ]
+
+    def get_authorization_url(self, state: str, scopes: Optional[list[str]] = None) -> str:
         params = {
             "client_id": settings.twitch_client_id,
             "redirect_uri": resolve_twitch_redirect_uri(),
             "response_type": "code",
-            "scope": " ".join(self.SCOPES),
+            "scope": " ".join(scopes or self.SCOPES),
             "state": state,
         }
         return f"{self.AUTH_URL}?{urlencode(params)}"

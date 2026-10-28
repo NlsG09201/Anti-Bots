@@ -74,9 +74,29 @@ async def twitch_webhook(
             return Response(status_code=204)
 
         result = await db.execute(
-            select(Stream).where(Stream.external_id == str(broadcaster_id))
+            select(Stream).where(
+                Stream.external_id == str(broadcaster_id),
+                Stream.platform == Platform.TWITCH,
+            )
         )
-        stream = result.scalar_one_or_none()
+        candidate_streams = result.scalars().all()
+        subscription_user_id = str(event.get("chat_user_id") or "")
+        stream = next(
+            (
+                item for item in candidate_streams
+                if subscription_user_id
+                and str((item.settings or {}).get("twitch_bot_user_id") or "") == subscription_user_id
+            ),
+            None,
+        )
+        if not stream:
+            stream = next(
+                (
+                    item for item in candidate_streams
+                    if not (item.settings or {}).get("twitch_bot_access_token_encrypted")
+                ),
+                candidate_streams[0] if candidate_streams else None,
+            )
         if not stream:
             logger.warning("twitch_webhook_stream_not_found", broadcaster_id=broadcaster_id)
             return Response(status_code=204)
@@ -114,6 +134,18 @@ async def twitch_webhook(
                 source="twitch_eventsub",
             )
             await db.commit()
+
+        if event["type"] == "channel.chat.message":
+            try:
+                from app.services.twitch_chat_moderation import process_twitch_chat_message
+
+                await process_twitch_chat_message(db, stream, event.get("event") or {})
+            except Exception as exc:
+                logger.exception(
+                    "twitch_chat_moderation_processing_failed",
+                    stream_id=str(stream.id),
+                    error_type=type(exc).__name__,
+                )
 
     return Response(status_code=204)
 

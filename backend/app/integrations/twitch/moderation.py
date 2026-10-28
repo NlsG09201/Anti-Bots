@@ -16,6 +16,7 @@ async def ban_user_on_twitch(
     user_id: str,
     reason: str = "StreamShield: actividad sospechosa",
     duration_seconds: Optional[int] = None,
+    moderator_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Timeout o ban via Helix moderation (requiere permisos mod en el canal)."""
     body: Dict[str, Any] = {
@@ -40,7 +41,7 @@ async def ban_user_on_twitch(
                 params={
                     "broadcaster_id": broadcaster_id,
                     # This OAuth integration authorizes the broadcaster account.
-                    "moderator_id": broadcaster_id,
+                    "moderator_id": moderator_id or broadcaster_id,
                 },
                 headers={
                     "Authorization": f"Bearer {access_token}",
@@ -61,3 +62,32 @@ async def ban_user_on_twitch(
         )
         return {"ok": False, "status": response.status_code, "detail": response.text}
     return {"ok": True, "data": response.json()}
+
+
+async def delete_chat_message_on_twitch(
+    broadcaster_id: str,
+    moderator_id: str,
+    access_token: str,
+    message_id: str,
+) -> Dict[str, Any]:
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.delete(
+                "https://api.twitch.tv/helix/moderation/chat",
+                params={
+                    "broadcaster_id": broadcaster_id,
+                    "moderator_id": moderator_id,
+                    "message_id": message_id,
+                },
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Client-Id": settings.twitch_client_id,
+                },
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("twitch_chat_delete_request_failed", error=str(exc)[:160])
+        return {"ok": False, "status": 502, "detail": str(exc)[:200]}
+    if response.status_code != 204:
+        logger.warning("twitch_chat_delete_failed", status=response.status_code)
+        return {"ok": False, "status": response.status_code, "detail": response.text[:200]}
+    return {"ok": True, "status": 204}

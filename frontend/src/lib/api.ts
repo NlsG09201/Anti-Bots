@@ -982,6 +982,32 @@ export const api = {
     },
   },
   twitch: {
+    chatBotSettings: (token: ApiAuthToken, streamId: string) =>
+      request<TwitchChatBotSettings>(`/api/v1/twitch/chat-bot/${streamId}`, {}, token),
+    saveChatBotSettings: (token: ApiAuthToken, streamId: string, body: TwitchChatModerationConfig) =>
+      request<{ saved: boolean; stream_id: string } & TwitchChatModerationConfig>(
+        `/api/v1/twitch/chat-bot/${streamId}`,
+        { method: "PUT", body: JSON.stringify(body) },
+        token,
+      ),
+    authorizeChatBot: (token: ApiAuthToken, streamId: string) =>
+      request<{ authorization_url: string }>(
+        `/api/v1/twitch/chat-bot/${streamId}/authorize`,
+        { method: "POST" },
+        token,
+      ),
+    subscribeChatBot: (token: ApiAuthToken, streamId: string) =>
+      request<{ status: string; existing: boolean }>(
+        `/api/v1/twitch/chat-bot/${streamId}/subscribe`,
+        { method: "POST" },
+        token,
+      ),
+    disconnectChatBot: (token: ApiAuthToken, streamId: string) =>
+      request<{ disconnected: boolean }>(
+        `/api/v1/twitch/chat-bot/${streamId}/bot`,
+        { method: "DELETE" },
+        token,
+      ),
     status: (token: ApiAuthToken) =>
       request<{
         connected: boolean;
@@ -2151,6 +2177,31 @@ export interface Stream {
   login?: string;
   has_broadcaster_oauth?: boolean;
   can_manage?: boolean;
+}
+
+export interface TwitchChatModerationConfig {
+  enabled: boolean;
+  observe_only: boolean;
+  links_enabled: boolean;
+  allowed_domains: string[];
+  link_action: "delete" | "timeout" | "ban";
+  repeated_messages_enabled: boolean;
+  repeat_limit: number;
+  repeat_window_seconds: number;
+  repeat_action: "timeout" | "ban";
+  blocked_words: string[];
+  word_action: "delete" | "timeout" | "ban";
+  timeout_seconds: number;
+}
+
+export interface TwitchChatBotSettings extends TwitchChatModerationConfig {
+  stream_id: string;
+  channel_name: string;
+  oauth_connected: boolean;
+  bot_connected: boolean;
+  bot_login?: string | null;
+  bot_user_id?: string | null;
+  eventsub_status: string;
 }
 
 export interface TenantUser {
