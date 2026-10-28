@@ -362,7 +362,7 @@ function SettingsContent() {
           </div>
         ) : (
           <button
-            onClick={() => connectTwitch.mutate()}
+            onClick={() => connectTwitch.mutate(undefined)}
             disabled={!twitchStatus?.configured || connectTwitch.isPending}
             className="cyber-btn-primary"
           >
@@ -444,7 +444,7 @@ function SettingsContent() {
         ) : (
           <button
             type="button"
-            onClick={() => connectKick.mutate()}
+            onClick={() => connectKick.mutate(undefined)}
             disabled={!kickStatus?.configured || connectKick.isPending}
             className="cyber-btn-primary"
           >
