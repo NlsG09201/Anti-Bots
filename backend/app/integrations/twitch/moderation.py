@@ -91,3 +91,89 @@ async def delete_chat_message_on_twitch(
         logger.warning("twitch_chat_delete_failed", status=response.status_code)
         return {"ok": False, "status": response.status_code, "detail": response.text[:200]}
     return {"ok": True, "status": 204}
+
+
+async def add_channel_moderator_on_twitch(
+    broadcaster_id: str,
+    moderator_user_id: str,
+    access_token: str,
+) -> Dict[str, Any]:
+    """Idempotently add a user as moderator using the broadcaster's OAuth token."""
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Client-Id": settings.twitch_client_id,
+    }
+    params = {"broadcaster_id": broadcaster_id, "user_id": moderator_user_id}
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            current = await client.get(
+                "https://api.twitch.tv/helix/moderation/moderators",
+                headers=headers,
+                params=params,
+            )
+            if current.status_code != 200:
+                return {"ok": False, "status": current.status_code, "detail": current.text[:300]}
+            if any(
+                str(item.get("user_id")) == moderator_user_id
+                for item in current.json().get("data", [])
+            ):
+                return {"ok": True, "status": 200, "already_moderator": True}
+
+            response = await client.post(
+                "https://api.twitch.tv/helix/moderation/moderators",
+                headers=headers,
+                params=params,
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("twitch_add_moderator_request_failed", error=str(exc)[:180])
+        return {"ok": False, "status": 502, "detail": str(exc)[:220]}
+    if response.status_code != 204:
+        logger.warning(
+            "twitch_add_moderator_failed",
+            status=response.status_code,
+            body=response.text[:260],
+        )
+        return {"ok": False, "status": response.status_code, "detail": response.text[:300]}
+    return {"ok": True, "status": 204, "already_moderator": False}
+
+
+async def remove_channel_moderator_on_twitch(
+    broadcaster_id: str,
+    moderator_user_id: str,
+    access_token: str,
+) -> Dict[str, Any]:
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Client-Id": settings.twitch_client_id,
+    }
+    params = {"broadcaster_id": broadcaster_id, "user_id": moderator_user_id}
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            current = await client.get(
+                "https://api.twitch.tv/helix/moderation/moderators",
+                headers=headers,
+                params=params,
+            )
+            if current.status_code != 200:
+                return {"ok": False, "status": current.status_code, "detail": current.text[:300]}
+            if not any(
+                str(item.get("user_id")) == moderator_user_id
+                for item in current.json().get("data", [])
+            ):
+                return {"ok": True, "status": 200, "already_removed": True}
+            response = await client.delete(
+                "https://api.twitch.tv/helix/moderation/moderators",
+                headers=headers,
+                params=params,
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("twitch_remove_moderator_request_failed", error=str(exc)[:180])
+        return {"ok": False, "status": 502, "detail": str(exc)[:220]}
+    if response.status_code != 204:
+        logger.warning(
+            "twitch_remove_moderator_failed",
+            status=response.status_code,
+            body=response.text[:260],
+        )
+        return {"ok": False, "status": response.status_code, "detail": response.text[:300]}
+    return {"ok": True, "status": 204, "already_removed": False}

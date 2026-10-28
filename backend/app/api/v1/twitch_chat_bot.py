@@ -98,6 +98,7 @@ async def get_settings(
         "bot_connected": bool(metadata.get("twitch_bot_access_token_encrypted")),
         "bot_login": metadata.get("twitch_bot_login"),
         "bot_user_id": metadata.get("twitch_bot_user_id"),
+        "bot_moderator_status": metadata.get("twitch_bot_moderator_status", "not_configured"),
         "eventsub_status": metadata.get("twitch_bot_eventsub_status", "not_configured"),
         **config.model_dump(),
     }
@@ -150,6 +151,83 @@ async def authorize_bot(
         scopes=TwitchOAuth.CHAT_MODERATOR_SCOPES,
     )
     return {"authorization_url": url}
+
+
+@router.post("/{stream_id}/setup")
+async def setup_bot_in_channel(
+    stream_id: UUID,
+    current_user: StreamModeratorUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Grant moderator role using broadcaster OAuth, then enable chat EventSub."""
+    stream = await _get_manageable_stream(stream_id, current_user, db)
+    metadata = dict(stream.settings or {})
+    from app.core.config import get_settings
+    from app.services.platforms.oauth_tokens import get_stream_access_token
+    from app.services.twitch_chat_moderation import get_twitch_bot_credentials
+    from app.integrations.twitch.eventsub import TwitchEventSubClient
+    from app.integrations.twitch.moderation import add_channel_moderator_on_twitch
+
+    config = get_settings()
+    if not config.twitch_eventsub_callback_url or not config.twitch_webhook_secret:
+        raise ValidationError("Configura el callback y el secreto de Twitch EventSub en el backend.")
+    bot_token, bot_id, bot_login = await get_twitch_bot_credentials(stream)
+    if not bot_token or not bot_id:
+        raise ValidationError("Conecta primero la cuenta de bot moderadora de Twitch.")
+    broadcaster_token = await get_stream_access_token(stream)
+    if not broadcaster_token:
+        raise ValidationError("Vuelve a conectar el canal propietario de Twitch.")
+
+    moderator = await add_channel_moderator_on_twitch(
+        stream.external_id, bot_id, broadcaster_token
+    )
+    if not moderator.get("ok"):
+        if moderator.get("status") in (401, 403):
+            raise ValidationError(
+                "Twitch no autorizó gestionar moderadores. Reconecta el canal propietario "
+                "en Canales para conceder channel:manage:moderators. "
+                f"Detalle de Twitch: {str(moderator.get('detail') or '')[:180]}"
+            )
+        raise ValidationError(
+            "No se pudo añadir la cuenta bot como moderadora. "
+            f"Respuesta de Twitch ({moderator.get('status')}): {str(moderator.get('detail') or '')[:180]}"
+        )
+
+    metadata = dict(stream.settings or {})
+    metadata["twitch_bot_moderator_status"] = "added"
+    stream.settings = metadata
+    await db.commit()
+    try:
+        subscription = await TwitchEventSubClient(bot_token).ensure_subscription(
+            "channel.chat.message", stream.external_id, chat_user_id=bot_id
+        )
+    except Exception as exc:
+        metadata = dict(stream.settings or {})
+        metadata["twitch_bot_eventsub_status"] = "error"
+        stream.settings = metadata
+        await db.commit()
+        raise ValidationError(
+            f"@{bot_login} ya quedó como moderador, pero Twitch no activó los eventos del chat. "
+            f"Puedes reintentar. Detalle: {str(exc)[:180]}"
+        ) from exc
+
+    metadata = dict(stream.settings or {})
+    metadata["twitch_bot_eventsub_status"] = "enabled"
+    report = dict(metadata.get("eventsub_subscriptions", {}))
+    item = subscription.get("data", [{}])[0]
+    report["channel.chat.message"] = {
+        "status": "enabled",
+        "id": item.get("id"),
+        "existing": bool(subscription.get("existing")),
+    }
+    metadata["eventsub_subscriptions"] = report
+    stream.settings = metadata
+    await db.commit()
+    return {
+        "moderator_status": "already_moderator" if moderator.get("already_moderator") else "added",
+        "eventsub_status": "enabled",
+        "bot_login": bot_login,
+    }
 
 
 @router.post("/{stream_id}/subscribe")
@@ -205,6 +283,23 @@ async def disconnect_bot(
     stream = await _get_manageable_stream(stream_id, current_user, db)
     metadata = dict(stream.settings or {})
     token_encrypted = metadata.get("twitch_bot_access_token_encrypted")
+    moderator_removed = False
+    bot_user_id = metadata.get("twitch_bot_user_id")
+    if bot_user_id and metadata.get("twitch_bot_moderator_status") == "added":
+        try:
+            from app.services.platforms.oauth_tokens import get_stream_access_token
+            from app.integrations.twitch.moderation import remove_channel_moderator_on_twitch
+
+            broadcaster_token = await get_stream_access_token(stream)
+            if broadcaster_token:
+                result = await remove_channel_moderator_on_twitch(
+                    stream.external_id, str(bot_user_id), broadcaster_token
+                )
+                moderator_removed = bool(result.get("ok"))
+        except Exception:
+            # Continue local cleanup even if Twitch cannot be reached.
+            pass
+    metadata = dict(stream.settings or {})
     if token_encrypted:
         try:
             from app.core.config import get_settings
@@ -234,6 +329,7 @@ async def disconnect_bot(
         "twitch_bot_access_expires_at",
         "twitch_bot_user_id",
         "twitch_bot_login",
+        "twitch_bot_moderator_status",
         "twitch_bot_eventsub_status",
     ):
         metadata.pop(key, None)
@@ -245,4 +341,4 @@ async def disconnect_bot(
     metadata["twitch_chat_moderation"] = config
     stream.settings = metadata
     await db.commit()
-    return {"disconnected": True}
+    return {"disconnected": True, "moderator_removed": moderator_removed}

@@ -1001,6 +1001,12 @@ export const api = {
         { method: "POST" },
         token,
       ),
+    setupChatBot: (token: ApiAuthToken, streamId: string) =>
+      request<{ moderator_status: "added" | "already_moderator"; eventsub_status: string; bot_login: string }>(
+        `/api/v1/twitch/chat-bot/${streamId}/setup`,
+        { method: "POST" },
+        token,
+      ),
     subscribeChatBot: (token: ApiAuthToken, streamId: string) =>
       request<{ status: string; existing: boolean }>(
         `/api/v1/twitch/chat-bot/${streamId}/subscribe`,
@@ -1008,7 +1014,7 @@ export const api = {
         token,
       ),
     disconnectChatBot: (token: ApiAuthToken, streamId: string) =>
-      request<{ disconnected: boolean }>(
+      request<{ disconnected: boolean; moderator_removed: boolean }>(
         `/api/v1/twitch/chat-bot/${streamId}/bot`,
         { method: "DELETE" },
         token,
@@ -1039,12 +1045,17 @@ export const api = {
         register_at: string;
         hint: string;
       }>("/api/v1/integrations/twitch/setup", {}, token),
-    authorize: (token: ApiAuthToken, streamId?: string) =>
-      request<{ authorization_url: string }>(
-        `/api/v1/integrations/twitch/authorize${streamId ? `?upgrade_stream_id=${streamId}` : ""}`,
+    authorize: (token: ApiAuthToken, streamId?: string, returnTo?: string) => {
+      const params = new URLSearchParams();
+      if (streamId) params.set("upgrade_stream_id", streamId);
+      if (returnTo) params.set("return_to", returnTo);
+      const query = params.toString();
+      return request<{ authorization_url: string }>(
+        `/api/v1/integrations/twitch/authorize${query ? `?${query}` : ""}`,
         {},
         token,
-      ),
+      );
+    },
     subscribe: (token: ApiAuthToken, streamId: string) =>
       request<{
         subscriptions: Record<string, { status: string; message?: string }>;
@@ -2206,6 +2217,7 @@ export interface TwitchChatBotSettings extends TwitchChatModerationConfig {
   bot_connected: boolean;
   bot_login?: string | null;
   bot_user_id?: string | null;
+  bot_moderator_status: string;
   eventsub_status: string;
 }
 

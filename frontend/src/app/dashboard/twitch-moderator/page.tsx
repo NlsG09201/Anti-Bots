@@ -57,7 +57,8 @@ export default function TwitchModeratorPage() {
     const params = new URLSearchParams(window.location.search);
     const stream = params.get("stream");
     if (stream) setStreamId(stream);
-    if (params.get("bot") === "connected") setNotice("Cuenta bot autorizada. Comprueba el estado de EventSub y añádela como moderadora en el chat.");
+    if (params.get("twitch") === "connected") setNotice("Permisos del canal actualizados. Pulsa “Añadir como moderador y activar chat”.");
+    if (params.get("bot") === "connected") setNotice("Cuenta bot autorizada. Pulsa “Añadir como moderador y activar chat” para completar la configuración.");
     const error = params.get("bot_error");
     if (error) setNotice(params.get("bot_msg") || `No se pudo conectar la cuenta bot (${error}).`);
   }, []);
@@ -72,14 +73,27 @@ export default function TwitchModeratorPage() {
     onSuccess: (result) => window.location.assign(result.authorization_url),
     onError: (error: Error) => setNotice(error.message),
   });
-  const disconnect = useMutation({
-    mutationFn: () => api.twitch.disconnectChatBot(token!, activeId),
-    onSuccess: () => { setNotice("Cuenta del bot desconectada y reglas automáticas desactivadas."); queryClient.invalidateQueries({ queryKey: ["twitch-chat-bot", activeId] }); },
+  const authorizeChannel = useMutation({
+    mutationFn: () => api.twitch.authorize(token!, activeId, "/dashboard/twitch-moderator"),
+    onSuccess: (result) => window.location.assign(result.authorization_url),
     onError: (error: Error) => setNotice(error.message),
   });
-  const subscribe = useMutation({
-    mutationFn: () => api.twitch.subscribeChatBot(token!, activeId),
-    onSuccess: () => { setNotice("Suscripción de chat activa."); queryClient.invalidateQueries({ queryKey: ["twitch-chat-bot", activeId] }); },
+  const disconnect = useMutation({
+    mutationFn: () => api.twitch.disconnectChatBot(token!, activeId),
+    onSuccess: (result) => {
+      setNotice(result.moderator_removed
+        ? "Cuenta bot desconectada, eliminada como moderadora y reglas automáticas desactivadas."
+        : "Cuenta bot desconectada y reglas automáticas desactivadas. Twitch no confirmó la eliminación del rol de moderador; puedes quitarlo manualmente en Twitch.");
+      queryClient.invalidateQueries({ queryKey: ["twitch-chat-bot", activeId] });
+    },
+    onError: (error: Error) => setNotice(error.message),
+  });
+  const setupBot = useMutation({
+    mutationFn: () => api.twitch.setupChatBot(token!, activeId),
+    onSuccess: (result) => {
+      setNotice(`@${result.bot_login} ${result.moderator_status === "already_moderator" ? "ya era moderador" : "se añadió como moderador"}; EventSub quedó activo.`);
+      queryClient.invalidateQueries({ queryKey: ["twitch-chat-bot", activeId] });
+    },
     onError: (error: Error) => setNotice(error.message),
   });
 
@@ -107,15 +121,17 @@ export default function TwitchModeratorPage() {
             <div className="flex items-center gap-3"><Radio className="text-cyber-accent" /><div><h2 className="font-semibold text-white">{query.data.channel_name}</h2><p className="text-sm text-cyber-muted">Canal propietario: {query.data.oauth_connected ? "conectado" : "desconectado"}</p></div></div>
             <div className="flex flex-wrap gap-2">
               <span className={`rounded-full border px-3 py-1 text-xs ${query.data.bot_connected ? "border-cyber-accent/50 text-cyber-accent" : "border-cyber-border text-cyber-muted"}`}>{query.data.bot_connected ? `Bot @${query.data.bot_login}` : "Bot sin conectar"}</span>
+              {query.data.bot_connected && <span className="rounded-full border border-cyber-border px-3 py-1 text-xs text-cyber-muted">Moderador: {query.data.bot_moderator_status}</span>}
               <span className="rounded-full border border-cyber-border px-3 py-1 text-xs text-cyber-muted">EventSub: {query.data.eventsub_status}</span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <button disabled={authorize.isPending || !query.data.oauth_connected} onClick={() => authorize.mutate()} className="inline-flex items-center gap-2 rounded-lg bg-cyber-accent px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"><ExternalLink size={16} />{query.data.bot_connected ? "Reconectar cuenta bot" : "Conectar cuenta bot"}</button>
-            {query.data.bot_connected && <button disabled={subscribe.isPending} onClick={() => subscribe.mutate()} className="inline-flex items-center gap-2 rounded-lg border border-cyber-border px-4 py-2 text-sm text-white disabled:opacity-50">{subscribe.isPending ? <Loader2 size={16} className="animate-spin" /> : <Radio size={16} />}Activar / reintentar eventos</button>}
+            {notice.includes("channel:manage:moderators") && <button disabled={authorizeChannel.isPending} onClick={() => authorizeChannel.mutate()} className="inline-flex items-center gap-2 rounded-lg border border-yellow-500/40 px-4 py-2 text-sm text-yellow-100 disabled:opacity-50">{authorizeChannel.isPending && <Loader2 size={16} className="animate-spin" />}Actualizar permisos del canal</button>}
+            {query.data.bot_connected && <button disabled={setupBot.isPending} onClick={() => setupBot.mutate()} className="inline-flex items-center gap-2 rounded-lg border border-cyber-border px-4 py-2 text-sm text-white disabled:opacity-50">{setupBot.isPending ? <Loader2 size={16} className="animate-spin" /> : <Radio size={16} />}Añadir como moderador y activar chat</button>}
             {query.data.bot_connected && <button disabled={disconnect.isPending} onClick={() => disconnect.mutate()} className="inline-flex items-center gap-2 rounded-lg border border-red-500/40 px-4 py-2 text-sm text-red-300 disabled:opacity-50"><Unplug size={16} />Desconectar bot</button>}
           </div>
-          {query.data.bot_connected && <p className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 text-sm text-yellow-100">Entra en el chat como propietario y ejecuta <code>/mod {query.data.bot_login}</code>. Luego pulsa “Activar / reintentar eventos”. Twitch no concede el rol de moderador automáticamente al autorizar OAuth. La aplicación conserva las reglas apagadas hasta que las actives.</p>}
+          {query.data.bot_connected && <p className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 text-sm text-yellow-100">La aplicación añadirá <code>@{query.data.bot_login}</code> como moderador usando el permiso OAuth del canal propietario y después activará EventSub. Puede que Twitch te pida volver a autorizar el canal si ese permiso aún no fue concedido. Las reglas de sanción siguen apagadas hasta que las actives.</p>}
         </section>
 
         <section className="space-y-5 rounded-xl border border-cyber-border bg-cyber-surface p-5">

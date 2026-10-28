@@ -117,6 +117,7 @@ async def _ensure_stream_eventsub(stream: Stream, access_token: str) -> dict:
 async def twitch_authorize(
     current_user: CurrentUser,
     upgrade_stream_id: Optional[UUID] = Query(None),
+    return_to: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     if not settings.twitch_client_id:
@@ -151,6 +152,8 @@ async def twitch_authorize(
     }
     if upgrade_stream_id:
         payload["upgrade_stream_id"] = str(upgrade_stream_id)
+    if return_to == "/dashboard/twitch-moderator":
+        payload["return_to"] = return_to
     url = await _start_oauth(payload)
     return {"authorization_url": url}
 
@@ -386,6 +389,11 @@ async def twitch_callback(
     await db.flush()
 
     await _ensure_stream_eventsub(stream, access_token)
+
+    if stored.get("return_to") == "/dashboard/twitch-moderator":
+        return _frontend_redirect(
+            f"/dashboard/twitch-moderator?stream={stream.id}&twitch=connected"
+        )
 
     if stored.get("invite") or stored.get("upgrade_stream_id"):
         await cache.delete(f"invite:{stored['invite']}") if stored.get("invite") else None
