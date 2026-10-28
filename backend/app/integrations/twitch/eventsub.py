@@ -93,7 +93,7 @@ class TwitchEventSubClient:
         broadcaster_user_id: str,
         chat_user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Reuse an enabled matching webhook subscription before creating one."""
+        """Reuse an active matching webhook subscription before creating one."""
         condition = self._subscription_condition(event_type, broadcaster_user_id, chat_user_id)
         cursor = None
         app_token = await self._get_app_access_token()
@@ -117,7 +117,25 @@ class TwitchEventSubClient:
                         and transport.get("method") == "webhook"
                         and transport.get("callback") == settings.twitch_eventsub_callback_url
                     ):
-                        return {"data": [subscription], "existing": True}
+                        if subscription.get("status") in (
+                            "enabled",
+                            "webhook_callback_verification_pending",
+                        ):
+                            return {"data": [subscription], "existing": True}
+                        subscription_id = subscription.get("id")
+                        if subscription_id:
+                            delete_response = await client.delete(
+                                f"{self.BASE_URL}/eventsub/subscriptions",
+                                headers=self._headers(app_token),
+                                params={"id": str(subscription_id)},
+                            )
+                            if delete_response.status_code not in (204, 404):
+                                self._raise_for_twitch(delete_response)
+                        return await self.create_subscription(
+                            event_type,
+                            broadcaster_user_id,
+                            chat_user_id=chat_user_id,
+                        )
                 cursor = result.get("pagination", {}).get("cursor")
                 if not cursor:
                     break
