@@ -46,7 +46,12 @@ function SettingsContent() {
     }
     const kickError = searchParams.get("kick_error");
     if (kickError) {
-      setMessage(searchParams.get("kick_msg") || kickError);
+      const detail = searchParams.get("kick_msg") || kickError;
+      setMessage(
+        kickError === "token_exchange_failed" && detail.toLowerCase().includes("invalid_client")
+          ? "Kick rechazó las credenciales OAuth. En Render, verifica que KICK_CLIENT_ID y KICK_CLIENT_SECRET pertenezcan a la misma app de Kick y que KICK_REDIRECT_URI coincida exactamente con la registrada. Actualiza también DEPLOY_RENDER_ENV en GitHub Actions si despliegas las variables desde ahí, y redepliega el backend."
+          : detail,
+      );
     }
     const youtubeError = searchParams.get("youtube_error");
     if (youtubeError) {
