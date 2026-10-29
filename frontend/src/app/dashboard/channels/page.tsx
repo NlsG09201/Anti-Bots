@@ -344,12 +344,16 @@ function ChannelSection({
               )}
               <button
                 type="button"
-                disabled={!stream.is_live || scanningId === stream.id}
+                disabled={scanningId === stream.id}
                 onClick={() => onMonitor(stream.id)}
                 className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-cyber-accent/40 text-cyber-accent disabled:opacity-40"
               >
                 <Radio size={12} />
-                {scanningId === stream.id ? "Escaneando..." : "Escanear chat"}
+                {scanningId === stream.id
+                  ? "Verificando..."
+                  : stream.is_live
+                    ? "Escanear chat"
+                    : "Verificar LIVE"}
               </button>
               {showInvite && onInvite && stream.monitor_mode && !stream.is_owned && (
                 <button

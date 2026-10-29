@@ -197,7 +197,9 @@ function ViewersContent() {
             `${analysis.flagged} coincidencias conocidas, ${analysis.review_required ?? 0} para revisar. ` +
             (platform === "kick" && sync.chat_subscription === "failed"
               ? "No se pudo activar la suscripción de chat de Kick. Revisa las credenciales y la configuración de Webhooks de la aplicación Kick."
-              : "Los espectadores silenciosos no son identificables por la plataforma."),
+              : platform === "kick" && sync.chat_history_error
+                ? `No se pudo consultar el historial reciente de chat (${sync.chat_history_error}); se conservaron los usuarios recibidos por webhook.`
+                : "Los espectadores silenciosos no son identificables por la plataforma."),
         );
       } catch (e) {
         setMessage(e instanceof Error ? e.message : `No se pudo sincronizar ${platform}`);

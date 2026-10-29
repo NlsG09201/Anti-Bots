@@ -788,6 +788,7 @@ export const api = {
         chatters_synced: number;
         source: string;
         chat_subscription?: "configured" | "failed" | null;
+        chat_history_error?: string;
       }>(
         `/api/v1/streams/${streamId}/sync/platform`,
         { method: "POST" },

@@ -63,21 +63,22 @@ class PlatformSyncService:
                 meta.pop("live_video_id", None)
             stream.settings = meta
 
+        chat_history_error = None
         if live.is_live:
-            if stream.platform == Platform.KICK:
-                # Kick's supported read path is its authenticated chat/event
-                # stream. Its private REST history endpoint is not a stable
-                # viewer-list API and an empty response must not erase sessions.
-                sync_stats = await self.viewers.count_active(stream.id)
-                return {
-                    "platform": stream.platform.value,
-                    "is_live": live.is_live,
-                    "viewer_count": live.viewer_count,
-                    "chatters_synced": sync_stats["total"],
-                    "source": "kick_live_chat_monitor",
-                    "chat_subscription": kick_subscription_status,
-                }
-            snapshots = await adapter.fetch_viewers(stream)
+            try:
+                snapshots = await adapter.fetch_viewers(stream)
+            except Exception as exc:
+                if stream.platform != Platform.KICK:
+                    raise
+                # Kick's history endpoint is best-effort; verified webhooks
+                # continue to populate sessions if this endpoint is unavailable.
+                snapshots = []
+                chat_history_error = type(exc).__name__
+                logger.warning(
+                    "kick_chat_history_fetch_failed",
+                    stream_id=str(stream.id),
+                    error_type=chat_history_error,
+                )
             chatters = [
                 {
                     "username": snap.platform_username or snap.platform_user_id,
@@ -94,19 +95,31 @@ class PlatformSyncService:
         sync_stats = await self.viewers.sync_chat_presence(
             stream.id,
             chatters,
-            full_resync=True,
+            # Kick history contains only recent speakers, not a complete roster.
+            # Never mark existing participants absent based on that partial page.
+            full_resync=stream.platform != Platform.KICK,
             clear_if_empty=not live.is_live,
         )
         synced = sync_stats["total_synced"]
+        if stream.platform == Platform.KICK:
+            active_stats = await self.viewers.count_active(stream.id)
+            synced = active_stats["total"]
 
         return {
             "platform": stream.platform.value,
             "is_live": live.is_live,
             "viewer_count": live.viewer_count,
             "chatters_synced": synced,
-            "source": stream.platform.value,
+            "source": (
+                "kick_chat_history+webhook"
+                if stream.platform == Platform.KICK
+                else stream.platform.value
+            ),
             **(
-                {"chat_subscription": kick_subscription_status}
+                {
+                    "chat_subscription": kick_subscription_status,
+                    **({"chat_history_error": chat_history_error} if chat_history_error else {}),
+                }
                 if stream.platform == Platform.KICK
                 else {}
             ),

@@ -356,7 +356,7 @@ async def quick_sync_stream(
             if stream.platform in (Platform.KICK, Platform.YOUTUBE, Platform.TIKTOK):
                 summary = await asyncio.wait_for(
                     PlatformSyncService(db).sync_viewers(stream),
-                    timeout=15.0
+                    timeout=35.0 if stream.platform == Platform.KICK else 15.0
                 )
             else:
                 summary = await asyncio.wait_for(
@@ -370,7 +370,7 @@ async def quick_sync_stream(
             await db.rollback()
             return {
                 "status": "timeout",
-                "message": "La sincronizacion rapida excedio el tiempo limite (15s)",
+                "message": "La sincronizacion rapida excedio el tiempo limite. Reintenta.",
                 "viewer_count": stream.viewer_count
             }
         except (SQLAlchemyError, ValueError, KeyError) as exc:
