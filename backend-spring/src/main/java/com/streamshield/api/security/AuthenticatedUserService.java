@@ -1,5 +1,6 @@
 package com.streamshield.api.security;
 
+import java.util.Objects;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -44,20 +45,16 @@ public class AuthenticatedUserService {
             if (tokenId == null || tokenId.isBlank()) {
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token identifier is required");
             }
+            boolean revoked;
             try {
-                Boolean revoked = redis.hasKey("ss:blacklist:" + tokenId);
-                if (revoked == null) {
-                    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                            "Token revocation store returned no result");
-                }
-                if (revoked) {
-                    throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token has been revoked");
-                }
-            } catch (ResponseStatusException exception) {
-                throw exception;
+                revoked = Objects.requireNonNull(
+                        redis.hasKey("ss:blacklist:" + tokenId), "Redis blacklist lookup returned null");
             } catch (RuntimeException exception) {
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                         "Token revocation store is unavailable", exception);
+            }
+            if (revoked) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token has been revoked");
             }
         }
         return tenantId;

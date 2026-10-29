@@ -19,6 +19,7 @@ function ChannelsContent() {
   const [message, setMessage] = useState("");
   const [scanningId, setScanningId] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState("");
+  const normalizedLogin = login.trim().replace(/^@+/, "");
 
   useEffect(() => {
     if (searchParams.get("twitch") === "connected") {
@@ -52,7 +53,7 @@ function ChannelsContent() {
   });
 
   const watchMutation = useMutation({
-    mutationFn: () => api.streams.watch(token, login.trim(), platform),
+    mutationFn: () => api.streams.watch(token, normalizedLogin, platform),
     onSuccess: () => {
       setMessage(`Canal @${login} en monitoreo. Abre Viewers y pulsa Escanear cuando este en vivo.`);
       setLogin("");
@@ -176,6 +177,10 @@ function ChannelsContent() {
         <div className="flex flex-wrap gap-2">
           <input
             type="text"
+            id="channel-login"
+            name="channel_login"
+            minLength={2}
+            maxLength={50}
             placeholder={
               platform === "youtube"
                 ? "nombre del canal YouTube"
@@ -189,7 +194,7 @@ function ChannelsContent() {
           />
           <button
             type="button"
-            disabled={!login.trim() || watchMutation.isPending}
+            disabled={normalizedLogin.length < 2 || watchMutation.isPending}
             onClick={() => watchMutation.mutate()}
             className="px-4 py-2 rounded-lg bg-cyber-accent/20 text-cyber-accent border border-cyber-accent/40 text-sm"
           >

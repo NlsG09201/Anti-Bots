@@ -190,7 +190,7 @@ async def _watch_channel_impl(
     if not helix.configured:
         raise ValidationError("Credenciales Twitch no configuradas en el servidor")
 
-    user = await helix.get_user_by_login(data.login)
+    user = await helix.get_user_by_login(login)
     if not user:
         raise NotFoundError("Canal de Twitch")
 

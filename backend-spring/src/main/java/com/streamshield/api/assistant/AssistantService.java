@@ -1,8 +1,9 @@
 package com.streamshield.api.assistant;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.ArrayList;
+import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,9 +45,10 @@ public class AssistantService {
     }
 
     public ChatResponse answer(ChatRequest request) {
-        String message = request.message().trim();
+        String message = Objects.requireNonNull(
+                Objects.requireNonNull(request.message(), "message").trim(), "trimmed message");
         List<HistoryMessage> history = request.history().stream()
-                .filter(item -> item.role().equals("user") || item.role().equals("assistant"))
+                .filter(item -> "user".equals(item.role()) || "assistant".equals(item.role()))
                 .toList();
 
         if (aiEnabled && chatClient != null) {
@@ -54,10 +56,11 @@ public class AssistantService {
                 List<Message> messages = new ArrayList<>();
                 messages.add(new SystemMessage(SYSTEM_PROMPT));
                 for (HistoryMessage item : history) {
-                    if (item.role().equals("user")) {
-                        messages.add(new UserMessage(item.content()));
+                    String content = Objects.requireNonNull(item.content(), "history content");
+                    if ("user".equals(item.role())) {
+                        messages.add(new UserMessage(content));
                     } else {
-                        messages.add(new AssistantMessage(item.content()));
+                        messages.add(new AssistantMessage(content));
                     }
                 }
                 messages.add(new UserMessage(message));

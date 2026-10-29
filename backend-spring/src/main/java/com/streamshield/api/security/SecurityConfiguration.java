@@ -3,7 +3,6 @@ package com.streamshield.api.security;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -16,7 +15,6 @@ import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -81,7 +79,7 @@ public class SecurityConfiguration {
             HttpSecurity http,
             Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter) throws Exception {
         return http
-                .csrf(AbstractHttpConfigurer::disable)
+                .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/actuator/health", "/health").permitAll()
