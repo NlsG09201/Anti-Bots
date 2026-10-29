@@ -110,7 +110,7 @@ export default function KickBotPage() {
         <section className="rounded-xl border border-cyber-border bg-cyber-surface p-6">
           <h2 className="text-lg font-semibold text-white">Conecta un canal de Kick</h2>
           <p className="mt-2 text-sm text-cyber-muted">La conexión autoriza lectura de chat, envío de mensajes y suscripción a eventos. Se solicitará también permiso para timeout y ban desde el área Viewers.</p>
-          <button onClick={authorizeKick} className="mt-4 rounded-lg bg-cyber-accent px-4 py-2 font-semibold text-black">Conectar Kick</button>
+          <button onClick={() => void authorizeKick()} className="mt-4 rounded-lg bg-cyber-accent px-4 py-2 font-semibold text-black">Conectar Kick</button>
         </section>
       )}
 
@@ -127,7 +127,7 @@ export default function KickBotPage() {
           <section className="rounded-xl border border-cyber-border bg-cyber-surface p-5">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3"><Radio className={stream.is_live ? "text-cyber-accent" : "text-cyber-muted"} /><div><h2 className="font-semibold text-white">Estado del canal</h2><p className="text-sm text-cyber-muted">{stream.is_live ? "En directo" : "Conectado"} · @{stream.channel_name}</p></div></div>
-              <button onClick={authorizeKick} className="rounded-lg border border-cyber-border px-3 py-2 text-sm text-white hover:border-cyber-accent">Volver a autorizar Kick</button>
+              <button onClick={() => void authorizeKick()} className="rounded-lg border border-cyber-border px-3 py-2 text-sm text-white hover:border-cyber-accent">Volver a autorizar Kick</button>
             </div>
           </section>
 
