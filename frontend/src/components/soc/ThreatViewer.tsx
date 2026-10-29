@@ -81,7 +81,10 @@ export default function ThreatViewer({ streamId, tenantId }: ThreatViewerProps) 
         <h3 className="text-lg font-semibold">
           Suspicious Viewers ({viewers.length})
         </h3>
+        <label className="sr-only" htmlFor="threat-viewer-sort">Ordenar espectadores por</label>
         <select
+          id="threat-viewer-sort"
+          name="sort_by"
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as "threat_score" | "join_count")}
           className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600"

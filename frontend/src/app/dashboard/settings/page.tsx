@@ -588,7 +588,10 @@ function SettingsContent() {
                 unoptimized
                 className="mx-auto w-48 h-48 rounded border border-cyber-border"
               />
+              <label className="sr-only" htmlFor="mfa-setup-code">Código para activar MFA</label>
               <input
+                id="mfa-setup-code"
+                name="mfa_setup_code"
                 type="text"
                 placeholder="Código de 6 dígitos"
                 value={mfaCode}
@@ -607,7 +610,10 @@ function SettingsContent() {
 
           {mfaStatus?.enabled && (
             <div className="space-y-3">
+              <label className="sr-only" htmlFor="mfa-disable-code">Código para desactivar MFA</label>
               <input
+                id="mfa-disable-code"
+                name="mfa_disable_code"
                 type="text"
                 placeholder="Código para desactivar"
                 value={mfaCode}

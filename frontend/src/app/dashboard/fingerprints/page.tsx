@@ -61,6 +61,8 @@ export default function FingerprintsPage() {
               size={16}
             />
             <select
+              id="fingerprint-stream-filter"
+              name="stream_id"
               value={streamFilter}
               onChange={(e) => setStreamFilter(e.target.value)}
               className="w-full pl-9 pr-3 py-2 rounded-lg border border-cyber-border bg-cyber-bg text-white text-sm cursor-pointer"
@@ -83,6 +85,8 @@ export default function FingerprintsPage() {
               size={16}
             />
             <input
+              id="fingerprint-hash-search"
+              name="hash"
               type="search"
               value={hashQuery}
               onChange={(e) => setHashQuery(e.target.value)}
@@ -94,6 +98,8 @@ export default function FingerprintsPage() {
 
         <label className="flex items-center gap-2 text-sm text-cyber-muted cursor-pointer pb-2">
           <input
+            id="fingerprint-min-risk"
+            name="min_risk_only"
             type="checkbox"
             checked={minRiskOnly}
             onChange={(e) => setMinRiskOnly(e.target.checked)}

@@ -64,8 +64,10 @@ export default function WidgetPage() {
 
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="text-xs text-cyber-muted block mb-1">Canal</label>
+          <label htmlFor="widget-channel" className="text-xs text-cyber-muted block mb-1">Canal</label>
           <select
+            id="widget-channel"
+            name="channel_id"
             value={selectedId}
             onChange={(e) => setStreamId(e.target.value)}
             className="bg-cyber-bg border border-cyber-border rounded-lg px-3 py-2 text-sm text-white min-w-[220px]"

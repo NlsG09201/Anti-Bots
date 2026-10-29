@@ -140,8 +140,12 @@ function LoginForm() {
               <p className="text-sm text-cyber-muted text-center">
                 Código de tu app de autenticación
               </p>
+              <label className="sr-only" htmlFor="login-mfa-code">Código de autenticación</label>
               <input
+                id="login-mfa-code"
+                name="mfa_code"
                 type="text"
+                autoComplete="one-time-code"
                 placeholder="000000"
                 value={mfaCode}
                 onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
@@ -161,16 +165,24 @@ function LoginForm() {
             <>
               {isRegister && (
                 <>
+                  <label className="sr-only" htmlFor="register-username">Nombre de usuario</label>
                   <input
+                    id="register-username"
+                    name="username"
                     type="text"
+                    autoComplete="username"
                     placeholder="Nombre de usuario"
                     value={form.username}
                     onChange={(e) => setForm({ ...form, username: e.target.value })}
                     className="cyber-input"
                     required
                   />
+                  <label className="sr-only" htmlFor="register-tenant-name">Nombre del canal u organización</label>
                   <input
+                    id="register-tenant-name"
+                    name="tenant_name"
                     type="text"
+                    autoComplete="organization"
                     placeholder="Nombre del canal / organización"
                     value={form.tenant_name}
                     onChange={(e) => setForm({ ...form, tenant_name: e.target.value })}
@@ -180,8 +192,12 @@ function LoginForm() {
                 </>
               )}
 
+              <label className="sr-only" htmlFor="auth-email">Correo electrónico</label>
               <input
+                id="auth-email"
+                name="email"
                 type="email"
+                autoComplete="email"
                 placeholder="correo@ejemplo.com"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -190,8 +206,12 @@ function LoginForm() {
               />
 
               <div className="relative">
+                <label className="sr-only" htmlFor="auth-password">Contraseña</label>
                 <input
+                  id="auth-password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
+                  autoComplete={isRegister ? "new-password" : "current-password"}
                   placeholder={isRegister ? "Contraseña (mín. 12 caracteres)" : "Contraseña"}
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}

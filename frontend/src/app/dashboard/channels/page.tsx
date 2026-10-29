@@ -175,6 +175,7 @@ function ChannelsContent() {
           ))}
         </div>
         <div className="flex flex-wrap gap-2">
+          <label className="sr-only" htmlFor="channel-login">Nombre o identificador del canal</label>
           <input
             type="text"
             id="channel-login"

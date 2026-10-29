@@ -485,8 +485,10 @@ function ViewersContent() {
 
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="text-xs text-cyber-muted block mb-1">Canal</label>
+          <label htmlFor="viewers-stream" className="text-xs text-cyber-muted block mb-1">Canal</label>
           <select
+            id="viewers-stream"
+            name="stream_id"
             value={streamId}
             onChange={(e) => handleStreamSelect(e.target.value)}
             className="bg-cyber-bg border border-cyber-border rounded-lg px-3 py-2 text-sm text-white min-w-[200px]"
@@ -536,7 +538,10 @@ function ViewersContent() {
           {aiScreenMutation.isPending ? "Analizando..." : "Analizar señales de bots"}
         </button>
         <div className="flex items-center gap-2 flex-wrap">
+          <label className="sr-only" htmlFor="viewers-j48-source">Fuente del modelo J48</label>
           <select
+            id="viewers-j48-source"
+            name="j48_source"
             value={j48Source}
             onChange={(e) =>
               setJ48Source(e.target.value as "mixed" | "registered_bots" | "channel_flow")
@@ -608,6 +613,8 @@ function ViewersContent() {
           <label className="flex items-center gap-2 text-xs text-cyber-muted">
             Duracion del timeout
             <select
+              id="viewers-timeout-seconds"
+              name="timeout_seconds"
               value={timeoutSeconds}
               onChange={(event) => setTimeoutSeconds(Number(event.target.value))}
               disabled={blockMutation.isPending}

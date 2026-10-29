@@ -252,8 +252,10 @@ export default function WekaJ48Page() {
         <h2 className="text-sm font-semibold text-white">Entrenar modelo</h2>
         <div className="flex flex-wrap gap-3 items-end">
           <div>
-            <label className="text-xs text-cyber-muted block mb-1">Fuente de datos</label>
+            <label htmlFor="weka-source" className="text-xs text-cyber-muted block mb-1">Fuente de datos</label>
             <select
+              id="weka-source"
+              name="source"
               value={source}
               onChange={(e) => setSource(e.target.value as J48Source)}
               className="bg-cyber-bg border border-cyber-border rounded-lg px-3 py-2 text-sm text-white min-w-[200px]"
@@ -311,8 +313,10 @@ export default function WekaJ48Page() {
           <h2 className="text-sm font-semibold text-white">Predicciones por canal</h2>
           <div className="flex flex-wrap gap-2 items-end">
             <div>
-              <label className="text-xs text-cyber-muted block mb-1">Canal</label>
+              <label htmlFor="weka-stream" className="text-xs text-cyber-muted block mb-1">Canal</label>
               <select
+                id="weka-stream"
+                name="stream_id"
                 value={streamId}
                 onChange={(e) => setSelectedStream(e.target.value)}
                 className="bg-cyber-bg border border-cyber-border rounded-lg px-3 py-2 text-sm text-white min-w-[180px]"

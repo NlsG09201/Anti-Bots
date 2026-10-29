@@ -85,7 +85,10 @@ export default function SecurityDashboardPage() {
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-cyber-muted">
             <Filter size={16} />
+            <span className="sr-only">Filtrar por canal</span>
             <select
+              id="security-stream-filter"
+              name="stream_id"
               value={streamId}
               onChange={(e) => setStreamId(e.target.value)}
               className="cyber-input text-sm min-w-[160px]"
@@ -98,7 +101,10 @@ export default function SecurityDashboardPage() {
               ))}
             </select>
           </label>
+          <label htmlFor="security-time-range" className="sr-only">Rango de tiempo</label>
           <select
+            id="security-time-range"
+            name="hours"
             value={hours}
             onChange={(e) => setHours(Number(e.target.value))}
             className="cyber-input text-sm"

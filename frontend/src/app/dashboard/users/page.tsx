@@ -84,20 +84,27 @@ export default function UsersPage() {
                   {u.id === currentUser?.id ? (
                     <span className="text-cyber-accent capitalize">{roleLabel(u.role)}</span>
                   ) : (
-                    <select
-                      value={u.role}
-                      onChange={(e) =>
-                        updateRole.mutate({ userId: u.id, role: e.target.value })
-                      }
-                      disabled={updateRole.isPending}
-                      className="bg-cyber-bg border border-cyber-border rounded px-2 py-1 text-white text-xs capitalize"
-                    >
-                      {ROLES.map((r) => (
-                        <option key={r.value} value={r.value}>
-                          {r.label}
-                        </option>
-                      ))}
-                    </select>
+                    <>
+                      <label className="sr-only" htmlFor={`user-role-${u.id}`}>
+                        Rol de {u.username}
+                      </label>
+                      <select
+                        id={`user-role-${u.id}`}
+                        name={`role-${u.id}`}
+                        value={u.role}
+                        onChange={(e) =>
+                          updateRole.mutate({ userId: u.id, role: e.target.value })
+                        }
+                        disabled={updateRole.isPending}
+                        className="bg-cyber-bg border border-cyber-border rounded px-2 py-1 text-white text-xs capitalize"
+                      >
+                        {ROLES.map((r) => (
+                          <option key={r.value} value={r.value}>
+                            {r.label}
+                          </option>
+                        ))}
+                      </select>
+                    </>
                   )}
                 </td>
                 <td className="py-3 px-2 text-center">

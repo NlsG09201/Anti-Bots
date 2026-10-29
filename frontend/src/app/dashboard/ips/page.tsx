@@ -98,7 +98,10 @@ export default function IPsPage() {
           </p>
         </div>
         <form onSubmit={handleLookup} className="flex gap-2 w-full lg:max-w-md">
+          <label className="sr-only" htmlFor="ip-lookup">Dirección IP para analizar</label>
           <input
+            id="ip-lookup"
+            name="ip_address"
             type="text"
             value={lookupIp}
             onChange={(e) => setLookupIp(e.target.value)}
