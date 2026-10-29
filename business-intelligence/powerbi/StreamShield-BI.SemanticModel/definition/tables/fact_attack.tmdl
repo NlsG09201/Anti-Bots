@@ -1,0 +1,120 @@
+table fact_attack
+
+    column tenant_id
+        dataType: string
+        sourceColumn: tenant_id
+        summarizeBy: none
+
+    column attack_id
+        dataType: string
+        isKey
+        sourceColumn: attack_id
+        summarizeBy: none
+
+    column stream_id
+        dataType: string
+        sourceColumn: stream_id
+        summarizeBy: none
+
+    column platform_key
+        dataType: string
+        sourceColumn: platform_key
+        summarizeBy: none
+
+    column channel_name
+        dataType: string
+        sourceColumn: channel_name
+        summarizeBy: none
+
+    column created_date
+        dataType: dateTime
+        sourceColumn: created_date
+        summarizeBy: none
+
+    column attack_type
+        dataType: string
+        sourceColumn: attack_type
+        summarizeBy: none
+
+    column severity
+        dataType: string
+        sourceColumn: severity
+        summarizeBy: none
+
+    column status
+        dataType: string
+        sourceColumn: status
+        summarizeBy: none
+
+    column risk_score
+        dataType: double
+        sourceColumn: risk_score
+        summarizeBy: average
+
+    column confidence
+        dataType: double
+        sourceColumn: confidence
+        summarizeBy: average
+
+    column affected_users
+        dataType: int64
+        sourceColumn: affected_users
+        summarizeBy: sum
+
+    column mitigation_action
+        dataType: string
+        sourceColumn: mitigation_action
+        summarizeBy: none
+
+    column created_at
+        dataType: dateTime
+        sourceColumn: created_at
+        summarizeBy: none
+
+    column mitigated_at
+        dataType: dateTime
+        sourceColumn: mitigated_at
+        summarizeBy: none
+
+    column resolved_at
+        dataType: dateTime
+        sourceColumn: resolved_at
+        summarizeBy: none
+
+    measure 'Ataques activos' =
+        CALCULATE(
+            DISTINCTCOUNT(fact_attack[attack_id]),
+            fact_attack[status] = "active"
+        )
+        formatString: #,0
+
+    measure 'Riesgo crítico' =
+        CALCULATE(
+            DISTINCTCOUNT(fact_attack[attack_id]),
+            fact_attack[severity] = "critical"
+        )
+        formatString: #,0
+
+    partition fact_attack = m
+        mode: import
+        source =
+            let
+                Source = PostgreSQL.Database(pServer, pDatabase),
+                Warehouse = Source{[Schema = "bi", Item = "vw_powerbi_attack"]}[Data],
+                NormalizeLabels = Table.TransformColumns(Warehouse, {
+                    {"attack_type", each Text.Lower(Text.Trim(Text.From(_))), type text},
+                    {"severity", each Text.Lower(Text.Trim(Text.From(_))), type text},
+                    {"status", each Text.Lower(Text.Trim(Text.From(_))), type text},
+                    {"mitigation_action", each Text.Lower(Text.Trim(Text.From(_))), type text}
+                }),
+                SetTypes = Table.TransformColumnTypes(NormalizeLabels, {
+                    {"tenant_id", type text}, {"attack_id", type text}, {"stream_id", type text},
+                    {"platform_key", type text}, {"channel_name", type text},
+                    {"created_date", type date}, {"attack_type", type text}, {"severity", type text},
+                    {"status", type text}, {"risk_score", type number}, {"confidence", type number},
+                    {"affected_users", Int64.Type}, {"mitigation_action", type text},
+                    {"created_at", type datetimezone}, {"mitigated_at", type datetimezone},
+                    {"resolved_at", type datetimezone}
+                })
+            in
+                SetTypes

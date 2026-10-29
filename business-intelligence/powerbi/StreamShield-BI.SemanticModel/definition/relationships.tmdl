@@ -1,0 +1,39 @@
+relationship 4a104e0b-e1e6-47b0-82d5-d027f470a001
+    fromColumn: fact_stream_snapshot.snapshot_date
+    toColumn: dim_date.full_date
+
+relationship 4a104e0b-e1e6-47b0-82d5-d027f470a002
+    fromColumn: fact_viewer_session.joined_date
+    toColumn: dim_date.full_date
+
+relationship 4a104e0b-e1e6-47b0-82d5-d027f470a003
+    fromColumn: fact_attack.created_date
+    toColumn: dim_date.full_date
+
+relationship 4a104e0b-e1e6-47b0-82d5-d027f470a004
+    fromColumn: fact_chat_activity.activity_date
+    toColumn: dim_date.full_date
+
+relationship 4a104e0b-e1e6-47b0-82d5-d027f470a005
+    fromColumn: fact_stream_snapshot.stream_id
+    toColumn: dim_stream.stream_id
+
+relationship 4a104e0b-e1e6-47b0-82d5-d027f470a006
+    fromColumn: fact_viewer_session.stream_id
+    toColumn: dim_stream.stream_id
+
+relationship 4a104e0b-e1e6-47b0-82d5-d027f470a007
+    fromColumn: fact_attack.stream_id
+    toColumn: dim_stream.stream_id
+
+relationship 4a104e0b-e1e6-47b0-82d5-d027f470a008
+    fromColumn: fact_chat_activity.stream_id
+    toColumn: dim_stream.stream_id
+
+relationship 4a104e0b-e1e6-47b0-82d5-d027f470a009
+    fromColumn: dim_stream.platform_key
+    toColumn: dim_platform.platform_key
+
+relationship 4a104e0b-e1e6-47b0-82d5-d027f470a010
+    fromColumn: dim_stream.streamer_id
+    toColumn: dim_streamer.streamer_id

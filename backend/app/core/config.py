@@ -263,6 +263,9 @@ class Settings(BaseSettings):
         "app_secret_key",
         "jwt_secret_key",
         "aes_encryption_key",
+        "redis_url",
+        "upstash_redis_rest_url",
+        "upstash_redis_rest_token",
         "twitch_webhook_secret",
         mode="before",
     )

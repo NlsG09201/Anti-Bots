@@ -77,6 +77,8 @@ Si `/api/v1/streams` o `/viewers` responde 401 despues de iniciar sesion:
 4. Redepliega Vercel para servir el cliente actualizado y confirma `API_PROXY_TARGET` y `NEXT_PUBLIC_API_DIRECT_URL`.
 5. Si el login nuevo sigue fallando, compara el status y mensaje sanitizado de `/api/v1/auth/me` con los logs de Render. No compartas tokens, cookies, contraseñas ni valores de secretos.
 
+El backend registra `authentication_rejected` junto con una causa acotada (`missing_or_malformed_authorization`, `access_token_expired`, `access_token_invalid_signature_or_malformed`, `access_token_invalid_claims`, `access_token_wrong_token_type`, `revoked_access_token`, `invalid_subject_claim` o `user_missing_or_inactive`) y la ruta. Estos eventos no incluyen bearer, cookies ni identificadores de usuario. `access_token_invalid_signature_or_malformed` tras un login nuevo apunta a revisar que todas las instancias usen el mismo `JWT_SECRET_KEY`. Úsalos en Logs de Render para separar un cliente sin credenciales de un token vencido, una firma no válida, revocación o cuenta inactiva.
+
 Un 401 en el dominio directo de Render y en el rewrite de Vercel no prueba que exista un problema de CORS: ambos caminos pueden estar enviando un Bearer rechazado por el API.
 
 ## SOC multi-plataforma (Kick / YouTube / TikTok)

@@ -14,15 +14,21 @@ Ataques activos = CALCULATE(
 
 Streams en vivo = CALCULATE(
     DISTINCTCOUNT(fact_stream_snapshot[stream_id]),
-    fact_stream_snapshot[is_live] = TRUE()
+    fact_stream_snapshot[is_live] = TRUE(),
+    fact_stream_snapshot[snapshot_date] = MAX(fact_stream_snapshot[snapshot_date])
 )
 
 Viewers en vivo = CALCULATE(
     SUM(fact_stream_snapshot[viewer_count]),
-    fact_stream_snapshot[is_live] = TRUE()
+    fact_stream_snapshot[is_live] = TRUE(),
+    fact_stream_snapshot[snapshot_date] = MAX(fact_stream_snapshot[snapshot_date])
 )
 
-Chatters activos = SUM(fact_stream_snapshot[active_chatters])
+Chatters activos = CALCULATE(
+    SUM(fact_stream_snapshot[active_chatters]),
+    fact_stream_snapshot[is_live] = TRUE(),
+    fact_stream_snapshot[snapshot_date] = MAX(fact_stream_snapshot[snapshot_date])
+)
 
 Cobertura chat % = DIVIDE([Chatters activos], [Viewers en vivo], 0)
 

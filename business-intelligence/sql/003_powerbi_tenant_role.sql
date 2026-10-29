@@ -6,7 +6,10 @@
 \set tenant_id '00000000-0000-0000-0000-000000000000'
 \set bi_database 'streamshield'
 
-CREATE ROLE :"bi_user" LOGIN PASSWORD :'bi_password';
+SELECT format('CREATE ROLE %I LOGIN', :'bi_user')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'bi_user')
+\gexec
+ALTER ROLE :"bi_user" LOGIN PASSWORD :'bi_password';
 INSERT INTO bi.user_tenant_access(db_role, tenant_id)
 VALUES (:'bi_user'::name, :'tenant_id'::uuid)
 ON CONFLICT (db_role) DO UPDATE SET tenant_id = EXCLUDED.tenant_id;

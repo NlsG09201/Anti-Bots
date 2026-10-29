@@ -1,0 +1,110 @@
+table fact_viewer_session
+
+    column tenant_id
+        dataType: string
+        sourceColumn: tenant_id
+        summarizeBy: none
+
+    column session_id
+        dataType: string
+        isKey
+        sourceColumn: session_id
+        summarizeBy: none
+
+    column stream_id
+        dataType: string
+        sourceColumn: stream_id
+        summarizeBy: none
+
+    column platform_key
+        dataType: string
+        sourceColumn: platform_key
+        summarizeBy: none
+
+    column channel_name
+        dataType: string
+        sourceColumn: channel_name
+        summarizeBy: none
+
+    column joined_date
+        dataType: dateTime
+        sourceColumn: joined_date
+        summarizeBy: none
+
+    column joined_at
+        dataType: dateTime
+        sourceColumn: joined_at
+        summarizeBy: none
+
+    column left_at
+        dataType: dateTime
+        sourceColumn: left_at
+        summarizeBy: none
+
+    column is_active
+        dataType: boolean
+        sourceColumn: is_active
+        summarizeBy: none
+
+    column is_suspected_bot
+        dataType: boolean
+        sourceColumn: is_suspected_bot
+        summarizeBy: none
+
+    column risk_score
+        dataType: double
+        sourceColumn: risk_score
+        summarizeBy: average
+
+    column chat_messages
+        dataType: int64
+        sourceColumn: chat_messages
+        summarizeBy: sum
+
+    column watch_duration_seconds
+        dataType: int64
+        sourceColumn: watch_duration_seconds
+        summarizeBy: sum
+
+    column source
+        dataType: string
+        sourceColumn: source
+        summarizeBy: none
+
+    measure 'Viewers monitoreados' = DISTINCTCOUNT(fact_viewer_session[session_id])
+        formatString: #,0
+
+    measure 'Viewers sospechosos' =
+        CALCULATE(
+            DISTINCTCOUNT(fact_viewer_session[session_id]),
+            fact_viewer_session[is_suspected_bot] = TRUE()
+        )
+        formatString: #,0
+
+    measure 'Porcentaje sospechoso' = DIVIDE([Viewers sospechosos], [Viewers monitoreados], 0)
+        formatString: 0.0%;-0.0%;0.0%
+
+    measure 'Duración media de sesión (min)' =
+        DIVIDE(AVERAGE(fact_viewer_session[watch_duration_seconds]), 60, 0)
+        formatString: #,0.0
+
+    partition fact_viewer_session = m
+        mode: import
+        source =
+            let
+                Source = PostgreSQL.Database(pServer, pDatabase),
+                Warehouse = Source{[Schema = "bi", Item = "vw_powerbi_viewer_session"]}[Data],
+                FillNullMeasures = Table.ReplaceValue(Warehouse, null, 0, Replacer.ReplaceValue, {
+                    "risk_score", "chat_messages", "watch_duration_seconds"
+                }),
+                SetTypes = Table.TransformColumnTypes(FillNullMeasures, {
+                    {"tenant_id", type text}, {"session_id", type text}, {"stream_id", type text},
+                    {"platform_key", type text}, {"channel_name", type text},
+                    {"joined_date", type date}, {"joined_at", type datetimezone},
+                    {"left_at", type datetimezone}, {"is_active", type logical},
+                    {"is_suspected_bot", type logical}, {"risk_score", type number},
+                    {"chat_messages", Int64.Type}, {"watch_duration_seconds", Int64.Type},
+                    {"source", type text}
+                })
+            in
+                SetTypes

@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from cryptography.fernet import Fernet
 from jose import JWTError, jwt
+from jose.exceptions import ExpiredSignatureError, JWTClaimsError
 from passlib.context import CryptContext
 
 from app.core.config import get_settings
@@ -64,13 +65,25 @@ def decode_token(token: str) -> Dict[str, Any]:
 
 
 def verify_token(token: str, expected_type: str = "access") -> Optional[Dict[str, Any]]:
+    payload, _ = verify_token_with_reason(token, expected_type)
+    return payload
+
+
+def verify_token_with_reason(
+    token: str, expected_type: str = "access"
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     try:
         payload = decode_token(token)
-        if payload.get("type") != expected_type:
-            return None
-        return payload
+    except ExpiredSignatureError:
+        return None, "expired"
+    except JWTClaimsError:
+        return None, "invalid_claims"
     except JWTError:
-        return None
+        return None, "invalid_signature_or_malformed"
+
+    if payload.get("type") != expected_type:
+        return None, "wrong_token_type"
+    return payload, None
 
 
 def get_fernet() -> Fernet:

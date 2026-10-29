@@ -1,0 +1,3 @@
+expression pServer = "YOUR_RDS_ENDPOINT:5432" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+
+expression pDatabase = "streamshield" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]

@@ -1,0 +1,49 @@
+table dim_streamer
+
+    column streamer_key
+        dataType: int64
+        sourceColumn: streamer_key
+        summarizeBy: none
+
+    column streamer_id
+        dataType: string
+        isKey
+        sourceColumn: streamer_id
+        summarizeBy: none
+
+    column tenant_id
+        dataType: string
+        sourceColumn: tenant_id
+        summarizeBy: none
+
+    column username
+        dataType: string
+        sourceColumn: username
+        summarizeBy: none
+
+    column role
+        dataType: string
+        sourceColumn: role
+        summarizeBy: none
+
+    column created_at
+        dataType: dateTime
+        sourceColumn: created_at
+        summarizeBy: none
+
+    partition dim_streamer = m
+        mode: import
+        source =
+            let
+                Source = PostgreSQL.Database(pServer, pDatabase),
+                Warehouse = Source{[Schema = "bi", Item = "vw_powerbi_dim_streamer"]}[Data],
+                CleanText = Table.TransformColumns(Warehouse, {
+                    {"username", each Text.Trim(Text.Clean(Text.From(_))), type text},
+                    {"role", each Text.Lower(Text.Trim(Text.From(_))), type text}
+                }),
+                SetTypes = Table.TransformColumnTypes(CleanText, {
+                    {"streamer_key", Int64.Type}, {"streamer_id", type text},
+                    {"tenant_id", type text}, {"created_at", type datetimezone}
+                })
+            in
+                SetTypes

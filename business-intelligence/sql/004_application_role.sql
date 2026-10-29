@@ -4,7 +4,10 @@
 \set app_password 'REPLACE_WITH_RANDOM_SECRET'
 \set app_database 'streamshield'
 
-CREATE ROLE :"app_user" LOGIN PASSWORD :'app_password';
+SELECT format('CREATE ROLE %I LOGIN', :'app_user')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user')
+\gexec
+ALTER ROLE :"app_user" LOGIN PASSWORD :'app_password';
 GRANT CONNECT ON DATABASE :"app_database" TO :"app_user";
 GRANT USAGE, CREATE ON SCHEMA public TO :"app_user";
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO :"app_user";

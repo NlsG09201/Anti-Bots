@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AuthenticationError, AuthorizationError
 from app.core.logging import get_logger
-from app.core.security import verify_token
+from app.core.security import verify_token_with_reason
 from app.infrastructure.cache.redis_client import RedisCache, get_redis
 from app.infrastructure.database.models import User, UserRole
 from app.infrastructure.database.session import get_db
@@ -30,20 +30,40 @@ async def get_current_user(
     authorization: Annotated[Optional[str], Header()] = None,
 ) -> User:
     if not authorization or not authorization.startswith("Bearer "):
+        logger.warning(
+            "authentication_rejected",
+            reason="missing_or_malformed_authorization",
+            path=request.url.path,
+        )
         raise AuthenticationError("Missing or invalid authorization header")
 
     token = authorization[7:]
-    payload = verify_token(token, "access")
+    payload, token_failure_reason = verify_token_with_reason(token, "access")
     if not payload:
+        logger.warning(
+            "authentication_rejected",
+            reason=f"access_token_{token_failure_reason or 'invalid'}",
+            path=request.url.path,
+        )
         raise AuthenticationError("Invalid or expired token")
 
     cache = RedisCache()
     if await cache.is_blacklisted(payload.get("jti", "")):
+        logger.warning(
+            "authentication_rejected",
+            reason="revoked_access_token",
+            path=request.url.path,
+        )
         raise AuthenticationError("Token has been revoked")
 
     try:
         user_id = UUID(str(payload.get("sub", "")))
     except (TypeError, ValueError):
+        logger.warning(
+            "authentication_rejected",
+            reason="invalid_subject_claim",
+            path=request.url.path,
+        )
         raise AuthenticationError("Invalid or expired token")
 
     try:
@@ -56,6 +76,11 @@ async def get_current_user(
             detail="El servicio de autenticación no está disponible temporalmente.",
         ) from exc
     if not user or not user.is_active:
+        logger.warning(
+            "authentication_rejected",
+            reason="user_missing_or_inactive",
+            path=request.url.path,
+        )
         raise AuthenticationError("User not found or inactive")
 
     request.state.user = user

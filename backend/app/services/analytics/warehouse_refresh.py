@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, timedelta
 
 from sqlalchemy import select, text
 
@@ -15,17 +14,24 @@ logger = logging.getLogger("bi_refresh")
 
 
 async def main() -> None:
-    cutoff = date.today() - timedelta(days=90)
     failed_tenants: list[str] = []
     async with AsyncSessionLocal() as db:
-        tenant_ids = list((await db.execute(select(Stream.tenant_id).distinct())).scalars())
+        # Keep the load window aligned with PostgreSQL current_date, regardless
+        # of the container or workstation timezone.
+        cutoff = (await db.execute(text("SELECT current_date - 90"))).scalar_one()
+        tenant_ids = list(
+            (await db.execute(select(Stream.tenant_id).distinct())).scalars()
+        )
         for tenant_id in tenant_ids:
             tenant = str(tenant_id)
             logger.info("warehouse refresh started tenant=%s", tenant)
             try:
                 await db.execute(
-                    text("CALL bi.refresh_warehouse(CAST(:tenant_id AS uuid), CAST(:from_date AS date))"),
-                    {"tenant_id": tenant, "from_date": cutoff.isoformat()},
+                    text(
+                        "CALL bi.refresh_warehouse("
+                        "CAST(:tenant_id AS uuid), CAST(:from_date AS date))"
+                    ),
+                    {"tenant_id": tenant, "from_date": cutoff},
                 )
                 await db.commit()
                 logger.info("warehouse refresh completed tenant=%s", tenant)

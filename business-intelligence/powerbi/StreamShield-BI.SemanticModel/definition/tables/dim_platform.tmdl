@@ -1,0 +1,24 @@
+table dim_platform
+
+    column platform_key
+        dataType: string
+        isKey
+        sourceColumn: platform_key
+        summarizeBy: none
+
+    column platform_name
+        dataType: string
+        sourceColumn: platform_name
+        summarizeBy: none
+
+    partition dim_platform = m
+        mode: import
+        source =
+            let
+                Source = PostgreSQL.Database(pServer, pDatabase),
+                Warehouse = Source{[Schema = "bi", Item = "dim_platform"]}[Data],
+                SetTypes = Table.TransformColumnTypes(Warehouse, {
+                    {"platform_key", type text}, {"platform_name", type text}
+                })
+            in
+                SetTypes

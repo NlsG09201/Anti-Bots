@@ -19,6 +19,12 @@ def redis_is_configured() -> bool:
     url = (settings.redis_url or "").strip()
     if not url or "PEGAR_" in url:
         return False
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme not in {"redis", "rediss"} or not parsed.netloc:
+        return False
     if "localhost" in url or "127.0.0.1" in url:
         return False
     if url.startswith("redis://:redis_secure_password"):

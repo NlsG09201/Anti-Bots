@@ -1,0 +1,175 @@
+table fact_stream_snapshot
+
+    column snapshot_date
+        dataType: dateTime
+        sourceColumn: snapshot_date
+        summarizeBy: none
+
+    column tenant_id
+        dataType: string
+        sourceColumn: tenant_id
+        summarizeBy: none
+
+    column stream_id
+        dataType: string
+        sourceColumn: stream_id
+        summarizeBy: none
+
+    column streamer_id
+        dataType: string
+        sourceColumn: streamer_id
+        summarizeBy: none
+
+    column platform_key
+        dataType: string
+        sourceColumn: platform_key
+        summarizeBy: none
+
+    column platform_name
+        dataType: string
+        sourceColumn: platform_name
+        summarizeBy: none
+
+    column platform_display
+        dataType: string
+        sourceColumn: platform_display
+        summarizeBy: none
+
+    column channel_name
+        dataType: string
+        sourceColumn: channel_name
+        summarizeBy: none
+
+    column is_live
+        dataType: boolean
+        sourceColumn: is_live
+        summarizeBy: none
+
+    column viewer_count
+        dataType: int64
+        sourceColumn: viewer_count
+        summarizeBy: sum
+
+    column active_chatters
+        dataType: int64
+        sourceColumn: active_chatters
+        summarizeBy: sum
+
+    column suspicious_viewers
+        dataType: int64
+        sourceColumn: suspicious_viewers
+        summarizeBy: sum
+
+    column active_attacks
+        dataType: int64
+        sourceColumn: active_attacks
+        summarizeBy: sum
+
+    column engagement_rate
+        dataType: double
+        sourceColumn: engagement_rate
+        summarizeBy: average
+
+    column threat_score
+        dataType: double
+        sourceColumn: threat_score
+        summarizeBy: average
+
+    column loaded_at
+        dataType: dateTime
+        sourceColumn: loaded_at
+        summarizeBy: none
+
+    column chat_coverage_percent
+        dataType: double
+        sourceColumn: chat_coverage_percent
+        summarizeBy: average
+
+    column risk_band
+        dataType: string
+        sourceColumn: risk_band
+        summarizeBy: none
+
+    column month_start
+        dataType: dateTime
+        sourceColumn: month_start
+        summarizeBy: none
+
+    measure 'Streams en vivo' =
+        CALCULATE(
+            DISTINCTCOUNT(fact_stream_snapshot[stream_id]),
+            fact_stream_snapshot[is_live] = TRUE(),
+            fact_stream_snapshot[snapshot_date] = MAX(fact_stream_snapshot[snapshot_date])
+        )
+        formatString: #,0
+
+    measure 'Viewers en vivo' =
+        CALCULATE(
+            SUM(fact_stream_snapshot[viewer_count]),
+            fact_stream_snapshot[is_live] = TRUE(),
+            fact_stream_snapshot[snapshot_date] = MAX(fact_stream_snapshot[snapshot_date])
+        )
+        formatString: #,0
+
+    measure 'Chatters activos' =
+        CALCULATE(
+            SUM(fact_stream_snapshot[active_chatters]),
+            fact_stream_snapshot[is_live] = TRUE(),
+            fact_stream_snapshot[snapshot_date] = MAX(fact_stream_snapshot[snapshot_date])
+        )
+        formatString: #,0
+
+    measure 'Cobertura chat %' = DIVIDE([Chatters activos], [Viewers en vivo], 0)
+        formatString: 0.0%;-0.0%;0.0%
+
+    measure 'Riesgo promedio' = AVERAGE(fact_stream_snapshot[threat_score])
+        formatString: 0.0
+
+    partition fact_stream_snapshot = m
+        mode: import
+        source =
+            let
+                Source = PostgreSQL.Database(pServer, pDatabase),
+                Warehouse = Source{[Schema = "bi", Item = "vw_powerbi_stream_snapshot"]}[Data],
+                KeepColumns = Table.SelectColumns(Warehouse, {
+                    "snapshot_date", "tenant_id", "stream_id", "streamer_id", "platform_key",
+                    "platform_name", "channel_name", "is_live", "viewer_count",
+                    "active_chatters", "suspicious_viewers", "active_attacks",
+                    "engagement_rate", "threat_score", "loaded_at"
+                }),
+                CleanChannelText = Table.TransformColumns(KeepColumns, {
+                    {"channel_name", each Text.Trim(Text.Clean(Text.From(_))), type text},
+                    {"platform_name", each Text.Proper(Text.Trim(Text.Clean(Text.From(_)))), type text}
+                }),
+                FillNullCounts = Table.ReplaceValue(CleanChannelText, null, 0, Replacer.ReplaceValue, {
+                    "viewer_count", "active_chatters", "suspicious_viewers", "active_attacks",
+                    "engagement_rate", "threat_score"
+                }),
+                SetTypes = Table.TransformColumnTypes(FillNullCounts, {
+                    {"snapshot_date", type date}, {"tenant_id", type text}, {"stream_id", type text},
+                    {"streamer_id", type text}, {"platform_key", type text}, {"platform_name", type text},
+                    {"channel_name", type text}, {"is_live", type logical}, {"viewer_count", Int64.Type},
+                    {"active_chatters", Int64.Type}, {"suspicious_viewers", Int64.Type},
+                    {"active_attacks", Int64.Type}, {"engagement_rate", type number},
+                    {"threat_score", type number}, {"loaded_at", type datetimezone}
+                }),
+                ValidRows = Table.SelectRows(SetTypes, each [stream_id] <> null and [snapshot_date] <> null),
+                OneSnapshotPerStreamDay = Table.Distinct(ValidRows, {"stream_id", "snapshot_date"}),
+                MergePlatformDimension = Table.NestedJoin(OneSnapshotPerStreamDay, {"platform_key"},
+                    Source{[Schema = "bi", Item = "dim_platform"]}[Data], {"platform_key"},
+                    "PlatformDimension", JoinKind.LeftOuter),
+                ExpandPlatform = Table.ExpandTableColumn(MergePlatformDimension, "PlatformDimension",
+                    {"platform_name"}, {"platform_name_dimension"}),
+                PreferDimensionName = Table.AddColumn(ExpandPlatform, "platform_display", each
+                    if [platform_name_dimension] = null then [platform_name] else [platform_name_dimension], type text),
+                AddEngagementPercent = Table.AddColumn(PreferDimensionName, "chat_coverage_percent", each
+                    if [viewer_count] = 0 then 0 else Number.Round([active_chatters] / [viewer_count] * 100, 2), type number),
+                AddRiskBand = Table.AddColumn(AddEngagementPercent, "risk_band", each
+                    if [threat_score] >= 80 then "Critical"
+                    else if [threat_score] >= 60 then "High"
+                    else if [threat_score] >= 35 then "Elevated"
+                    else "Stable", type text),
+                AddMonthStart = Table.AddColumn(AddRiskBand, "month_start", each Date.StartOfMonth([snapshot_date]), type date),
+                RemoveHelperColumns = Table.RemoveColumns(AddMonthStart, {"platform_name_dimension"})
+            in
+                RemoveHelperColumns
