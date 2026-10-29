@@ -75,10 +75,10 @@ export default function KickBotPage() {
     setMessage("");
   };
 
-  const authorizeKick = async () => {
+  const authorizeKick = async (targetStreamId?: string) => {
     if (!token) return;
     try {
-      const result = await api.kick.authorize(token);
+      const result = await api.kick.authorize(token, targetStreamId);
       window.location.assign(result.authorization_url);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo iniciar la conexión de Kick.");
@@ -98,6 +98,14 @@ export default function KickBotPage() {
 
       {(streamsLoading || botQuery.isLoading) && activeStreamId && <div className="flex items-center gap-2 text-cyber-muted"><Loader2 className="animate-spin" size={16} /> Cargando configuración…</div>}
 
+      {stream && botQuery.error && (
+        <section role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-5">
+          <h2 className="font-semibold text-amber-100">No se pudo cargar el bot de Kick</h2>
+          <p className="mt-2 text-sm text-amber-100/80">{(botQuery.error as Error).message}</p>
+          <button onClick={() => authorizeKick(activeStreamId)} className="mt-4 rounded-lg border border-amber-400/50 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-400/10">Volver a autorizar este canal</button>
+        </section>
+      )}
+
       {!streamsLoading && kickStreams.length === 0 && (
         <section className="rounded-xl border border-cyber-border bg-cyber-surface p-6">
           <h2 className="text-lg font-semibold text-white">Conecta un canal de Kick</h2>
@@ -114,7 +122,7 @@ export default function KickBotPage() {
         </label>
       )}
 
-      {stream && (
+      {stream && botQuery.data && (
         <>
           <section className="rounded-xl border border-cyber-border bg-cyber-surface p-5">
             <div className="flex flex-wrap items-center justify-between gap-4">

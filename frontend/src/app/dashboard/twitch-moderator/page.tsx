@@ -135,7 +135,7 @@ export default function TwitchModeratorPage() {
         </section>
 
         <section className="space-y-5 rounded-xl border border-cyber-border bg-cyber-surface p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold text-white">Reglas automáticas</h2><p className="mt-1 text-sm text-cyber-muted">Empieza en modo observación para revisar coincidencias sin sancionar.</p></div><button type="button" aria-pressed={config.enabled} onClick={() => toggle("enabled")} className={`rounded-full px-4 py-2 text-sm font-semibold ${config.enabled ? "bg-cyber-accent text-black" : "bg-cyber-bg text-cyber-muted"}`}>{config.enabled ? "Reglas activadas" : "Reglas desactivadas"}</button></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold text-white">Reglas automáticas</h2><p className="mt-1 text-sm text-cyber-muted">Empieza en modo observación para revisar coincidencias sin sancionar.</p></div><button type="button" disabled={!query.data.bot_connected} aria-pressed={config.enabled} onClick={() => toggle("enabled")} className={`rounded-full px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${config.enabled ? "bg-cyber-accent text-black" : "bg-cyber-bg text-cyber-muted"}`}>{config.enabled ? "Reglas activadas" : "Reglas desactivadas"}</button></div>
           <label className="flex items-center gap-3 text-sm text-white"><input type="checkbox" checked={config.observe_only} onChange={() => toggle("observe_only")} />Solo observar; no borrar mensajes ni sancionar</label>
           {!query.data.bot_connected && <p className="text-sm text-yellow-200">Conecta primero una cuenta bot para guardar la activación.</p>}
 
