@@ -479,11 +479,13 @@ async def sync_platform_chat(
     except httpx.HTTPStatusError as exc:
         await db.rollback()
         upstream_status = exc.response.status_code
+        upstream_detail = " ".join((exc.response.text or "").split())[:240]
         logger.warning(
             "platform_viewer_sync_upstream_failed",
             stream_id=str(stream_id),
             platform=platform_name,
             upstream_status=upstream_status,
+            upstream_detail=upstream_detail or None,
         )
         if platform_name == "kick" and upstream_status in (401, 403):
             raise HTTPException(
@@ -500,7 +502,11 @@ async def sync_platform_chat(
         if platform_name == "kick":
             raise HTTPException(
                 status_code=502,
-                detail=f"La API de Kick devolvió HTTP {upstream_status}. Intenta de nuevo; si persiste, revisa el canal autorizado.",
+                detail=(
+                    f"La API de Kick devolvió HTTP {upstream_status}. "
+                    f"{upstream_detail + ' ' if upstream_detail else ''}"
+                    "Intenta de nuevo; si persiste, revisa el canal autorizado."
+                ),
             ) from exc
         raise HTTPException(
             status_code=502,
