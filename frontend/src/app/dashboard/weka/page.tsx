@@ -56,10 +56,17 @@ export default function WekaJ48Page() {
     refetchInterval: 30000,
   });
 
-  const { data: preview, refetch: refetchPreview } = useQuery({
+  const {
+    data: preview,
+    refetch: refetchPreview,
+    isFetching: previewFetching,
+    isError: previewError,
+  } = useQuery({
     queryKey: ["weka-preview", source],
     queryFn: () => api.wekaJ48.preview(token, source),
-    enabled: !!token,
+    enabled: false,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 
   const { data: streams = [] } = useQuery({
@@ -258,6 +265,15 @@ export default function WekaJ48Page() {
           </div>
           <button
             type="button"
+            disabled={previewFetching}
+            onClick={() => void refetchPreview()}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-cyber-border text-sm text-cyber-muted hover:text-white disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={previewFetching ? "animate-spin" : ""} />
+            {previewFetching ? "Calculando vista previa…" : "Vista previa del dataset"}
+          </button>
+          <button
+            type="button"
             disabled={trainMutation.isPending || !preview?.ready}
             onClick={() => trainMutation.mutate()}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyber-accent/20 text-cyber-accent border border-cyber-accent/40 text-sm disabled:opacity-50"
@@ -273,9 +289,14 @@ export default function WekaJ48Page() {
             }}
             className="text-sm text-cyber-muted hover:text-white px-3 py-2"
           >
-            Actualizar estado
+            Actualizar estado y dataset
           </button>
         </div>
+        {previewError && (
+          <p role="status" className="text-xs text-orange-300">
+            No se pudo calcular la vista previa. Inténtalo de nuevo en unos segundos.
+          </p>
+        )}
         {!preview?.ready && (
           <p className="text-xs text-orange-300 flex items-center gap-1">
             <AlertTriangle size={14} />
