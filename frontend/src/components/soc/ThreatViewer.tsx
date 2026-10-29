@@ -4,7 +4,7 @@
 
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 interface SuspiciousViewer {
   id: string;
@@ -28,13 +28,7 @@ export default function ThreatViewer({ streamId, tenantId }: ThreatViewerProps) 
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<"threat_score" | "join_count">("threat_score");
 
-  useEffect(() => {
-    fetchViewers();
-    const interval = setInterval(fetchViewers, 10000); // Refresh every 10 seconds
-    return () => clearInterval(interval);
-  }, [streamId]);
-
-  const fetchViewers = async () => {
+  const fetchViewers = useCallback(async () => {
     try {
       const response = await fetch(
         `/api/v1/threat-intelligence/stream-metrics/${streamId}?tenant_id=${tenantId}`
@@ -46,7 +40,13 @@ export default function ThreatViewer({ streamId, tenantId }: ThreatViewerProps) 
     } finally {
       setLoading(false);
     }
-  };
+  }, [streamId, tenantId]);
+
+  useEffect(() => {
+    void fetchViewers();
+    const interval = setInterval(() => void fetchViewers(), 10000); // Refresh every 10 seconds
+    return () => clearInterval(interval);
+  }, [fetchViewers]);
 
   const getThreatColor = (score: number) => {
     if (score >= 0.8) return "text-red-500";

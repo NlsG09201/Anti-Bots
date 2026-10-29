@@ -12,10 +12,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.lang.NonNull;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -32,7 +31,6 @@ class AssistantEndpointSecurityTest {
     private final UUID otherStreamId = UUID.fromString("e2ea1e97-4f10-45b0-9f05-d4ac08398d83");
     private final UUID otherTenantId = UUID.fromString("e6862350-779e-4c75-89ad-19126f62e477");
 
-    @NonNull
     private RequestPostProcessor jwtForTenant(UUID tokenTenantId, String role) {
         return Objects.requireNonNull(jwt().jwt(token -> token
                 .subject(userId.toString())

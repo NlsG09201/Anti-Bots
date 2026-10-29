@@ -4,7 +4,7 @@
 
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
 
 interface TimelineEvent {
@@ -33,13 +33,7 @@ export default function AttackTimeline({ streamId }: AttackTimelineProps) {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchTimeline();
-    const interval = setInterval(fetchTimeline, 10000); // Refresh every 10 seconds
-    return () => clearInterval(interval);
-  }, [streamId]);
-
-  const fetchTimeline = async () => {
+  const fetchTimeline = useCallback(async () => {
     try {
       const response = await fetch(
         `/api/v1/threat-intelligence/threat-timeline/${streamId}?limit=100`
@@ -51,7 +45,13 @@ export default function AttackTimeline({ streamId }: AttackTimelineProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [streamId]);
+
+  useEffect(() => {
+    void fetchTimeline();
+    const interval = setInterval(() => void fetchTimeline(), 10000); // Refresh every 10 seconds
+    return () => clearInterval(interval);
+  }, [fetchTimeline]);
 
   if (loading) {
     return <div className="text-gray-400">Loading timeline...</div>;

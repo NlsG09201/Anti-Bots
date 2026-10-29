@@ -4,7 +4,7 @@
 
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 interface GeoLocation {
   country: string;
@@ -24,13 +24,7 @@ export default function ThreatMap({ streamId }: ThreatMapProps) {
   const [loading, setLoading] = useState(true);
   const [topCountries, setTopCountries] = useState<GeoLocation[]>([]);
 
-  useEffect(() => {
-    fetchLocations();
-    const interval = setInterval(fetchLocations, 15000); // Refresh every 15 seconds
-    return () => clearInterval(interval);
-  }, [streamId]);
-
-  const fetchLocations = async () => {
+  const fetchLocations = useCallback(async () => {
     try {
       const response = await fetch(
         `/api/v1/threat-intelligence/threat-analysis/${streamId}`
@@ -49,7 +43,13 @@ export default function ThreatMap({ streamId }: ThreatMapProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [streamId]);
+
+  useEffect(() => {
+    void fetchLocations();
+    const interval = setInterval(() => void fetchLocations(), 15000); // Refresh every 15 seconds
+    return () => clearInterval(interval);
+  }, [fetchLocations]);
 
   if (loading) {
     return <div className="text-gray-400">Loading geolocation data...</div>;

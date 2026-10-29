@@ -124,7 +124,7 @@ export default function WekaJ48Page() {
     onError: (e: Error) => setMessage(e.message),
   });
 
-  const predictions = predictData?.predictions ?? [];
+  const predictions = useMemo(() => predictData?.predictions ?? [], [predictData?.predictions]);
   const botPredictions = useMemo(
     () =>
       [...predictions]
