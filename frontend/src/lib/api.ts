@@ -104,6 +104,7 @@ async function request<T>(
   options: RequestInit = {},
   token?: ApiAuthToken,
   baseUrl?: string,
+  allowAuthRetry = true,
 ): Promise<T> {
   const isAuthAttempt =
     path === "/api/v1/auth/login" ||
@@ -171,9 +172,11 @@ async function request<T>(
   }
 
   if (response.status === 401 && !isAuthAttempt && path !== "/api/v1/auth/refresh") {
-    const refreshed = await tryRefreshToken();
-    if (refreshed) {
-      return request<T>(path, options, refreshed, baseUrl);
+    if (allowAuthRetry) {
+      const refreshed = await tryRefreshToken();
+      if (refreshed) {
+        return request<T>(path, options, refreshed, baseUrl, false);
+      }
     }
     await handleAuthFailure();
     throw new ApiError(401, "Sesión expirada. Inicia sesión de nuevo.");

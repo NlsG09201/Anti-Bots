@@ -72,7 +72,6 @@ POWERBI_TABLE_DEFINITIONS: Dict[str, List[Dict[str, str]]] = {
     "streamers": [
         {"name": "streamer_id", "dataType": "string"},
         {"name": "tenant_id", "dataType": "string"},
-        {"name": "email", "dataType": "string"},
         {"name": "username", "dataType": "string"},
         {"name": "role", "dataType": "string"},
         {"name": "streams_total", "dataType": "Int64"},
@@ -106,8 +105,6 @@ POWERBI_TABLE_DEFINITIONS: Dict[str, List[Dict[str, str]]] = {
         {"name": "channel_name", "dataType": "string"},
         {"name": "platform_user_id", "dataType": "string"},
         {"name": "platform_username", "dataType": "string"},
-        {"name": "ip_address", "dataType": "string"},
-        {"name": "fingerprint_hash", "dataType": "string"},
         {"name": "is_active", "dataType": "bool"},
         {"name": "is_suspected_bot", "dataType": "bool"},
         {"name": "risk_score", "dataType": "Double"},
@@ -243,17 +240,17 @@ POWERBI_TABLE_DEFINITIONS: Dict[str, List[Dict[str, str]]] = {
 }
 
 POWERBI_RELATIONSHIPS = [
-    {"fromTable": "platforms", "fromColumn": "platform_key", "toTable": "streams", "toColumn": "platform_key"},
-    {"fromTable": "streamers", "fromColumn": "streamer_id", "toTable": "streams", "toColumn": "streamer_id"},
-    {"fromTable": "streams", "fromColumn": "stream_id", "toTable": "viewers", "toColumn": "stream_id"},
-    {"fromTable": "streams", "fromColumn": "stream_id", "toTable": "suspicious_viewers", "toColumn": "stream_id"},
-    {"fromTable": "streams", "fromColumn": "stream_id", "toTable": "attacks", "toColumn": "stream_id"},
-    {"fromTable": "streams", "fromColumn": "stream_id", "toTable": "follows", "toColumn": "stream_id"},
-    {"fromTable": "streams", "fromColumn": "stream_id", "toTable": "engagement_metrics", "toColumn": "stream_id"},
-    {"fromTable": "streams", "fromColumn": "stream_id", "toTable": "ai_predictions", "toColumn": "stream_id"},
-    {"fromTable": "streams", "fromColumn": "stream_id", "toTable": "threat_scores", "toColumn": "stream_id"},
-    {"fromTable": "streams", "fromColumn": "stream_id", "toTable": "chat_activity", "toColumn": "stream_id"},
-    {"fromTable": "streams", "fromColumn": "stream_id", "toTable": "bot_profiles", "toColumn": "stream_id"},
+    {"fromTable": "streams", "fromColumn": "platform_key", "toTable": "platforms", "toColumn": "platform_key"},
+    {"fromTable": "streams", "fromColumn": "streamer_id", "toTable": "streamers", "toColumn": "streamer_id"},
+    {"fromTable": "viewers", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
+    {"fromTable": "suspicious_viewers", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
+    {"fromTable": "attacks", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
+    {"fromTable": "follows", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
+    {"fromTable": "engagement_metrics", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
+    {"fromTable": "ai_predictions", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
+    {"fromTable": "threat_scores", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
+    {"fromTable": "chat_activity", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
+    {"fromTable": "bot_profiles", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
 ]
 
 POWERBI_DAX_MEASURES = {
@@ -786,7 +783,6 @@ class AnalyticsWarehouseService:
                 {
                     "streamer_id": sid,
                     "tenant_id": str(ctx.owner.tenant_id),
-                    "email": ctx.owner.email,
                     "username": ctx.owner.username,
                     "role": _enum_value(ctx.owner.role),
                     "streams_total": 0,
@@ -873,8 +869,6 @@ class AnalyticsWarehouseService:
                 "channel_name": ctx.stream.channel_name,
                 "platform_user_id": session.platform_user_id,
                 "platform_username": session.platform_username,
-                "ip_address": session.ip_address,
-                "fingerprint_hash": session.fingerprint_hash,
                 "is_active": bool(session.is_active),
                 "is_suspected_bot": bool(session.is_suspected_bot),
                 "risk_score": round(_safe_float(session.risk_score), 2),
@@ -1389,7 +1383,12 @@ class PowerBIService:
             and settings.powerbi_group_id
         )
 
-    async def sync_bundle(self, bundle: Dict[str, Sequence[Dict[str, Any]]]) -> Dict[str, Any]:
+    async def sync_bundle(
+        self,
+        bundle: Dict[str, Sequence[Dict[str, Any]]],
+        *,
+        dataset_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
         if not self.configured:
             return {
                 "enabled": settings.powerbi_enabled,
@@ -1397,15 +1396,26 @@ class PowerBIService:
                 "message": "Power BI credentials not configured",
             }
         token = await self._get_access_token()
-        dataset_id = await self._ensure_dataset(token)
+        target_dataset_name = dataset_name or settings.powerbi_dataset_name
+        dataset_id = await self._ensure_dataset(token, target_dataset_name)
         pushed_tables = []
         async with httpx.AsyncClient(timeout=45.0) as client:
-            for table_name, rows in bundle.items():
+            for table_name in POWERBI_TABLE_DEFINITIONS:
+                rows = bundle.get(table_name, [])
+                table_url = (
+                    f"{self.API_BASE}/groups/{settings.powerbi_group_id}/datasets/"
+                    f"{dataset_id}/tables/{table_name}/rows"
+                )
+                delete_response = await client.delete(
+                    table_url,
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                delete_response.raise_for_status()
                 limited_rows = list(rows)[: settings.powerbi_max_rows_per_table]
                 if not limited_rows:
                     continue
                 response = await client.post(
-                    f"{self.API_BASE}/groups/{settings.powerbi_group_id}/datasets/{dataset_id}/tables/{table_name}/rows",
+                    table_url,
                     headers={
                         "Authorization": f"Bearer {token}",
                         "Content-Type": "application/json",
@@ -1418,7 +1428,7 @@ class PowerBIService:
             "enabled": True,
             "configured": True,
             "dataset_id": dataset_id,
-            "dataset_name": settings.powerbi_dataset_name,
+            "dataset_name": target_dataset_name,
             "tables_pushed": pushed_tables,
         }
 
@@ -1442,9 +1452,8 @@ class PowerBIService:
                 raise RuntimeError("Power BI access token missing in OAuth response")
             return token
 
-    async def _ensure_dataset(self, token: str) -> str:
+    async def _ensure_dataset(self, token: str, dataset_name: str) -> str:
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        dataset_name = settings.powerbi_dataset_name
         async with httpx.AsyncClient(timeout=30.0) as client:
             list_resp = await client.get(
                 f"{self.API_BASE}/groups/{settings.powerbi_group_id}/datasets",
@@ -1467,6 +1476,14 @@ class PowerBIService:
                             "columns": columns,
                         }
                         for table_name, columns in POWERBI_TABLE_DEFINITIONS.items()
+                    ],
+                    "relationships": [
+                        {
+                            "name": f"rel_{relationship['fromTable']}_{relationship['toTable']}",
+                            "crossFilteringBehavior": "OneDirection",
+                            **relationship,
+                        }
+                        for relationship in POWERBI_RELATIONSHIPS
                     ],
                 },
             )

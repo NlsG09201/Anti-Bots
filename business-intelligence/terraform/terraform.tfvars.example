@@ -1,0 +1,8 @@
+aws_region             = "us-east-1"
+environment            = "production"
+db_identifier          = "streamshield-bi"
+db_name                = "streamshield"
+db_username            = "streamshield_admin"
+db_instance_class      = "db.t4g.micro"
+postgres_engine_version = "16.15"
+allowed_client_cidrs   = ["203.0.113.10/32"] # Replace with the static egress IP of the gateway host.

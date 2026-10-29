@@ -69,3 +69,20 @@ services:
       - key: TWITCH_INSIGHTS_ENABLED
         value: "false"
       # Mismas secrets que anti-bots-api (DATABASE_URL, REDIS_URL, keys OAuth, etc.)
+
+  - type: cron
+    name: anti-bots-bi-refresh
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    schedule: "0 7 * * *"
+    plan: starter
+    startCommand: python scripts/refresh_warehouse.py
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: RENDER
+        value: "true"
+      - key: DATABASE_URL
+        sync: false

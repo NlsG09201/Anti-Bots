@@ -5,6 +5,7 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AnalystUser, get_db
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.services.analytics.powerbi import (
     EXPORT_DATASETS,
@@ -169,7 +170,11 @@ async def analytics_powerbi_sync(
     try:
         service = AnalyticsWarehouseService(db, current_user.tenant_id, hours=hours)
         bundle = await service.build_export_bundle()
-        result = await PowerBIService().sync_bundle(bundle)
+        tenant_suffix = current_user.tenant_id.hex[:8]
+        result = await PowerBIService().sync_bundle(
+            bundle,
+            dataset_name=f"{get_settings().powerbi_dataset_name}-{tenant_suffix}",
+        )
         return {
             "generated_at": service.snapshot_at.isoformat(),
             "window_hours": hours,

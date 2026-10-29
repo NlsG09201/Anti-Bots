@@ -25,4 +25,9 @@ venv/
 Thumbs.db
 backend/streamshield.db
 backend-spring/target/
+business-intelligence/terraform/*.tfstate
+business-intelligence/terraform/*.tfstate.*
+business-intelligence/terraform/*.tfvars
+!business-intelligence/terraform/terraform.tfvars.example
+business-intelligence/terraform/.terraform/
 .cursor/
