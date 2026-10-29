@@ -1249,6 +1249,7 @@ export const api = {
         `/api/v1/ml/weka-j48/dataset/preview?source=${source}&include_twitch_insights=${includeTwitchInsights}`,
         {},
         token,
+        API_URL,
       ),
     train: (
       token: ApiAuthToken,
