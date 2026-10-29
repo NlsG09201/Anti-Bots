@@ -15,6 +15,22 @@ export function resolveAuthToken(explicit?: ApiAuthToken): string | undefined {
   return token;
 }
 
+const ACCESS_TOKEN_REFRESH_WINDOW_MS = 60_000;
+
+function getAccessTokenExpiry(token: string): number | null {
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+
+  try {
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const claims = JSON.parse(atob(padded)) as { exp?: unknown };
+    return typeof claims.exp === "number" ? claims.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -89,7 +105,33 @@ async function request<T>(
   token?: ApiAuthToken,
   baseUrl?: string,
 ): Promise<T> {
-  const authToken = resolveAuthToken(token);
+  const isAuthAttempt =
+    path === "/api/v1/auth/login" ||
+    path === "/api/v1/auth/register" ||
+    path === "/api/v1/auth/mfa/verify";
+  const isLoginOrRegistration =
+    path === "/api/v1/auth/login" || path === "/api/v1/auth/register";
+
+  if (sessionTerminated && !isLoginOrRegistration && path !== "/api/v1/auth/refresh") {
+    throw new ApiError(401, "Sesión expirada. Inicia sesión de nuevo.");
+  }
+
+  let authToken = resolveAuthToken(token);
+  const expiresAt = authToken ? getAccessTokenExpiry(authToken) : null;
+  if (
+    authToken &&
+    expiresAt !== null &&
+    expiresAt <= Date.now() + ACCESS_TOKEN_REFRESH_WINDOW_MS
+  ) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      authToken = refreshed;
+    } else if (expiresAt <= Date.now()) {
+      await handleAuthFailure();
+      throw new ApiError(401, "Sesión expirada. Inicia sesión de nuevo.");
+    }
+  }
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
@@ -107,20 +149,11 @@ async function request<T>(
     headers["X-CSRF-Token"] = csrf;
   }
 
-  if (sessionTerminated && path !== "/api/v1/auth/login" && path !== "/api/v1/auth/register") {
-    throw new ApiError(401, "Sesión expirada. Inicia sesión de nuevo.");
-  }
-
   const response = await fetch(`${apiBase}${path}`, {
     ...options,
     headers,
     credentials: "include",
   });
-
-  const isAuthAttempt =
-    path === "/api/v1/auth/login" ||
-    path === "/api/v1/auth/register" ||
-    path === "/api/v1/auth/mfa/verify";
 
   if (response.status === 429) {
     throw new ApiError(429, "Demasiadas peticiones. Espera unos segundos e inténtalo de nuevo.");

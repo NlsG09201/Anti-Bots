@@ -389,6 +389,7 @@ function ViewersContent() {
         ?.classification === "known_bot",
   ).length;
   const twitchViewers = monitorStatus?.viewer_count ?? currentStream?.viewer_count ?? 0;
+  const isStreamLive = monitorStatus?.is_live ?? currentStream?.is_live ?? false;
   const viewersNotIdentifiable = monitorStatus?.viewers_not_identifiable ?? 0;
   const proxyIps = monitorStatus?.proxy_ips_detected ?? 0;
   const activeAttacks = monitorStatus?.active_attacks ?? 0;
@@ -777,9 +778,9 @@ function ViewersContent() {
         )}
         {streamId && !syncing && !isLoading && viewers.length === 0 && (
           <p className="text-center py-12 text-cyber-muted">
-            {!currentStream?.is_live
-              ? "Canal offline o sin usuarios en chat. Si está en vivo, pulsa Recargar listado."
-              : "Sin usuarios en chat — el listado se actualizará al terminar la carga."}
+            {!isStreamLive
+              ? "Canal offline. Si acaba de iniciar el directo, pulsa Recargar listado."
+              : "No se detectaron usuarios en el chat. Pulsa Recargar listado para volver a consultar."}
           </p>
         )}
         {streamId && syncing && viewers.length === 0 && (
