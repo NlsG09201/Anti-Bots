@@ -16,7 +16,7 @@ from app.core.startup import run_startup_checks
 from app.infrastructure.database.init_db import init_database
 from app.infrastructure.database.migrations import run_startup_migrations
 from app.infrastructure.database.session import engine
-from app.infrastructure.cache.redis_client import close_redis
+from app.infrastructure.cache.redis_client import close_redis, redis_is_configured
 from app.services.monitoring.orchestrator import get_platform_monitor_orchestrator
 
 logger = get_logger(__name__)
@@ -68,23 +68,29 @@ async def run_worker() -> None:
         await get_live_intel_engine().start()
         logger.info("live_intel_sampler_in_worker")
 
-    # Start ARQ Worker (BullMQ equivalent)
-    from arq.worker import create_worker
-    from app.workers.arq_worker import WorkerSettings
-    
-    worker = create_worker(WorkerSettings)
-    arq_task = asyncio.create_task(worker.main())
-    logger.info("arq_worker_started_in_background")
+    # ARQ uses the native Redis protocol; Upstash REST credentials only cover
+    # RedisCache operations and cannot be used as an ARQ connection URL.
+    arq_task = None
+    if redis_is_configured():
+        from arq.worker import create_worker
+        from app.workers.arq_worker import WorkerSettings
+
+        worker = create_worker(WorkerSettings)
+        arq_task = asyncio.create_task(worker.main())
+        logger.info("arq_worker_started_in_background")
+    else:
+        logger.warning("arq_worker_not_started", reason="native REDIS_URL is not configured")
 
     await _shutdown.wait()
 
     logger.info("platform_monitor_worker_shutting_down")
     # Cancel arq task
-    arq_task.cancel()
-    try:
-        await arq_task
-    except asyncio.CancelledError:
-        pass
+    if arq_task:
+        arq_task.cancel()
+        try:
+            await arq_task
+        except asyncio.CancelledError:
+            pass
     if settings.platform_health_enabled:
         from app.services.platform_health.engine import get_platform_health_engine
 

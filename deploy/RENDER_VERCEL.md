@@ -85,13 +85,18 @@ Variables recomendadas en Render:
 
 | Variable | Uso |
 |----------|-----|
-| `REDIS_URL` | Upstash `rediss://` — pub/sub WebSocket + cola eventos |
+| `REDIS_URL` | URL nativa Redis `redis://`/`rediss://` de Upstash; necesaria para arq, Redis Streams y pub/sub del WebSocket |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Credenciales REST HTTPS; habilitan cache compartida para auth, rate limits y datos cacheados. Configura ambas en Render para API y worker. |
 | `YOUTUBE_API_KEY` | Live chat + viewers YouTube Data API v3 |
 | `PLATFORM_MONITOR_ENABLED` | `true` — monitores en el proceso API (max 12 streams) |
 | `PLATFORM_MONITOR_MAX_STREAMS` | Límite RAM/CPU en free tier (default `12`) |
 | `TIKTOK_SESSION_ID` | Opcional si TikTok bloquea conexiones |
 
 En el dashboard: **Channels** → plataforma Kick/YouTube/TikTok → slug del canal → **Escanear** cuando esté LIVE.
+
+El backend usa el par REST HTTPS para operaciones de cache (`GET`, `SET`, `DEL`, `INCR`, `EXISTS`). Las credenciales REST no sustituyen `REDIS_URL`: el worker `arq` y los flujos de Redis TCP consumen el protocolo Redis nativo. En Upstash copia `Redis URL`/`Redis connection string` para `REDIS_URL` y, por separado, el HTTPS URL y token REST para las dos variables REST. No publiques estos valores en Git ni los pegues en logs.
+
+En un Blueprint existente, Render no vuelve a pedir automáticamente valores para nuevas variables `sync: false`; añádelas manualmente al servicio `anti-bots-api` y a `anti-bots-platform-monitor` desde **Environment**. Usa las credenciales REST que compartiste para sus variables respectivas. Para habilitar colas `arq`, Redis Streams y pub/sub del WebSocket, añade además la URL nativa TLS de Upstash como `REDIS_URL`. Si sólo configuras REST, el cache funciona por HTTPS y el worker omite arq sin dejar de ejecutar el monitor de plataformas.
 
 Endpoints SOC: `GET /api/v1/soc/overview`, `GET /api/v1/soc/feed`.
 
@@ -113,7 +118,8 @@ Panel en **SOC Command** → *Bots conocidos (TwitchBots.info)*. Evento WebSocke
 | Variable | Uso |
 |----------|-----|
 | `PLATFORM_HEALTH_ENABLED` | Motor de auditoría cada 45s (API + worker) |
-| `REDIS_URL` | Heartbeat worker, caché salud, Pub/Sub `platform_monitor_health` |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Heartbeat worker y caché de salud mediante REST |
+| `REDIS_URL` | Pub/Sub `platform_monitor_health` y colas arq |
 | `PLATFORM_MONITOR_RUN_IN_API` | `false` en API si usas worker dedicado |
 | `PLATFORM_MONITOR_WORKER` | `true` en servicio `anti-bots-platform-monitor` |
 

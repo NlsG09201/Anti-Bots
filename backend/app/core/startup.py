@@ -50,14 +50,25 @@ def validate_production_settings() -> list[str]:
             "DATABASE_URL points to localhost — set Neon URL in Render Environment"
         )
 
-    if not settings.redis_url or (
+    redis_tcp_configured = bool(settings.redis_url) and not (
         "PEGAR_" in settings.redis_url
         or settings.redis_url.startswith("redis://:redis")
         or "localhost" in settings.redis_url
-    ):
+        or "127.0.0.1" in settings.redis_url
+    )
+    redis_rest_configured = bool(
+        settings.upstash_redis_rest_url.startswith("https://")
+        and settings.upstash_redis_rest_token
+    )
+    if not redis_tcp_configured and not redis_rest_configured:
         logger.warning(
             "redis_not_configured",
-            hint="Set REDIS_URL (Upstash rediss://) for distributed rate limiting",
+            hint="Set REDIS_URL or UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN",
+        )
+    elif not redis_tcp_configured and redis_rest_configured:
+        logger.warning(
+            "redis_tcp_not_configured",
+            hint="Upstash REST supports cache commands only; set REDIS_URL for arq, Redis Streams, and realtime pub/sub",
         )
 
     return errors

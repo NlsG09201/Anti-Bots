@@ -37,7 +37,12 @@ services:
         value: "true"
       - key: LIVE_INTEL_ENABLED
         value: "true"
-      # Secrets: Render Dashboard -> Environment -> import deploy/render.import.env
+      - key: REDIS_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
     healthCheckPath: /health
 
   - type: worker
@@ -68,6 +73,12 @@ services:
         value: "false"
       - key: TWITCH_INSIGHTS_ENABLED
         value: "false"
+      - key: REDIS_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
       # Mismas secrets que anti-bots-api (DATABASE_URL, REDIS_URL, keys OAuth, etc.)
 
   - type: cron

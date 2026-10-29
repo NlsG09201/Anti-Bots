@@ -74,6 +74,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://streamshield:streamshield_secure_password@localhost:5432/streamshield"
     redis_url: str = "redis://:redis_secure_password@localhost:6379/0"
+    upstash_redis_rest_url: str = ""
+    upstash_redis_rest_token: str = ""
     celery_broker_url: str = "amqp://streamshield:rabbitmq_secure_password@localhost:5672//"
     celery_result_backend: str = ""
 
