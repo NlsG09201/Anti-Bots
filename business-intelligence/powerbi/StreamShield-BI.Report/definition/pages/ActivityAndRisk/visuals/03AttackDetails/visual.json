@@ -1,0 +1,24 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+  "name": "03AttackDetails",
+  "position": { "x": 20, "y": 340, "z": 1000, "width": 900, "height": 340, "tabOrder": 2 },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            { "field": { "Column": { "Expression": { "SourceRef": { "Entity": "fact_attack" } }, "Property": "created_date" } }, "queryRef": "fact_attack.created_date" },
+            { "field": { "Column": { "Expression": { "SourceRef": { "Entity": "fact_attack" } }, "Property": "channel_name" } }, "queryRef": "fact_attack.channel_name" },
+            { "field": { "Column": { "Expression": { "SourceRef": { "Entity": "fact_attack" } }, "Property": "attack_type" } }, "queryRef": "fact_attack.attack_type" },
+            { "field": { "Column": { "Expression": { "SourceRef": { "Entity": "fact_attack" } }, "Property": "severity" } }, "queryRef": "fact_attack.severity" },
+            { "field": { "Column": { "Expression": { "SourceRef": { "Entity": "fact_attack" } }, "Property": "status" } }, "queryRef": "fact_attack.status" },
+            { "field": { "Column": { "Expression": { "SourceRef": { "Entity": "fact_attack" } }, "Property": "affected_users" } }, "queryRef": "fact_attack.affected_users" },
+            { "field": { "Column": { "Expression": { "SourceRef": { "Entity": "fact_attack" } }, "Property": "mitigation_action" } }, "queryRef": "fact_attack.mitigation_action" }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

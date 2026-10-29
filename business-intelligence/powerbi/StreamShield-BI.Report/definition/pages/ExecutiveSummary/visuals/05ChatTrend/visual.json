@@ -1,0 +1,30 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+  "name": "05ChatTrend",
+  "position": { "x": 20, "y": 155, "z": 1000, "width": 710, "height": 500, "tabOrder": 4 },
+  "visual": {
+    "visualType": "lineChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": { "Column": { "Expression": { "SourceRef": { "Entity": "dim_date" } }, "Property": "full_date" } },
+              "queryRef": "dim_date.full_date",
+              "active": true
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": { "Measure": { "Expression": { "SourceRef": { "Entity": "fact_chat_activity" } }, "Property": "Mensajes de chat" } },
+              "queryRef": "fact_chat_activity.Mensajes de chat"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+  "name": "08RiskBandFilter",
+  "position": { "x": 995, "y": 485, "z": 1000, "width": 225, "height": 170, "tabOrder": 7 },
+  "visual": {
+    "visualType": "slicer",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": { "Column": { "Expression": { "SourceRef": { "Entity": "fact_stream_snapshot" } }, "Property": "risk_band" } },
+              "queryRef": "fact_stream_snapshot.risk_band",
+              "active": true
+            }
+          ]
+        }
+      }
+    }
+  }
+}

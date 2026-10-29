@@ -1,0 +1,20 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+  "name": "04ActiveAttacks",
+  "position": { "x": 935, "y": 20, "z": 1000, "width": 285, "height": 110, "tabOrder": 3 },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": { "Measure": { "Expression": { "SourceRef": { "Entity": "fact_attack" } }, "Property": "Ataques activos" } },
+              "queryRef": "fact_attack.Ataques activos"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

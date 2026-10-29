@@ -1,0 +1,21 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+  "name": "04ChannelFilter",
+  "position": { "x": 950, "y": 340, "z": 1000, "width": 310, "height": 160, "tabOrder": 3 },
+  "visual": {
+    "visualType": "slicer",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": { "Column": { "Expression": { "SourceRef": { "Entity": "dim_stream" } }, "Property": "channel_name" } },
+              "queryRef": "dim_stream.channel_name",
+              "active": true
+            }
+          ]
+        }
+      }
+    }
+  }
+}

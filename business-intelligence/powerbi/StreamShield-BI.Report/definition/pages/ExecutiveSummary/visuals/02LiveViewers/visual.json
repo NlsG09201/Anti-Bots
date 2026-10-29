@@ -1,0 +1,20 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+  "name": "02LiveViewers",
+  "position": { "x": 325, "y": 20, "z": 1000, "width": 285, "height": 110, "tabOrder": 1 },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": { "Measure": { "Expression": { "SourceRef": { "Entity": "fact_stream_snapshot" } }, "Property": "Viewers en vivo" } },
+              "queryRef": "fact_stream_snapshot.Viewers en vivo"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

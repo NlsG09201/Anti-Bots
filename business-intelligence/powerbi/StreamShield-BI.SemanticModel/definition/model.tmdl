@@ -1,4 +1,12 @@
 model Model
     culture: es-ES
     defaultPowerBIDataSourceVersion: powerBI_V3
-    defaultMode: import
+
+    ref table dim_date
+    ref table dim_platform
+    ref table dim_streamer
+    ref table dim_stream
+    ref table fact_stream_snapshot
+    ref table fact_viewer_session
+    ref table fact_attack
+    ref table fact_chat_activity

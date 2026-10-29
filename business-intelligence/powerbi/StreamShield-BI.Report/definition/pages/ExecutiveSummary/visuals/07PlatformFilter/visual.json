@@ -1,0 +1,21 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+  "name": "07PlatformFilter",
+  "position": { "x": 755, "y": 485, "z": 1000, "width": 225, "height": 170, "tabOrder": 6 },
+  "visual": {
+    "visualType": "slicer",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": { "Column": { "Expression": { "SourceRef": { "Entity": "dim_platform" } }, "Property": "platform_name" } },
+              "queryRef": "dim_platform.platform_name",
+              "active": true
+            }
+          ]
+        }
+      }
+    }
+  }
+}

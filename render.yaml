@@ -40,7 +40,7 @@ services:
       - key: REDIS_URL
         sync: false
       - key: UPSTASH_REDIS_REST_URL
-        sync: false
+        value: https://cosmic-condor-242943.upstash.io
       - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
     healthCheckPath: /health
@@ -76,7 +76,7 @@ services:
       - key: REDIS_URL
         sync: false
       - key: UPSTASH_REDIS_REST_URL
-        sync: false
+        value: https://cosmic-condor-242943.upstash.io
       - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
       # Mismas secrets que anti-bots-api (DATABASE_URL, REDIS_URL, keys OAuth, etc.)

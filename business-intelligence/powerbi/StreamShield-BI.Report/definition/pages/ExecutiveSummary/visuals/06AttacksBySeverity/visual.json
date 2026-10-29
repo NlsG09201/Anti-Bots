@@ -1,0 +1,30 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.0.0/schema.json",
+  "name": "06AttacksBySeverity",
+  "position": { "x": 755, "y": 155, "z": 1000, "width": 465, "height": 300, "tabOrder": 5 },
+  "visual": {
+    "visualType": "barChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": { "Column": { "Expression": { "SourceRef": { "Entity": "fact_attack" } }, "Property": "severity" } },
+              "queryRef": "fact_attack.severity",
+              "active": true
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": { "Measure": { "Expression": { "SourceRef": { "Entity": "fact_attack" } }, "Property": "Ataques activos" } },
+              "queryRef": "fact_attack.Ataques activos"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true
+  }
+}
