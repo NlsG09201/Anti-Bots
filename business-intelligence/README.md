@@ -35,7 +35,7 @@ AWS publica PostgreSQL 16.15 para RDS a la fecha de esta implementación; confir
 - `sql/002_refresh_warehouse.sql`: procedimiento idempotente `bi.refresh_warehouse(tenant_uuid, from_date)`.
 - `sql/003_powerbi_tenant_role.sql`: aprovisionamiento de un login Power BI de solo lectura para un tenant.
 - `sql/004_application_role.sql`: login de servicio para API/ETL, separado de la cuenta maestra RDS.
-- `scripts/refresh_warehouse.py`: carga diaria idempotente por tenant; no necesita credenciales Microsoft.
+- `scripts/refresh_warehouse.py`: entrada local de la carga diaria idempotente; comparte la implementación con `backend/app/services/analytics/warehouse_refresh.py`.
 - `powerbi/PowerQuery.m`: diez pasos de transformación, sin credenciales incluidas.
 - `powerbi/measures.dax`: medidas KPI para el modelo estrella.
 
@@ -62,7 +62,7 @@ psql "$env:BI_DATABASE_URL" -v ON_ERROR_STOP=1 -f business-intelligence/sql/002_
 psql "$env:BI_DATABASE_URL" -v ON_ERROR_STOP=1 -f business-intelligence/sql/004_application_role.sql
 ```
 
-El job `anti-bots-bi-refresh` está declarado en `render.yaml`; al enlazarlo en Render, define `DATABASE_URL`. El job sólo actualiza el warehouse y no necesita credenciales de Power BI. Power BI Service consulta ese warehouse mediante el gateway en su horario de refresh. La ruta opcional `/api/v1/analytics/powerbi/sync` conserva el modo push y requiere credenciales de Service Principal; el Service Principal debe estar permitido en la configuración del tenant de Power BI, tener permiso de escritura en el workspace y usar el scope `Dataset.ReadWrite.All`.
+El job `anti-bots-bi-refresh` está declarado en `render.yaml`; su imagen usa `backend/` como raíz y ejecuta `python scripts/refresh_warehouse.py`, que comparte el módulo `app.services.analytics.warehouse_refresh` con la entrada local. Al enlazarlo en Render, define `DATABASE_URL` igual al backend. El job sólo actualiza el warehouse y no necesita credenciales de Power BI. Power BI Service consulta ese warehouse mediante el gateway en su horario de refresh. La ruta opcional `/api/v1/analytics/powerbi/sync` conserva el modo push y requiere credenciales de Service Principal; el Service Principal debe estar permitido en la configuración del tenant de Power BI, tener permiso de escritura en el workspace y usar el scope `Dataset.ReadWrite.All`.
 
 Prueba manual, una vez desplegado y con streams reales:
 

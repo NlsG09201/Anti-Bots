@@ -67,6 +67,18 @@ startup_checks_passed
 
 ---
 
+## Recuperacion de errores 401 en la aplicacion
+
+Si `/api/v1/streams` o `/viewers` responde 401 despues de iniciar sesion:
+
+1. Cierra sesion e inicia de nuevo desde Vercel para emitir un token nuevo. El cliente intenta renovarlo una sola vez mediante la cookie HttpOnly y el proxy `/api`; nunca copies ni compartas Bearer tokens o cookies.
+2. Comprueba `/api/v1/auth/me` desde la misma sesion. Si devuelve 200 y otra ruta protegida falla, revisa los logs del mismo despliegue de Render y que las URLs directa y proxy apunten al mismo API.
+3. Confirma en Render que todas las instancias API usan el mismo `JWT_SECRET_KEY`. Rotarlo invalida los access y refresh tokens previos; los usuarios deben iniciar sesion otra vez.
+4. Redepliega Vercel para servir el cliente actualizado y confirma `API_PROXY_TARGET` y `NEXT_PUBLIC_API_DIRECT_URL`.
+5. Si el login nuevo sigue fallando, compara el status y mensaje sanitizado de `/api/v1/auth/me` con los logs de Render. No compartas tokens, cookies, contraseñas ni valores de secretos.
+
+Un 401 en el dominio directo de Render y en el rewrite de Vercel no prueba que exista un problema de CORS: ambos caminos pueden estar enviando un Bearer rechazado por el API.
+
 ## SOC multi-plataforma (Kick / YouTube / TikTok)
 
 Variables recomendadas en Render:

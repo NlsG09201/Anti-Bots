@@ -86,7 +86,7 @@ Con el **proxy** de Vercel, las cookies de login suelen funcionar en same-origin
 |---------|----------------|
 | 502 en `/api/*` | API caida o `API_PROXY_TARGET` mal |
 | 404 en `/api/*` | API no desplegada |
-| Login falla / 401 | `DATABASE_URL` o secretos mal en el backend |
+| Login falla / 401 | Comprueba `/api/v1/auth/me`, el Bearer y que `JWT_SECRET_KEY` sea estable e igual en todas las instancias de Render; no suele ser CORS |
 | WS desconectado | Falta `NEXT_PUBLIC_WS_URL` o firewall del VPS (puerto 443) |
 | CORS error | `APP_CORS_ORIGINS` sin tu dominio Vercel |
 
