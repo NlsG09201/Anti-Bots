@@ -115,8 +115,8 @@ export default function KickBotPage() {
       )}
 
       {kickStreams.length > 1 && (
-        <label className="block text-sm text-cyber-muted">Canal
-          <select value={activeStreamId} onChange={(event) => setStreamId(event.target.value)} className="mt-2 block w-full rounded-lg border border-cyber-border bg-cyber-surface p-3 text-white">
+        <label htmlFor="kick-bot-channel" className="block text-sm text-cyber-muted">Canal
+          <select id="kick-bot-channel" name="channel_id" value={activeStreamId} onChange={(event) => setStreamId(event.target.value)} className="mt-2 block w-full rounded-lg border border-cyber-border bg-cyber-surface p-3 text-white">
             {kickStreams.map((item: Stream) => <option key={item.id} value={item.id}>{item.channel_name}</option>)}
           </select>
         </label>
@@ -138,8 +138,10 @@ export default function KickBotPage() {
             </div>
 
             <div className="grid gap-3 md:grid-cols-[1fr_2fr_auto]">
-              <input value={commandName} onChange={(event) => setCommandName(event.target.value)} placeholder="comando (ej. discord)" aria-label="Nombre del comando" className="rounded-lg border border-cyber-border bg-cyber-bg px-3 py-2 text-white placeholder:text-cyber-muted" />
-              <input value={commandResponse} onChange={(event) => setCommandResponse(event.target.value)} placeholder="Respuesta. Puedes usar {user} y {channel}." aria-label="Respuesta del comando" className="rounded-lg border border-cyber-border bg-cyber-bg px-3 py-2 text-white placeholder:text-cyber-muted" />
+              <label className="sr-only" htmlFor="kick-command-name">Nombre del comando</label>
+              <input id="kick-command-name" name="command_name" value={commandName} onChange={(event) => setCommandName(event.target.value)} placeholder="comando (ej. discord)" className="rounded-lg border border-cyber-border bg-cyber-bg px-3 py-2 text-white placeholder:text-cyber-muted" />
+              <label className="sr-only" htmlFor="kick-command-response">Respuesta del comando</label>
+              <input id="kick-command-response" name="command_response" value={commandResponse} onChange={(event) => setCommandResponse(event.target.value)} placeholder="Respuesta. Puedes usar {user} y {channel}." className="rounded-lg border border-cyber-border bg-cyber-bg px-3 py-2 text-white placeholder:text-cyber-muted" />
               <button onClick={addCommand} className="inline-flex items-center justify-center gap-2 rounded-lg border border-cyber-accent/40 px-4 py-2 text-cyber-accent"><Plus size={16} /> Añadir</button>
             </div>
 
@@ -165,7 +167,8 @@ export default function KickBotPage() {
             <h2 className="font-semibold text-white">Enviar mensaje</h2>
             <p className="mt-1 text-sm text-cyber-muted">Envía un mensaje al canal conectado usando la cuenta autorizada.</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <input value={testMessage} onChange={(event) => setTestMessage(event.target.value)} maxLength={500} placeholder="Mensaje para el chat" className="min-w-60 flex-1 rounded-lg border border-cyber-border bg-cyber-bg px-3 py-2 text-white placeholder:text-cyber-muted" />
+              <label className="sr-only" htmlFor="kick-test-message">Mensaje para enviar al chat</label>
+              <input id="kick-test-message" name="test_message" value={testMessage} onChange={(event) => setTestMessage(event.target.value)} maxLength={500} placeholder="Mensaje para el chat" className="min-w-60 flex-1 rounded-lg border border-cyber-border bg-cyber-bg px-3 py-2 text-white placeholder:text-cyber-muted" />
               <button disabled={!testMessage.trim() || sendMutation.isPending} onClick={() => sendMutation.mutate()} className="inline-flex items-center gap-2 rounded-lg border border-cyber-accent/40 px-4 py-2 text-cyber-accent disabled:opacity-40">{sendMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Enviar</button>
             </div>
           </section>

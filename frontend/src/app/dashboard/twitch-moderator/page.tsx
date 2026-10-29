@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Check, ExternalLink, Loader2, Radio, Shield, Unplug } from "lucide-react";
 import { api, type Stream, type TwitchChatModerationConfig } from "@/lib/api";
@@ -112,7 +112,7 @@ export default function TwitchModeratorPage() {
 
       {(streamsQuery.isLoading || (activeId && query.isLoading)) && <div className="flex items-center gap-2 text-cyber-muted"><Loader2 size={16} className="animate-spin" /> Cargando…</div>}
       {!streamsQuery.isLoading && channels.length === 0 && <section className="rounded-xl border border-cyber-border bg-cyber-surface p-5 text-sm text-cyber-muted">No hay canales Twitch que puedas administrar. Conecta primero tu canal propietario en Canales.</section>}
-      {channels.length > 1 && <label className={labelClass}>Canal Twitch<select className={`${fieldClass} mt-1`} value={activeId} onChange={(event) => setStreamId(event.target.value)}>{channels.map((item: Stream) => <option key={item.id} value={item.id}>{item.channel_name}</option>)}</select></label>}
+      {channels.length > 1 && <label htmlFor="twitch-channel" className={labelClass}>Canal Twitch<select id="twitch-channel" name="channel_id" className={`${fieldClass} mt-1`} value={activeId} onChange={(event) => setStreamId(event.target.value)}>{channels.map((item: Stream) => <option key={item.id} value={item.id}>{item.channel_name}</option>)}</select></label>}
       {query.error && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-200">No se pudo cargar la configuración: {(query.error as Error).message}</p>}
 
       {channel && query.data && <>
@@ -136,27 +136,27 @@ export default function TwitchModeratorPage() {
 
         <section className="space-y-5 rounded-xl border border-cyber-border bg-cyber-surface p-5">
           <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold text-white">Reglas automáticas</h2><p className="mt-1 text-sm text-cyber-muted">Empieza en modo observación para revisar coincidencias sin sancionar.</p></div><button type="button" disabled={!query.data.bot_connected} aria-pressed={config.enabled} onClick={() => toggle("enabled")} className={`rounded-full px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${config.enabled ? "bg-cyber-accent text-black" : "bg-cyber-bg text-cyber-muted"}`}>{config.enabled ? "Reglas activadas" : "Reglas desactivadas"}</button></div>
-          <label className="flex items-center gap-3 text-sm text-white"><input type="checkbox" checked={config.observe_only} onChange={() => toggle("observe_only")} />Solo observar; no borrar mensajes ni sancionar</label>
+          <label className="flex items-center gap-3 text-sm text-white"><input id="twitch-observe-only" name="observe_only" type="checkbox" checked={config.observe_only} onChange={() => toggle("observe_only")} />Solo observar; no borrar mensajes ni sancionar</label>
           {!query.data.bot_connected && <p className="text-sm text-yellow-200">Conecta primero una cuenta bot para guardar la activación.</p>}
 
           <div className="grid gap-5 md:grid-cols-2">
             <fieldset className="space-y-3 rounded-lg border border-cyber-border p-4"><legend className="px-1 font-medium text-white">Mensajes repetidos</legend>
-              <label className="flex items-center gap-2 text-sm text-cyber-muted"><input type="checkbox" checked={config.repeated_messages_enabled} onChange={() => toggle("repeated_messages_enabled")} />Detectar mensajes consecutivos repetidos</label>
-              <label className={labelClass}>Umbral<select className={fieldClass} value={config.repeat_limit} onChange={(e) => setConfig({ ...config, repeat_limit: Number(e.target.value) })}>{[2,3,4,5,6].map((n) => <option key={n} value={n}>{n} mensajes</option>)}</select></label>
-              <label className={labelClass}>Ventana (segundos)<input className={fieldClass} type="number" min={5} max={300} value={config.repeat_window_seconds} onChange={(e) => setConfig({ ...config, repeat_window_seconds: Number(e.target.value) })} /></label>
+              <label className="flex items-center gap-2 text-sm text-cyber-muted"><input id="twitch-repeated-messages" name="repeated_messages_enabled" type="checkbox" checked={config.repeated_messages_enabled} onChange={() => toggle("repeated_messages_enabled")} />Detectar mensajes consecutivos repetidos</label>
+              <label htmlFor="twitch-repeat-limit" className={labelClass}>Umbral<select id="twitch-repeat-limit" name="repeat_limit" className={fieldClass} value={config.repeat_limit} onChange={(e) => setConfig({ ...config, repeat_limit: Number(e.target.value) })}>{[2,3,4,5,6].map((n) => <option key={n} value={n}>{n} mensajes</option>)}</select></label>
+              <label htmlFor="twitch-repeat-window" className={labelClass}>Ventana (segundos)<input id="twitch-repeat-window" name="repeat_window_seconds" className={fieldClass} type="number" min={5} max={300} value={config.repeat_window_seconds} onChange={(e) => setConfig({ ...config, repeat_window_seconds: Number(e.target.value) })} /></label>
               <ActionSelect label="Acción" value={config.repeat_action} onChange={(value) => setConfig({ ...config, repeat_action: value as "timeout" | "ban" })} timeoutAllowed />
             </fieldset>
             <fieldset className="space-y-3 rounded-lg border border-cyber-border p-4"><legend className="px-1 font-medium text-white">Enlaces</legend>
-              <label className="flex items-center gap-2 text-sm text-cyber-muted"><input type="checkbox" checked={config.links_enabled} onChange={() => toggle("links_enabled")} />Detectar enlaces</label>
-              <label className={labelClass}>Dominios permitidos (uno por línea)<textarea className={fieldClass} rows={4} value={config.allowed_domains.join("\n")} onChange={(e) => setList("allowed_domains", e.target.value)} placeholder="twitch.tv&#10;youtube.com" /></label>
+              <label className="flex items-center gap-2 text-sm text-cyber-muted"><input id="twitch-links-enabled" name="links_enabled" type="checkbox" checked={config.links_enabled} onChange={() => toggle("links_enabled")} />Detectar enlaces</label>
+              <label htmlFor="twitch-allowed-domains" className={labelClass}>Dominios permitidos (uno por línea)<textarea id="twitch-allowed-domains" name="allowed_domains" className={fieldClass} rows={4} value={config.allowed_domains.join("\n")} onChange={(e) => setList("allowed_domains", e.target.value)} placeholder="twitch.tv&#10;youtube.com" /></label>
               <ActionSelect label="Acción" value={config.link_action} onChange={(value) => setConfig({ ...config, link_action: value })} />
             </fieldset>
             <fieldset className="space-y-3 rounded-lg border border-cyber-border p-4"><legend className="px-1 font-medium text-white">Palabras bloqueadas</legend>
-              <label className={labelClass}>Una palabra o frase por línea<textarea className={fieldClass} rows={6} value={config.blocked_words.join("\n")} onChange={(e) => setList("blocked_words", e.target.value)} placeholder="Añade solo términos que realmente quieras filtrar" /></label>
+              <label htmlFor="twitch-blocked-words" className={labelClass}>Una palabra o frase por línea<textarea id="twitch-blocked-words" name="blocked_words" className={fieldClass} rows={6} value={config.blocked_words.join("\n")} onChange={(e) => setList("blocked_words", e.target.value)} placeholder="Añade solo términos que realmente quieras filtrar" /></label>
               <ActionSelect label="Acción" value={config.word_action} onChange={(value) => setConfig({ ...config, word_action: value })} />
             </fieldset>
             <fieldset className="space-y-3 rounded-lg border border-cyber-border p-4"><legend className="px-1 font-medium text-white">Timeout</legend>
-              <label className={labelClass}>Duración<select className={fieldClass} value={config.timeout_seconds} onChange={(e) => setConfig({ ...config, timeout_seconds: Number(e.target.value) })}>{[60,300,600,1800,3600,86400,1209600].map((seconds) => <option key={seconds} value={seconds}>{seconds < 3600 ? `${seconds / 60} min` : seconds < 86400 ? `${seconds / 3600} h` : `${seconds / 86400} días`}</option>)}</select></label>
+              <label htmlFor="twitch-timeout-seconds" className={labelClass}>Duración<select id="twitch-timeout-seconds" name="timeout_seconds" className={fieldClass} value={config.timeout_seconds} onChange={(e) => setConfig({ ...config, timeout_seconds: Number(e.target.value) })}>{[60,300,600,1800,3600,86400,1209600].map((seconds) => <option key={seconds} value={seconds}>{seconds < 3600 ? `${seconds / 60} min` : seconds < 86400 ? `${seconds / 3600} h` : `${seconds / 86400} días`}</option>)}</select></label>
               <p className="text-xs text-cyber-muted">El ban permanente solo se aplica si seleccionas “Ban” como acción. Los términos no interpretan contexto, ironía ni conversaciones legítimas.</p>
             </fieldset>
           </div>
@@ -169,5 +169,7 @@ export default function TwitchModeratorPage() {
 }
 
 function ActionSelect({ label, value, onChange, timeoutAllowed = false }: { label: string; value: "delete" | "timeout" | "ban"; onChange: (value: "delete" | "timeout" | "ban") => void; timeoutAllowed?: boolean }) {
-  return <label className={labelClass}>{label}<select className={fieldClass} value={value} onChange={(e) => onChange(e.target.value as "delete" | "timeout" | "ban")}>{!timeoutAllowed && <option value="delete">Borrar mensaje</option>}<option value="timeout">Timeout</option><option value="ban">Ban permanente</option></select></label>;
+  const generatedId = useId().replace(/:/g, "");
+  const fieldId = `twitch-action-${generatedId}`;
+  return <label htmlFor={fieldId} className={labelClass}>{label}<select id={fieldId} name={`action_${generatedId}`} className={fieldClass} value={value} onChange={(e) => onChange(e.target.value as "delete" | "timeout" | "ban")}>{!timeoutAllowed && <option value="delete">Borrar mensaje</option>}<option value="timeout">Timeout</option><option value="ban">Ban permanente</option></select></label>;
 }
