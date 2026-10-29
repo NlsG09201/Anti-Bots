@@ -270,7 +270,9 @@ function ViewersContent() {
   const wekaPreviewQuery = useQuery({
     queryKey: ["weka-j48-preview", j48Source],
     queryFn: () => api.wekaJ48.preview(token, j48Source),
-    enabled: !!token,
+    enabled: false,
+    retry: false,
+    refetchOnWindowFocus: false,
     staleTime: 60000,
   });
 
@@ -548,6 +550,15 @@ function ViewersContent() {
           </select>
           <button
             type="button"
+            disabled={wekaPreviewQuery.isFetching}
+            onClick={() => void wekaPreviewQuery.refetch()}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-cyber-border text-sm text-cyber-muted hover:text-white disabled:opacity-50"
+            title="Calcula una vista previa de hasta 1.000 registros"
+          >
+            {wekaPreviewQuery.isFetching ? "Calculando..." : "Vista previa"}
+          </button>
+          <button
+            type="button"
             disabled={wekaTrainMutation.isPending}
             onClick={() => wekaTrainMutation.mutate()}
             className="flex items-center gap-2 px-3 py-2 rounded-lg border border-cyber-border text-sm text-cyber-muted hover:text-white disabled:opacity-50"
@@ -561,6 +572,11 @@ function ViewersContent() {
               {wekaPreviewQuery.data.rows} filas ({wekaPreviewQuery.data.bots}B/
               {wekaPreviewQuery.data.humans}H)
               {wekaPreviewQuery.data.ready ? " · listo" : " · faltan datos"}
+            </span>
+          )}
+          {wekaPreviewQuery.isError && (
+            <span role="status" className="text-[10px] text-amber-300">
+              No se pudo cargar la vista previa. Reintenta en unos segundos.
             </span>
           )}
         </div>

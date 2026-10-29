@@ -42,7 +42,6 @@ class KickOAuth:
                     "grant_type": "client_credentials",
                     "client_id": settings.kick_client_id,
                     "client_secret": settings.kick_client_secret,
-                    "scope": "events:subscribe",
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )

@@ -1243,6 +1243,7 @@ export const api = {
         humans: number;
         ready: boolean;
         min_required: number;
+        preview_limit: number;
         twitch_insights_db_size?: number;
       }>(
         `/api/v1/ml/weka-j48/dataset/preview?source=${source}&include_twitch_insights=${includeTwitchInsights}`,

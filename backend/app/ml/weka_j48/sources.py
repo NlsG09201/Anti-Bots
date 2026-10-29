@@ -520,12 +520,13 @@ async def preview_dataset(
         db,
         tenant_id,
         source=source,
-        limit=10000,
+        limit=1000,
         include_twitch_insights=include_twitch_insights,
     )
     settings = get_settings()
     return {
         **stats,
+        "preview_limit": 1000,
         "min_required": settings.weka_j48_min_training_samples,
         "ready": stats.get("rows", 0) >= settings.weka_j48_min_training_samples
         and stats.get("bots", 0) >= 2
