@@ -18,7 +18,14 @@ Los eventos de Kick se verifican y persisten antes de procesarse; Redis/arq prop
 
 Requisitos: Python 3.11 para el backend, Java 21 para Spring, Node.js 20 para el frontend, PostgreSQL y (para las funciones de cola en tiempo real) Redis TCP. Configure las variables desde `.env.example` en un archivo local ignorado por Git; reemplace todas las claves de ejemplo y no comparta archivos de entorno.
 
-Desde la raíz, los comandos de npm evitan cambiar de carpeta para las tareas habituales. Instale primero las dependencias del frontend con `npm ci --prefix frontend`; instale las del backend con `python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt`.
+Desde la raíz, los comandos de npm evitan cambiar de carpeta para las tareas habituales. Instale primero las dependencias del frontend con `npm ci --prefix frontend`. Para el backend, cree el entorno que usa VS Code y Pylance e instale sus dependencias:
+
+```bash
+uv venv backend/.venv --python 3.11
+uv pip install --python backend/.venv/Scripts/python.exe -r backend/requirements.txt -r backend/requirements-dev.txt
+```
+
+En Linux/macOS, sustituya `backend/.venv/Scripts/python.exe` por `backend/.venv/bin/python`.
 
 ```bash
 npm run dev            # Frontend
