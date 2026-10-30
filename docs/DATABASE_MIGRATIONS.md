@@ -8,6 +8,8 @@
 - La revisión 002 describe un modelo `alerts` antiguo (`dismissed`, `alert_type`, `description`, entre otros). El modelo SQLAlchemy operativo `app.infrastructure.database.models.Alert` usa `status`, `message` y `attack_id`. No deben aplicarse ambas definiciones al mismo esquema.
 - Por estas diferencias, la cadena Alembic actual no es una ruta verificada de instalación nueva ni de actualización de una base existente. No ejecutar `alembic upgrade` o `downgrade` en producción hasta reconciliar y probar el baseline.
 
+El script `scripts/deploy.sh` usa el Compose enterprise existente y espera los healthchecks. En una base local nueva, la API crea las tablas de los modelos y aplica las actualizaciones PostgreSQL aditivas durante su startup; el script no ejecuta Alembic. Esto no sustituye una migración versionada para cambios futuros ni certifica una base de producción existente. Antes de actualizar una base real, comparar su esquema y revisión con el código y conservar un backup probado.
+
 ## Procedimiento seguro para cambios de esquema
 
 1. En una copia aislada, guardar un backup PostgreSQL y verificar su manifiesto con `python -m scripts.database_backup verify <archivo>`; consultar el [procedimiento de backup y recuperación](DATABASE_BACKUP_RECOVERY.md).
