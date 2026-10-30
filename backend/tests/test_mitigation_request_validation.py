@@ -1,7 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
-from app.api.v1.schemas import BanCreate, BlockViewerRequest, MitigationRequest
+from app.api.v1.schemas import (
+    BanCreate,
+    BlockViewerRequest,
+    MitigationRequest,
+    StreamCreate,
+)
+from app.infrastructure.database.models import Platform
 
 
 def test_mitigation_request_caps_target_count():
@@ -28,3 +34,27 @@ def test_ban_create_rejects_out_of_range_fields(payload):
 def test_block_viewer_reason_is_bounded():
     with pytest.raises(ValidationError):
         BlockViewerRequest(reason="x" * 501)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"platform": Platform.TWITCH, "external_id": " ", "channel_name": "stream"},
+        {"platform": Platform.TWITCH, "external_id": "x" * 256, "channel_name": "stream"},
+        {"platform": Platform.TWITCH, "external_id": "id", "channel_name": "x" * 256},
+    ],
+)
+def test_stream_create_rejects_blank_or_oversized_identity(payload):
+    with pytest.raises(ValidationError):
+        StreamCreate(**payload)
+
+
+def test_stream_create_trims_identity_fields():
+    stream = StreamCreate(
+        platform=Platform.TWITCH,
+        external_id=" channel-id ",
+        channel_name=" channel-name ",
+    )
+
+    assert stream.external_id == "channel-id"
+    assert stream.channel_name == "channel-name"

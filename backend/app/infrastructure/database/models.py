@@ -164,6 +164,14 @@ class StreamEvent(UUIDMixin, TimestampMixin, Base):
         Index("ix_stream_events_stream_type", "stream_id", "event_type"),
         Index("ix_stream_events_correlation", "correlation_id"),
         Index("ix_stream_events_created", "created_at"),
+        Index(
+            "uq_stream_events_stream_idempotency",
+            "stream_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+            sqlite_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     stream_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("streams.id"), nullable=False)
@@ -182,6 +190,7 @@ class StreamEvent(UUIDMixin, TimestampMixin, Base):
     risk_score: Mapped[float] = mapped_column(Float, default=0.0)
     event_metadata: Mapped[dict] = mapped_column("metadata", JsonType, default=dict)
     correlation_id: Mapped[Optional[str]] = mapped_column(String(64))
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(128))
     raw_payload: Mapped[Optional[dict]] = mapped_column(JsonType)
 
     stream: Mapped["Stream"] = relationship(back_populates="events")

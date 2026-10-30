@@ -64,8 +64,17 @@ class UserResponse(BaseModel):
 
 class StreamCreate(BaseModel):
     platform: Platform
-    external_id: str
-    channel_name: str
+    external_id: str = Field(..., min_length=1, max_length=255)
+    channel_name: str = Field(..., min_length=1, max_length=255)
+
+    @field_validator("external_id", "channel_name", mode="before")
+    @classmethod
+    def strip_stream_identity(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip()
+        if not value:
+            raise ValueError("stream identity must not be blank")
+        return value
 
 
 class StreamResponse(BaseModel):

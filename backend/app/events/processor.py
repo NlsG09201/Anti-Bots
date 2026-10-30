@@ -59,8 +59,31 @@ async def process_pipeline_event(
             tenant_uuid,
             ingest,
             source=event.source,
+            idempotency_key=(
+                event.metadata.get("_pipeline_event_id")
+                if isinstance(event.metadata.get("_pipeline_event_id"), str)
+                and 0 < len(event.metadata["_pipeline_event_id"]) <= 128
+                else f"{event.category.value}:{stream_entry_id}"
+                if stream_entry_id
+                else None
+            ),
         )
         await db.commit()
+
+        if outcome.get("duplicate"):
+            if event.category == EventCategory.SUSPICIOUS or outcome.get("risk_score", 0) >= 70:
+                await publish_suspicious_signal(
+                    event,
+                    reason="high_risk_ingest",
+                    score=float(outcome.get("risk_score", 0)),
+                )
+            await publish_event_processed(event, outcome)
+            logger.info(
+                "pipeline_duplicate_event_skipped",
+                stream_id=event.stream_id,
+                entry_id=stream_entry_id,
+            )
+            return {"processed": True, **outcome}
 
         if event.category == EventCategory.SUSPICIOUS or outcome.get("risk_score", 0) >= 70:
             await publish_suspicious_signal(

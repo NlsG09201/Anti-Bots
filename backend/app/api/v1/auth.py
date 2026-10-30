@@ -65,6 +65,18 @@ def _as_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def _active_refresh_token_query(jti: str):
+    """Lock the active token row so concurrent refreshes cannot both rotate it."""
+    return (
+        select(RefreshToken)
+        .where(
+            RefreshToken.jti == jti,
+            RefreshToken.is_revoked == False,
+        )
+        .with_for_update()
+    )
+
+
 def _auth_response(
     response: Response,
     access_token: str,
@@ -237,12 +249,7 @@ async def refresh_token_endpoint(
     if await cache.is_blacklisted(payload.get("jti", "")):
         return invalid_refresh("Token revoked")
 
-    result = await db.execute(
-        select(RefreshToken).where(
-            RefreshToken.jti == payload["jti"],
-            RefreshToken.is_revoked == False,
-        )
-    )
+    result = await db.execute(_active_refresh_token_query(payload["jti"]))
     stored = result.scalar_one_or_none()
     if not stored or _as_utc(stored.expires_at) < _utc_now():
         return invalid_refresh("Refresh token expired")

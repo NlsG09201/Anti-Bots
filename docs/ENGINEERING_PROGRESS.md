@@ -423,3 +423,48 @@
 - Added a composite `(tenant_id, platform, external_id)` index to match the stream repository and OAuth callback lookups. The existing cross-tenant platform index remains for other query patterns.
 - Added the index to the PostgreSQL startup migration and a schema regression test. This is non-unique so it preserves all existing rows; safe duplicate cleanup or uniqueness enforcement still requires a live-data audit.
 - Verification: widget lookup tests passed (`4 passed`); `git diff --check` passed.
+
+## Concurrent stream creation guard (2026-10-30)
+
+- Added transaction-scoped PostgreSQL advisory locks keyed by tenant, platform, and external ID. The direct stream endpoint now returns the tenant's existing matching record, and watch/OAuth creation paths acquire the same lock before checking for a record.
+- Locks are a no-op on non-PostgreSQL test/development databases. Existing rows are never removed; historical duplicates still require a data audit before any unique index can be introduced.
+- Verification: stream identity lock and tenant-isolation tests passed (`11 passed`); full backend suite passed (`185 passed, 1 skipped, 23 warnings`); `git diff --check` passed. Existing scikit-learn artifact-version and framework deprecation warnings remain.
+
+## Frontend auth and quality check (2026-10-30)
+
+- Reviewed the dashboard session guard and API token handling: bearer tokens remain in `sessionStorage`, the persisted Zustand state contains only the user profile, and dashboard data waits for session bootstrap.
+- Verification: `npm run lint` and `npm run typecheck` both passed. No frontend code change was needed in this review.
+
+## Event pipeline replay idempotency (2026-10-30)
+
+- Added an optional `StreamEvent.idempotency_key` and partial unique index scoped to stream, with an additive PostgreSQL startup migration. Existing event rows remain untouched because their keys are null.
+- Redis consumer processing now derives a stable key from event category and Redis entry ID, serializes concurrent retries with a transaction advisory lock, and returns the stored processing result for already committed entries. Retries can re-publish completion notifications without re-running detection or moderation work.
+- Verification: event idempotency, pipeline, bus delivery, and arq dead-letter tests passed (`15 passed`); full backend suite passed (`187 passed, 1 skipped, 23 warnings`). Existing scikit-learn artifact-version and framework deprecation warnings remain.
+
+## Terminal event rejection handling (2026-10-30)
+
+- Consumer and arq worker paths now persist a processor result marked `processed: false` to the Redis dead-letter stream before acknowledging it. This covers invalid identifiers, missing streams, and tenant mismatches that previously returned normally and could be acknowledged as successful.
+- Transient exceptions still follow retry behavior and remain unacknowledged until retry exhaustion.
+- Verification: event worker, bus, pipeline, and idempotency tests passed (`19 passed`); full backend suite passed (`191 passed, 1 skipped, 23 warnings`). Existing scikit-learn artifact-version and framework deprecation warnings remain.
+
+## Event pipeline sync fallback semantics (2026-10-30)
+
+- Corrected `EVENT_PIPELINE_SYNC_FALLBACK`: successful Redis publish stays async and is no longer processed a second time inline. Inline processing occurs only after a publish exception and only when fallback is enabled; otherwise the error propagates.
+- The same server-generated idempotency key is attached to the attempted queued event and used by inline fallback. This also protects against an ambiguous Redis response where `XADD` may have succeeded before the connection failed.
+- Verification: focused fallback, idempotency, and pipeline tests passed (`17 passed`); full backend suite passed (`195 passed, 1 skipped, 23 warnings`). Existing scikit-learn artifact-version and framework deprecation warnings remain.
+
+## Concurrent refresh-token rotation (2026-10-30)
+
+- The refresh endpoint now selects the active token row with `FOR UPDATE`, ensuring concurrent requests cannot both rotate the same refresh token on PostgreSQL.
+- Verification: refresh query SQL and API tests passed (`10 passed`); full backend suite passed (`196 passed, 1 skipped, 23 warnings`). Existing scikit-learn artifact-version and framework deprecation warnings remain.
+
+## Stream identity request bounds (2026-10-30)
+
+- `StreamCreate` now trims channel identity fields and rejects blank or overlong external IDs and channel names before database access.
+- Verification: schema validation tests passed (`10 passed`); full backend suite passed (`200 passed, 1 skipped, 23 warnings`). Existing scikit-learn artifact-version and framework deprecation warnings remain.
+
+## Concurrent schema startup safety (2026-10-30)
+
+- Serialized PostgreSQL `create_all()` and startup SQL with a transaction advisory lock so concurrent Render replicas cannot race table/enum/index creation.
+- Documented the current additive startup operations and rollback limits for nullable event idempotency fields and tenant settings.
+- Verification: startup lock and database retry tests passed (`6 passed`); full backend suite passed (`203 passed, 1 skipped, 23 warnings`). Existing scikit-learn artifact-version and framework deprecation warnings remain.

@@ -8,12 +8,24 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+async def acquire_schema_startup_lock(connection) -> None:
+    """Serialize create_all and additive migrations across application replicas."""
+    if connection.dialect.name == "postgresql":
+        await connection.execute(
+            text(
+                "SELECT pg_advisory_xact_lock("
+                "hashtextextended('streamshield_schema_startup', 0))"
+            )
+        )
+
+
 async def run_startup_migrations(engine: AsyncEngine) -> None:
     from app.core.config import get_settings
 
     if get_settings().database_url.startswith("sqlite"):
         return
     async with engine.begin() as conn:
+        await acquire_schema_startup_lock(conn)
         await conn.execute(
             text(
                 """
@@ -56,6 +68,23 @@ async def run_startup_migrations(engine: AsyncEngine) -> None:
         await conn.execute(
             text(
                 """
+                ALTER TABLE stream_events
+                ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(128)
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_stream_events_stream_idempotency
+                ON stream_events (stream_id, idempotency_key)
+                WHERE idempotency_key IS NOT NULL
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
                 CREATE INDEX IF NOT EXISTS ix_streams_widget_ingest_key
                 ON streams ((settings ->> 'ingest_key'))
                 WHERE settings ? 'ingest_key'
@@ -68,6 +97,7 @@ async def run_startup_migrations(engine: AsyncEngine) -> None:
             "platform_tiktok",
             "kick_auto_mitigation_default_off",
             "streams_tenant_platform_external_index",
+            "stream_events_idempotency_key",
             "streams_widget_ingest_key_index",
         ],
     )

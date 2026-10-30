@@ -3,6 +3,7 @@
 from typing import Any, Dict, Optional
 from uuid import UUID
 
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas import EventIngest
@@ -41,7 +42,32 @@ async def process_stream_event(
     event: EventIngest,
     *,
     source: str = "api",
+    idempotency_key: Optional[str] = None,
 ) -> Dict[str, Any]:
+    if idempotency_key:
+        if db.get_bind().dialect.name == "postgresql":
+            await db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+                {"lock_key": f"pipeline-event:{stream.id}:{idempotency_key}"},
+            )
+        prior_result = await db.execute(
+            select(StreamEvent).where(
+                StreamEvent.stream_id == stream.id,
+                StreamEvent.idempotency_key == idempotency_key,
+            )
+        )
+        prior_event = prior_result.scalar_one_or_none()
+        if prior_event:
+            saved_result = (prior_event.event_metadata or {}).get("processing_result")
+            if isinstance(saved_result, dict):
+                return {**saved_result, "duplicate": True}
+            return {
+                "event_id": str(prior_event.id),
+                "risk_score": float(prior_event.risk_score or 0),
+                "attack_created": False,
+                "duplicate": True,
+            }
+
     correlation = CorrelationService(db)
     reputation_svc = ReputationService(db)
     mitigation = MitigationService(db)
@@ -336,6 +362,7 @@ async def process_stream_event(
         risk_score=risk_score,
         event_metadata=meta,
         correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
     )
     db.add(stream_event)
     await db.flush()
@@ -534,7 +561,7 @@ async def process_stream_event(
         attack=attack_payload,
     )
 
-    return {
+    outcome = {
         "event_id": str(stream_event.id),
         "risk_score": risk_score,
         "attack_created": attack_payload is not None,
@@ -545,3 +572,12 @@ async def process_stream_event(
         "viewbot_signals": rt_assessment.signals if rt_assessment else {},
         "threat_intel": ti_assessment.to_dict() if ti_assessment else None,
     }
+    if idempotency_key:
+        stored_meta = dict(stream_event.event_metadata or {})
+        stored_meta["processing_result"] = {
+            key: outcome[key]
+            for key in ("event_id", "risk_score", "attack_created", "is_proxy", "is_vpn", "is_tor")
+        }
+        stream_event.event_metadata = stored_meta
+        await db.flush()
+    return outcome

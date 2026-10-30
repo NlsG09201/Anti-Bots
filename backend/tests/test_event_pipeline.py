@@ -154,6 +154,57 @@ async def test_malformed_stream_entry_is_dead_lettered_before_ack(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_terminal_rejection_is_persisted_to_dead_letter_before_ack(monkeypatch):
+    operations = []
+    service = EventStreamService()
+    event = PipelineEvent.from_ingest(
+        stream_id=uuid4(), tenant_id=uuid4(), event_type="viewer_join"
+    )
+
+    async def dead_letter(**kwargs):
+        operations.append(("dead_letter", kwargs))
+
+    async def ack(stream_key, entry_id):
+        operations.append(("ack", stream_key, entry_id))
+
+    monkeypatch.setattr(service, "dead_letter", dead_letter)
+    monkeypatch.setattr(service, "ack", ack)
+
+    handled = await service.dead_letter_rejected_result(
+        stream_key=STREAM_MAIN,
+        entry_id="123-0",
+        event=event,
+        result={"processed": False, "error": "tenant_mismatch"},
+    )
+
+    assert handled is True
+    assert operations[0][0] == "dead_letter"
+    assert operations[0][1]["error_type"] == "pipeline_tenant_mismatch"
+    assert operations[0][1]["fields"] == event.to_stream_fields()
+    assert operations[1] == ("ack", STREAM_MAIN, "123-0")
+
+
+@pytest.mark.asyncio
+async def test_successful_processor_result_is_not_dead_lettered(monkeypatch):
+    service = EventStreamService()
+
+    async def unexpected_call(**_kwargs):
+        raise AssertionError("successful pipeline results must remain on the success path")
+
+    monkeypatch.setattr(service, "dead_letter", unexpected_call)
+    handled = await service.dead_letter_rejected_result(
+        stream_key=STREAM_MAIN,
+        entry_id="123-0",
+        event=PipelineEvent.from_ingest(
+            stream_id=uuid4(), tenant_id=uuid4(), event_type="viewer_join"
+        ),
+        result={"processed": True},
+    )
+
+    assert handled is False
+
+
+@pytest.mark.asyncio
 async def test_stale_pending_stream_entry_is_reclaimed(monkeypatch):
     event = PipelineEvent.from_ingest(
         stream_id=uuid4(),

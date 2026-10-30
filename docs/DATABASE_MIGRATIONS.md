@@ -17,6 +17,24 @@
 5. Probar `upgrade` sobre una base vacía y sobre una copia restaurada de la base existente; comparar tablas, columnas, índices y conteos antes/después.
 6. Antes de producción, conservar backup probado y usar una ventana de despliegue. El rollback operativo es restaurar el backup o desplegar código compatible; no ejecutar un `downgrade` que borre tablas con datos.
 
+## Migraciones de arranque actuales
+
+La inicializacion y el SQL aditivo usan el mismo bloqueo advisory transaccional de PostgreSQL. Esto serializa `create_all()` y las migraciones si Render inicia varias replicas al mismo tiempo; SQLite omite el bloqueo.
+
+Las operaciones actuales son:
+
+- Anadir `tiktok` al enum `platform` cuando falta.
+- Completar valores seguros de mitigacion por defecto en streams Kick antiguos.
+- Crear indices tenant-scoped y de `ingest_key` en `streams`.
+- Anadir `stream_events.idempotency_key` nullable y un indice unico parcial por stream. Las filas existentes permanecen con `NULL` y no se eliminan.
+
+## Reversion de estos cambios
+
+- No hay `downgrade` automatico para el SQL de arranque. Un rollback de aplicacion a una version anterior puede dejar la columna nullable y los indices instalados; ese codigo los ignora.
+- No elimines `idempotency_key` ni sus indices durante el rollback: eso requiere coordinar workers detenidos, el codigo que escribe esa columna y cualquier reintento pendiente.
+- No reviertas el cambio de settings Kick con una actualizacion global; los valores actuales pueden haber sido modificados intencionalmente por cada tenant.
+- Para recuperar esquema previo, restaura un backup verificado o prepara una migracion correctiva especifica tras comparar esquema y datos. Conserva el reporte de verificacion y la version de la imagen desplegada.
+
 ## Contrato futuro
 
 - La aplicación no debe ejecutar DDL de evolución en cada arranque.

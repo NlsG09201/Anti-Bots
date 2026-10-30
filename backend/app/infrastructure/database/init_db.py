@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.logging import get_logger
 from app.infrastructure.database.base import Base
+from app.infrastructure.database.migrations import acquire_schema_startup_lock
 
 logger = get_logger(__name__)
 
@@ -14,6 +15,7 @@ async def init_database(engine: AsyncEngine, *, max_attempts: int = 10) -> None:
     for attempt in range(1, max_attempts + 1):
         try:
             async with engine.begin() as conn:
+                await acquire_schema_startup_lock(conn)
                 await conn.run_sync(Base.metadata.create_all)
             if attempt > 1:
                 logger.info("database_connected_after_retry", attempt=attempt)

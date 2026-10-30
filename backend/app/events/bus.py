@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from prometheus_client import Counter, Histogram
 
@@ -67,7 +67,11 @@ class EventBus:
         tenant_id: UUID,
         event: EventIngest,
         source: str = "api",
+        idempotency_key: Optional[str] = None,
     ) -> Dict[str, Any]:
+        metadata = dict(event.metadata)
+        if idempotency_key:
+            metadata["_pipeline_event_id"] = idempotency_key
         pipeline_event = PipelineEvent.from_ingest(
             stream_id=stream_id,
             tenant_id=tenant_id,
@@ -76,7 +80,7 @@ class EventBus:
             platform_username=event.platform_username,
             ip_address=event.ip_address,
             fingerprint_hash=event.fingerprint_hash,
-            metadata=event.metadata,
+            metadata=metadata,
             source=source,
         )
         return await self.publish(pipeline_event)
@@ -113,17 +117,34 @@ async def ingest_event(
     """
     if settings.event_pipeline_enabled and redis_is_configured():
         bus = get_event_bus()
-        meta = await bus.publish_from_ingest(
-            stream_id=stream.id,
-            tenant_id=tenant_id,
-            event=event,
-            source=source,
-        )
-        if settings.event_pipeline_sync_fallback:
+        idempotency_key = uuid4().hex
+        try:
+            meta = await bus.publish_from_ingest(
+                stream_id=stream.id,
+                tenant_id=tenant_id,
+                event=event,
+                source=source,
+                idempotency_key=idempotency_key,
+            )
+        except Exception as exc:
+            if not settings.event_pipeline_sync_fallback:
+                raise
             from app.services.ingest.event_ingest import process_stream_event
 
-            result = await process_stream_event(db, stream, tenant_id, event, source=source)
-            return {**result, **meta, "dual_write": True}
+            result = await process_stream_event(
+                db,
+                stream,
+                tenant_id,
+                event,
+                source=source,
+                idempotency_key=idempotency_key,
+            )
+            logger.warning(
+                "event_pipeline_sync_fallback",
+                source=source,
+                error_type=type(exc).__name__,
+            )
+            return {**result, "queued": False, "sync_fallback": True}
         return {
             "event_id": None,
             "risk_score": 0.0,
@@ -155,8 +176,16 @@ async def handle_stream_message(
                 EVENTS_PROCESSED.labels(category=event.category.value, status="queued").inc()
                 return
 
-        await process_pipeline_event(event, stream_entry_id=entry_id)
         bus = get_event_bus()
+        result = await process_pipeline_event(event, stream_entry_id=entry_id)
+        if await bus.streams.dead_letter_rejected_result(
+            stream_key=stream_key,
+            entry_id=entry_id,
+            event=event,
+            result=result,
+        ):
+            EVENTS_PROCESSED.labels(category=event.category.value, status="dead_lettered").inc()
+            return
         await bus.streams.ack(stream_key, entry_id)
         EVENTS_PROCESSED.labels(category=event.category.value, status="ok").inc()
     except Exception as exc:

@@ -173,6 +173,27 @@ class EventStreamService:
             approximate=True,
         )
 
+    async def dead_letter_rejected_result(
+        self,
+        *,
+        stream_key: str,
+        entry_id: str,
+        event: PipelineEvent,
+        result: Dict[str, Any],
+    ) -> bool:
+        """Persist terminal processor rejections before acknowledging them."""
+        if result.get("processed") is not False:
+            return False
+        reason = str(result.get("error") or "rejected")
+        await self.dead_letter(
+            stream_key=stream_key,
+            entry_id=entry_id,
+            fields=event.to_stream_fields(),
+            error_type=f"pipeline_{reason}"[:80],
+        )
+        await self.ack(stream_key, entry_id)
+        return True
+
     async def ack(self, stream_key: str, entry_id: str) -> None:
         if not redis_is_configured():
             return

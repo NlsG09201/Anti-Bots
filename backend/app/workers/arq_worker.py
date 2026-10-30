@@ -57,6 +57,18 @@ async def process_pipeline_event_job(
     if stream_entry_id:
         streams = EventStreamService()
         stream_key = streams._stream_for_category(event.category)
+        if await streams.dead_letter_rejected_result(
+            stream_key=stream_key,
+            entry_id=stream_entry_id,
+            event=event,
+            result=result,
+        ):
+            logger.warning(
+                "pipeline_event_rejected_and_dead_lettered",
+                entry_id=stream_entry_id,
+                reason=result.get("error"),
+            )
+            return {**result, "dead_lettered": True}
         await streams.ack(stream_key, stream_entry_id)
     return result
 

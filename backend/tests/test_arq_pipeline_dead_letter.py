@@ -80,3 +80,38 @@ async def test_pipeline_job_failure_before_final_attempt_does_not_ack(monkeypatc
         )
 
     assert operations == []
+
+
+@pytest.mark.asyncio
+async def test_terminal_processor_rejection_is_dead_lettered_and_acked(monkeypatch):
+    operations = []
+    event = _event()
+
+    class FakeStreams:
+        def _stream_for_category(self, _category):
+            return "ss:events:main"
+
+        async def dead_letter_rejected_result(self, **kwargs):
+            operations.append(("dead_letter", kwargs["result"]))
+            operations.append(("ack", kwargs["stream_key"], kwargs["entry_id"]))
+            return True
+
+    async def process_rejected_event(*_args, **_kwargs):
+        return {"processed": False, "error": "tenant_mismatch"}
+
+    monkeypatch.setattr(worker_module, "EventStreamService", FakeStreams)
+    monkeypatch.setattr(worker_module, "process_pipeline_event", process_rejected_event)
+
+    result = await worker_module.process_pipeline_event_job(
+        {"job_try": 1}, event.model_dump(mode="json"), "123-0"
+    )
+
+    assert result == {
+        "processed": False,
+        "error": "tenant_mismatch",
+        "dead_lettered": True,
+    }
+    assert operations == [
+        ("dead_letter", {"processed": False, "error": "tenant_mismatch"}),
+        ("ack", "ss:events:main", "123-0"),
+    ]
