@@ -94,7 +94,7 @@ class StreamShieldAssistant:
     ) -> tuple[str, Any]:
         import json
 
-        from app.services.ai.openai_engine import get_openai_client
+        from app.services.ai.openai_engine import get_openai_client, track_openai_request
 
         messages = [{"role": "system", "content": self.SYSTEM_PROMPT}, *history]
         if security_context:
@@ -106,11 +106,14 @@ class StreamShieldAssistant:
                 }
             )
         messages.append({"role": "user", "content": message})
-        response = await get_openai_client().responses.create(
-            model=get_settings().openai_model,
-            input=messages,
-            max_output_tokens=get_settings().openai_max_output_tokens,
-            store=False,
+        response = await track_openai_request(
+            "assistant",
+            get_openai_client().responses.create(
+                model=get_settings().openai_model,
+                input=messages,
+                max_output_tokens=get_settings().openai_max_output_tokens,
+                store=False,
+            ),
         )
         if not response.output_text:
             raise ValueError("OpenAI returned an empty assistant response")

@@ -104,12 +104,19 @@ async def validate_openai_connection(
     settings = get_settings()
     if not settings.openai_api_key or not settings.openai_model:
         raise HTTPException(status_code=503, detail="OpenAI no está configurado.")
-    from app.services.ai.openai_engine import get_openai_client, reserve_openai_calls
+    from app.services.ai.openai_engine import (
+        get_openai_client,
+        reserve_openai_calls,
+        track_openai_request,
+    )
 
     if not await reserve_openai_calls(current_user.tenant_id):
         raise HTTPException(status_code=429, detail="Límite de validaciones OpenAI alcanzado.")
     try:
-        model = await get_openai_client().models.retrieve(settings.openai_model)
+        model = await track_openai_request(
+            "connection_check",
+            get_openai_client().models.retrieve(settings.openai_model),
+        )
         db.add(
             AIUsageRecord(
                 tenant_id=current_user.tenant_id,

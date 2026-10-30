@@ -165,7 +165,11 @@ class AIService:
         platform: Optional[str],
         incident_reference: Optional[str],
     ) -> Dict[str, Any]:
-        from app.services.ai.openai_engine import _save_usage, get_openai_client
+        from app.services.ai.openai_engine import (
+            _save_usage,
+            get_openai_client,
+            track_openai_request,
+        )
 
         allowed_signals = {
             "coordination_score", "proxy_detected", "viewer_count", "chatters_sampled",
@@ -190,9 +194,11 @@ class AIService:
             ensure_ascii=False,
             default=str,
         )[:6000]
-        response = await get_openai_client().responses.create(
-            model=settings.openai_model,
-            input=[
+        response = await track_openai_request(
+            "threat_analysis",
+            get_openai_client().responses.create(
+                model=settings.openai_model,
+                input=[
                 {
                     "role": "system",
                     "content": (
@@ -202,10 +208,11 @@ class AIService:
                     ),
                 },
                 {"role": "user", "content": prompt},
-            ],
-            text={"format": {"type": "json_schema", "name": "threat_insight", "strict": True, "schema": _THREAT_SCHEMA}},
-            max_output_tokens=settings.openai_max_output_tokens,
-            store=False,
+                ],
+                text={"format": {"type": "json_schema", "name": "threat_insight", "strict": True, "schema": _THREAT_SCHEMA}},
+                max_output_tokens=settings.openai_max_output_tokens,
+                store=False,
+            ),
         )
         try:
             data = ThreatInsight.model_validate_json(response.output_text).model_dump()

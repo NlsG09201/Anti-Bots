@@ -368,7 +368,12 @@ class ViewerBotScreeningService:
         tenant_id: Optional[UUID] = None,
         stream_id: Optional[UUID] = None,
     ) -> Dict[str, Dict[str, Any]]:
-        from app.services.ai.openai_engine import _save_usage, get_openai_client, reserve_openai_calls
+        from app.services.ai.openai_engine import (
+            _save_usage,
+            get_openai_client,
+            reserve_openai_calls,
+            track_openai_request,
+        )
 
         if not await reserve_openai_calls(tenant_id):
             return {}
@@ -416,9 +421,11 @@ class ViewerBotScreeningService:
             },
             ensure_ascii=False,
         )
-        response = await get_openai_client().responses.create(
-            model=settings.openai_model,
-            input=[
+        response = await track_openai_request(
+            "viewer_screening",
+            get_openai_client().responses.create(
+                model=settings.openai_model,
+                input=[
                 {
                     "role": "system",
                     "content": (
@@ -429,10 +436,11 @@ class ViewerBotScreeningService:
                     ),
                 },
                 {"role": "user", "content": prompt},
-            ],
-            text={"format": {"type": "json_schema", "name": "chat_account_screening", "strict": True, "schema": response_schema}},
-            max_output_tokens=settings.openai_max_output_tokens,
-            store=False,
+                ],
+                text={"format": {"type": "json_schema", "name": "chat_account_screening", "strict": True, "schema": response_schema}},
+                max_output_tokens=settings.openai_max_output_tokens,
+                store=False,
+            ),
         )
         data = ChatAccountScreeningResult.model_validate_json(response.output_text).model_dump()
         _save_usage(
