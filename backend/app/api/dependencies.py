@@ -70,7 +70,7 @@ async def get_current_user(
         result = await db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
     except SQLAlchemyError as exc:
-        logger.exception("authenticated_user_lookup_failed")
+        logger.error("authenticated_user_lookup_failed", error_type=type(exc).__name__)
         raise HTTPException(
             status_code=503,
             detail="El servicio de autenticación no está disponible temporalmente.",

@@ -51,10 +51,10 @@ async def intelligence_overview(
             **data,
         }
     except Exception as exc:
-        logger.exception(
+        logger.error(
             "threat_intel_overview_failed",
             tenant_id=str(current_user.tenant_id),
-            error=str(exc)[:200],
+            error_type=type(exc).__name__,
         )
         raise HTTPException(
             status_code=503,

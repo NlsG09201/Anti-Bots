@@ -54,9 +54,9 @@ async def assess_stream_threat(
 
         return assessment
     except Exception as exc:
-        logger.error("assess_stream_threat_failed", error=str(exc))
+        logger.error("assess_stream_threat_failed", error_type=type(exc).__name__)
         return {
-            "error": str(exc),
+            "error": "internal_error",
             "overall_risk_score": 0,
         }
 
@@ -71,8 +71,8 @@ async def assess_ip(
         assessment = await _ip_aggregator.assess_ip(ip_address, use_cache=use_cache)
         return assessment
     except Exception as exc:
-        logger.error("assess_ip_failed", ip=ip_address, error=str(exc))
-        return {"error": str(exc), "ip_address": ip_address}
+        logger.error("assess_ip_failed", ip=ip_address, error_type=type(exc).__name__)
+        return {"error": "internal_error", "ip_address": ip_address}
 
 
 @router.post("/assess-ips")
@@ -89,8 +89,8 @@ async def assess_ips(
             "results": assessments,
         }
     except Exception as exc:
-        logger.error("assess_ips_failed", count=len(ip_addresses), error=str(exc))
-        return {"error": str(exc)}
+        logger.error("assess_ips_failed", count=len(ip_addresses), error_type=type(exc).__name__)
+        return {"error": "internal_error"}
 
 
 @router.get("/reputation/{ip_address}")
@@ -112,8 +112,8 @@ async def get_ip_reputation(
         )
         return reputation
     except Exception as exc:
-        logger.error("calculate_reputation_failed", ip=ip_address, error=str(exc))
-        return {"error": str(exc)}
+        logger.error("calculate_reputation_failed", ip=ip_address, error_type=type(exc).__name__)
+        return {"error": "internal_error"}
 
 
 @router.post("/stream-metrics/{stream_id}")
@@ -141,8 +141,8 @@ async def get_stream_metrics(
             },
         }
     except Exception as exc:
-        logger.error("get_stream_metrics_failed", stream_id=stream_id, error=str(exc))
-        return {"error": str(exc)}
+        logger.error("get_stream_metrics_failed", stream_id=stream_id, error_type=type(exc).__name__)
+        return {"error": "internal_error"}
 
 
 @router.get("/threat-timeline/{stream_id}")
@@ -157,8 +157,8 @@ async def get_threat_timeline(
             "events": [],  # Would be populated from database
         }
     except Exception as exc:
-        logger.error("get_threat_timeline_failed", stream_id=stream_id, error=str(exc))
-        return {"error": str(exc)}
+        logger.error("get_threat_timeline_failed", stream_id=stream_id, error_type=type(exc).__name__)
+        return {"error": "internal_error"}
 
 
 @router.websocket("/ws/stream-threat/{stream_id}")
@@ -201,8 +201,8 @@ async def get_stream_alerts(
             "total": 0,
         }
     except Exception as exc:
-        logger.error("get_alerts_failed", stream_id=stream_id, error=str(exc))
-        return {"error": str(exc)}
+        logger.error("get_alerts_failed", stream_id=stream_id, error_type=type(exc).__name__)
+        return {"error": "internal_error"}
 
 
 @router.post("/alerts/dismiss")
@@ -214,8 +214,8 @@ async def dismiss_alert(
     try:
         return {"alert_id": alert_id, "status": "dismissed"}
     except Exception as exc:
-        logger.error("dismiss_alert_failed", alert_id=alert_id, error=str(exc))
-        return {"error": str(exc)}
+        logger.error("dismiss_alert_failed", alert_id=alert_id, error_type=type(exc).__name__)
+        return {"error": "internal_error"}
 
 
 @router.get("/dashboard-summary/{tenant_id}")
@@ -237,8 +237,8 @@ async def get_dashboard_summary(
             },
         }
     except Exception as exc:
-        logger.error("get_dashboard_summary_failed", tenant_id=tenant_id, error=str(exc))
-        return {"error": str(exc)}
+        logger.error("get_dashboard_summary_failed", tenant_id=tenant_id, error_type=type(exc).__name__)
+        return {"error": "internal_error"}
 
 
 @router.get("/threat-analysis/{stream_id}")
@@ -258,5 +258,5 @@ async def get_detailed_threat_analysis(
             },
         }
     except Exception as exc:
-        logger.error("get_threat_analysis_failed", stream_id=stream_id, error=str(exc))
-        return {"error": str(exc)}
+        logger.error("get_threat_analysis_failed", stream_id=stream_id, error_type=type(exc).__name__)
+        return {"error": "internal_error"}

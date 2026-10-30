@@ -87,7 +87,7 @@ async def twitchbots_verify_one(
         )
         return {"result": result.model_dump(), "verdict": result.to_verdict_dict()}
     except Exception as exc:
-        logger.exception("twitchbots_verify_one_failed", error=str(exc)[:200])
+        logger.error("twitchbots_verify_one_failed", error_type=type(exc).__name__)
         raise HTTPException(status_code=503, detail="Verification failed") from exc
 
 
@@ -131,7 +131,7 @@ async def twitchbots_verify_batch(
             "results": {k: v.model_dump() for k, v in results.items()},
         }
     except Exception as exc:
-        logger.exception("twitchbots_verify_batch_failed", error=str(exc)[:200])
+        logger.error("twitchbots_verify_batch_failed", error_type=type(exc).__name__)
         raise HTTPException(status_code=503, detail="Batch verification failed") from exc
 
 

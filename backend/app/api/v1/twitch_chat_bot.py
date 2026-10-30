@@ -209,7 +209,7 @@ async def setup_bot_in_channel(
         await db.commit()
         raise ValidationError(
             f"@{bot_login} ya quedó como moderador, pero Twitch no activó los eventos del chat. "
-            f"Puedes reintentar. Detalle: {str(exc)[:180]}"
+            "Puedes reintentar. Revisa los permisos de EventSub y la configuración OAuth."
         ) from exc
 
     metadata = dict(stream.settings or {})
@@ -260,7 +260,7 @@ async def subscribe_bot_chat_events(
         raise ValidationError(
             "Twitch no aceptó la suscripción de chat. Confirma que el bot ya es moderador con "
             f"/mod {metadata.get('twitch_bot_login', 'usuario_bot')} y vuelve a intentarlo. "
-            f"Detalle: {str(exc)[:180]}"
+            "Revisa los permisos OAuth si el problema continúa."
         ) from exc
     metadata = dict(stream.settings or {})
     metadata["twitch_bot_eventsub_status"] = "enabled"

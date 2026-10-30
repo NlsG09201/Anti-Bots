@@ -117,7 +117,7 @@ async def train_j48(
             {
                 "ok": False,
                 "error": "train_failed",
-                "hint": str(exc)[:500],
+                "hint": "Training failed. Check the server logs and model configuration.",
             }
         )
 

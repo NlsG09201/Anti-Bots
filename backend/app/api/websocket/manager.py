@@ -48,7 +48,7 @@ class ConnectionManager:
         try:
             await websocket.send_json(data)
         except Exception as e:
-            logger.warning("websocket_send_failed", error=str(e))
+            logger.warning("websocket_send_failed", error_type=type(e).__name__)
 
     async def broadcast_to_tenant(self, tenant_id: str, data: Dict[str, Any]) -> None:
         connections = self.active_connections.get(tenant_id, set()).copy()

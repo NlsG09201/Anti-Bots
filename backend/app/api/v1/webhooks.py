@@ -136,12 +136,13 @@ async def twitch_webhook(
         except Exception as exc:
             try:
                 await cache.delete(dedupe_key)
-            except Exception:
-                logger.exception(
+            except Exception as cleanup_exc:
+                logger.error(
                     "twitch_webhook_dedupe_cleanup_failed",
                     message_id=twitch_eventsub_message_id,
+                    error_type=type(cleanup_exc).__name__,
                 )
-            logger.exception(
+            logger.error(
                 "twitch_webhook_processing_failed",
                 message_id=twitch_eventsub_message_id,
                 error_type=type(exc).__name__,
@@ -241,7 +242,7 @@ async def _process_twitch_notification(
 
             await process_twitch_chat_message(db, stream, event.get("event") or {})
         except Exception as exc:
-            logger.exception(
+            logger.error(
                 "twitch_chat_moderation_processing_failed",
                 stream_id=str(stream.id),
                 error_type=type(exc).__name__,
@@ -460,7 +461,7 @@ async def kick_webhook(
         )
     except Exception as exc:
         await db.rollback()
-        logger.exception("kick_webhook_persist_failed", event_id=event_id, error_type=type(exc).__name__)
+        logger.error("kick_webhook_persist_failed", event_id=event_id, error_type=type(exc).__name__)
         return Response(status_code=503)
 
     return Response(status_code=204)

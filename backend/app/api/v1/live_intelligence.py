@@ -41,10 +41,10 @@ async def live_intel_overview(
         )
         return {"enabled": True, "overview": overview_to_api_dict(overview)}
     except Exception as exc:
-        logger.exception(
+        logger.error(
             "live_intel_overview_failed",
             tenant_id=str(current_user.tenant_id),
-            error=str(exc)[:200],
+            error_type=type(exc).__name__,
         )
         raise HTTPException(
             status_code=503,
@@ -66,10 +66,10 @@ async def list_monitored_streams(
         )
         streams = [s for s in result.scalars().all() if is_competitive_stream(s)]
     except Exception as exc:
-        logger.exception(
+        logger.error(
             "live_intel_streams_list_failed",
             tenant_id=str(current_user.tenant_id),
-            error=str(exc)[:200],
+            error_type=type(exc).__name__,
         )
         raise HTTPException(
             status_code=503,

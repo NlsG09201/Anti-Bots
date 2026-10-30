@@ -28,10 +28,10 @@ async def soc_overview(
         overview = await compute_soc_overview(db, current_user.tenant_id, stream_ids)
         return {"stats": stats, "soc": overview}
     except Exception as exc:
-        logger.exception(
+        logger.error(
             "soc_overview_failed",
             tenant_id=str(current_user.tenant_id),
-            error=str(exc)[:200],
+            error_type=type(exc).__name__,
         )
         raise HTTPException(
             status_code=503,

@@ -15,6 +15,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
+from app.api.oauth_errors import oauth_exchange_public_message
 from app.core.config import get_settings
 from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.core.logging import get_logger
@@ -136,16 +137,21 @@ async def kick_callback(
     try:
         token_data = await oauth.exchange_code(code, verifier)
     except httpx.HTTPStatusError as exc:
-        detail = (exc.response.text or exc.response.reason_phrase or "oauth_token_error")[:180]
+        logger.warning(
+            "kick_oauth_token_exchange_failed",
+            error_type=type(exc).__name__,
+            status_code=exc.response.status_code,
+        )
         return _oauth_error_redirect(
             "token_exchange_failed",
-            f"Token exchange failed: {detail}",
+            oauth_exchange_public_message("Kick", exc),
             extra=f"kick_redirect_uri={quote(resolve_kick_redirect_uri())}",
         )
     except httpx.HTTPError as exc:
+        logger.warning("kick_oauth_token_exchange_failed", error_type=type(exc).__name__)
         return _oauth_error_redirect(
             "token_exchange_failed",
-            f"Token exchange failed: {str(exc)[:180]}",
+            oauth_exchange_public_message("Kick", exc),
             extra=f"kick_redirect_uri={quote(resolve_kick_redirect_uri())}",
         )
     access_token = token_data["access_token"]

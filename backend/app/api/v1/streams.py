@@ -227,7 +227,7 @@ async def quick_sync_stream(
             except Exception as exc:
                 logger.warning("sync_live_status_error", 
                              stream_id=str(stream_id), 
-                             error=str(exc)[:200])
+                             error_type=type(exc).__name__)
                 return {
                     "status": "offline",
                     "message": "No se pudo verificar estado live"
@@ -265,8 +265,7 @@ async def quick_sync_stream(
             logger.warning("quick_sync_service_error",
                          stream_id=str(stream_id),
                          platform=stream.platform.value if stream.platform else "unknown",
-                         error_type=type(exc).__name__,
-                         error=str(exc)[:200])
+                         error_type=type(exc).__name__)
             await db.rollback()
             return {
                 "status": "error",
@@ -280,7 +279,7 @@ async def quick_sync_stream(
         except SQLAlchemyError as exc:
             logger.error("quick_sync_commit_error",
                         stream_id=str(stream_id),
-                        error=str(exc)[:200])
+                        error_type=type(exc).__name__)
             await db.rollback()
             return {
                 "status": "error",
@@ -293,15 +292,15 @@ async def quick_sync_stream(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("quick_sync_unexpected_error", 
+        logger.error("quick_sync_unexpected_error",
                         stream_id=str(stream_id),
-                        error=str(exc)[:300])
+                        error_type=type(exc).__name__)
         await db.rollback()
         raise HTTPException(
             status_code=503,
             detail={
                 "message": "La sincronizacion rapida del canal falló. Reintenta en unos segundos.",
-                "error": str(exc)[:150],
+                "error": "sync_failed",
             },
         ) from exc
 
@@ -319,14 +318,18 @@ async def sync_platform_chat(
         raise
     except SQLAlchemyError as exc:
         await db.rollback()
-        logger.exception("platform_viewer_sync_lookup_failed", stream_id=str(stream_id))
+        logger.error(
+            "platform_viewer_sync_lookup_failed",
+            stream_id=str(stream_id),
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(
             status_code=503,
             detail="No fue posible consultar el canal. Inténtalo de nuevo en unos segundos.",
         ) from exc
     except Exception as exc:
         await db.rollback()
-        logger.exception(
+        logger.error(
             "platform_viewer_sync_lookup_failed",
             stream_id=str(stream_id),
             error_type=type(exc).__name__,
@@ -418,10 +421,11 @@ async def sync_platform_chat(
         ) from exc
     except SQLAlchemyError as exc:
         await db.rollback()
-        logger.exception(
+        logger.error(
             "platform_viewer_sync_persistence_failed",
             stream_id=str(stream_id),
             platform=platform_name,
+            error_type=type(exc).__name__,
         )
         raise HTTPException(
             status_code=503,
@@ -429,7 +433,7 @@ async def sync_platform_chat(
         ) from exc
     except Exception as exc:
         await db.rollback()
-        logger.exception(
+        logger.error(
             "platform_viewer_sync_failed",
             stream_id=str(stream_id),
             platform=platform_name,
@@ -454,7 +458,7 @@ async def run_channel_monitor(
         try:
             stream = await sync_stream_live_status(db, stream)
         except Exception as exc:
-            logger.warning("monitor_live_status_sync_failed", error=str(exc)[:200])
+            logger.warning("monitor_live_status_sync_failed", error_type=type(exc).__name__)
     if not stream.is_live:
         return {"status": "offline", "message": "El canal no esta en vivo"}
     try:
@@ -561,13 +565,13 @@ async def run_channel_monitor(
             },
         ) from exc
     except Exception as exc:
-        logger.exception("channel_monitor_failed", stream_id=str(stream_id), error=str(exc)[:300])
+        logger.error("channel_monitor_failed", stream_id=str(stream_id), error_type=type(exc).__name__)
         await db.rollback()
         raise HTTPException(
             status_code=503,
             detail={
                 "message": "El escaneo del canal falló. Reintenta en unos segundos.",
-                "error": str(exc)[:150],
+                "error": "monitor_failed",
             },
         ) from exc
 
@@ -701,13 +705,13 @@ async def load_full_viewer_list(
         await db.commit()
         return summary
     except Exception as exc:
-        logger.exception("load_full_viewers_failed", stream_id=str(stream_id))
+        logger.error("load_full_viewers_failed", stream_id=str(stream_id), error_type=type(exc).__name__)
         await db.rollback()
         raise HTTPException(
             status_code=503,
             detail={
                 "message": "La carga completa de viewers falló (IRC/Helix). Reintenta.",
-                "error": str(exc)[:300],
+                "error": "viewer_load_failed",
             },
         ) from exc
 
@@ -740,14 +744,18 @@ async def screen_viewers_with_ai(
         raise
     except SQLAlchemyError as exc:
         await db.rollback()
-        logger.exception("viewer_screening_persistence_failed", stream_id=str(stream_id))
+        logger.error(
+            "viewer_screening_persistence_failed",
+            stream_id=str(stream_id),
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(
             status_code=503,
             detail="No fue posible guardar el análisis de participantes. Inténtalo de nuevo.",
         ) from exc
     except Exception as exc:
         await db.rollback()
-        logger.exception(
+        logger.error(
             "viewer_screening_failed",
             stream_id=str(stream_id),
             error_type=type(exc).__name__,

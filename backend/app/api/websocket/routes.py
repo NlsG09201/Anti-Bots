@@ -46,5 +46,5 @@ async def websocket_endpoint(
         await ws_manager.disconnect(websocket, tenant_id, user_id)
         logger.info("websocket_disconnected", user_id=user_id)
     except Exception as e:
-        logger.error("websocket_error", error=str(e))
+        logger.error("websocket_error", error_type=type(e).__name__)
         await ws_manager.disconnect(websocket, tenant_id, user_id)

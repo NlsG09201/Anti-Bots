@@ -181,12 +181,16 @@ async def analytics_powerbi_sync(
             **result,
         }
     except Exception as exc:
-        logger.exception("powerbi_sync_failed", tenant_id=str(current_user.tenant_id), error=str(exc)[:200])
+        logger.error(
+            "powerbi_sync_failed",
+            tenant_id=str(current_user.tenant_id),
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(
             status_code=503,
             detail={
                 "message": "No fue posible sincronizar el dataset con Power BI",
-                "error": str(exc)[:300],
+                "error": "sync_failed",
             },
         ) from exc
 

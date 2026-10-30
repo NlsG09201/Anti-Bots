@@ -14,8 +14,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
+from app.api.oauth_errors import oauth_exchange_public_message
 from app.core.config import get_settings
 from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
+from app.core.logging import get_logger
 from app.core.security import encrypt_value
 from app.infrastructure.cache.redis_client import RedisCache
 from app.infrastructure.database.models import Platform, Stream, UserRole
@@ -25,6 +27,7 @@ from app.integrations.youtube.oauth import YouTubeOAuth, youtube_credentials_val
 
 router = APIRouter(prefix="/integrations/youtube", tags=["YouTube Integration"])
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 def _frontend_redirect(path: str) -> RedirectResponse:
@@ -103,16 +106,21 @@ async def youtube_callback(
     try:
         token_data = await oauth.exchange_code(code)
     except httpx.HTTPStatusError as exc:
-        detail = (exc.response.text or exc.response.reason_phrase or "oauth_token_error")[:180]
+        logger.warning(
+            "youtube_oauth_token_exchange_failed",
+            error_type=type(exc).__name__,
+            status_code=exc.response.status_code,
+        )
         return _oauth_error_redirect(
             "token_exchange_failed",
-            f"Token exchange failed: {detail}",
+            oauth_exchange_public_message("YouTube", exc),
             extra=f"youtube_redirect_uri={quote(resolve_youtube_redirect_uri())}",
         )
     except httpx.HTTPError as exc:
+        logger.warning("youtube_oauth_token_exchange_failed", error_type=type(exc).__name__)
         return _oauth_error_redirect(
             "token_exchange_failed",
-            f"Token exchange failed: {str(exc)[:180]}",
+            oauth_exchange_public_message("YouTube", exc),
             extra=f"youtube_redirect_uri={quote(resolve_youtube_redirect_uri())}",
         )
     access_token = token_data["access_token"]
