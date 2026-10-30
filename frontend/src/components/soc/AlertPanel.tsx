@@ -8,18 +8,10 @@ import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { AlertCircle, CheckCircle, X } from "lucide-react";
+import { api, type Alert } from "@/lib/api";
+import { useApiToken } from "@/stores/authStore";
 
-interface Alert {
-  id: string;
-  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
-  title: string;
-  description: string;
-  created_at: string;
-  stream_id: string;
-  dismissed: boolean;
-  type: string;
-  data?: Record<string, unknown>;
-}
+type AlertSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 
 interface AlertPanelProps {
   streamId: string;
@@ -43,24 +35,20 @@ const SEVERITY_BADGE_COLORS = {
 export default function AlertPanel({ streamId, refreshInterval = 5000 }: AlertPanelProps) {
   const [showDismissed, setShowDismissed] = useState(false);
   const queryClient = useQueryClient();
+  const token = useApiToken();
   const alertsQuery = useQuery({
     queryKey: ["stream-alerts", streamId],
     queryFn: async () => {
-      const [activeResponse, dismissedResponse] = await Promise.all([
-        fetch(`/api/v1/alerts/stream/${streamId}/active?limit=20`),
-        fetch(`/api/v1/alerts/${streamId}?dismissed=true&limit=10`),
+      const [activeData, dismissedData] = await Promise.all([
+        api.alerts.list(token!, { status: "open", streamId }),
+        api.alerts.list(token!, { status: "dismissed", streamId }),
       ]);
-      if (!activeResponse.ok) throw new Error("Failed to fetch active alerts");
-      if (!dismissedResponse.ok) throw new Error("Failed to fetch dismissed alerts");
-      const [activeData, dismissedData]: [
-        { items?: Alert[] },
-        { items?: Alert[] },
-      ] = await Promise.all([activeResponse.json(), dismissedResponse.json()]);
       return {
-        active: activeData.items ?? [],
-        dismissed: dismissedData.items ?? [],
+        active: activeData.map((alert) => ({ ...alert, severity: alert.severity.toUpperCase() as AlertSeverity })),
+        dismissed: dismissedData.map((alert) => ({ ...alert, severity: alert.severity.toUpperCase() as AlertSeverity })),
       };
     },
+    enabled: !!token,
     refetchInterval: refreshInterval,
   });
   const activeAlerts = alertsQuery.data?.active ?? [];
@@ -68,14 +56,7 @@ export default function AlertPanel({ streamId, refreshInterval = 5000 }: AlertPa
 
   const dismissAlert = async (alertId: string) => {
     try {
-      const response = await fetch(`/api/v1/alerts/${alertId}/dismiss`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: "Dismissed by user" }),
-      });
-      if (!response.ok) {
-        throw new Error("Failed to dismiss alert");
-      }
+      await api.alerts.dismiss(token!, alertId);
       await queryClient.invalidateQueries({ queryKey: ["stream-alerts", streamId] });
     } catch (error) {
       console.error("Dismiss error:", error);
@@ -129,7 +110,7 @@ export default function AlertPanel({ streamId, refreshInterval = 5000 }: AlertPa
                       {alert.severity}
                     </span>
                   </div>
-                  <p className="text-sm opacity-90">{alert.description}</p>
+                  <p className="text-sm opacity-90">{alert.message}</p>
                   <p className="text-xs opacity-75 mt-1">
                     {format(new Date(alert.created_at), "PPpp")}
                   </p>

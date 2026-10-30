@@ -158,11 +158,21 @@ async def mitigate_attack(
 async def list_alerts(
     current_user: CurrentUser,
     status: Optional[str] = Query("open"),
+    stream_id: Optional[UUID] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Alert).where(Alert.tenant_id == current_user.tenant_id)
     if status:
         query = query.where(Alert.status == status)
+    if stream_id:
+        query = (
+            query.join(Attack, Alert.attack_id == Attack.id)
+            .join(Stream, Attack.stream_id == Stream.id)
+            .where(
+                Stream.id == stream_id,
+                Stream.tenant_id == current_user.tenant_id,
+            )
+        )
     result = await db.execute(query.order_by(Alert.created_at.desc()).limit(100))
     return result.scalars().all()
 
@@ -185,6 +195,27 @@ async def acknowledge_alert(
     alert.acknowledged_by = current_user.id
     await db.flush()
     return {"status": "acknowledged"}
+
+
+@router.patch("/alerts/{alert_id}/dismiss")
+async def dismiss_alert(
+    alert_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    from datetime import datetime, timezone
+
+    result = await db.execute(
+        select(Alert).where(Alert.id == alert_id, Alert.tenant_id == current_user.tenant_id)
+    )
+    alert = result.scalar_one_or_none()
+    if not alert:
+        raise NotFoundError("Alert")
+    alert.status = "dismissed"
+    alert.acknowledged_at = datetime.now(timezone.utc)
+    alert.acknowledged_by = current_user.id
+    await db.flush()
+    return {"status": "dismissed"}
 
 
 @router.get("/bans", response_model=List[BanResponse])

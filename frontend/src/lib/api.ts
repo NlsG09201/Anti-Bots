@@ -713,9 +713,20 @@ export const api = {
       }, token),
   },
   alerts: {
-    list: (token: ApiAuthToken) => request<Alert[]>("/api/v1/alerts", {}, token),
+    list: (
+      token: ApiAuthToken,
+      filters: { status?: string; streamId?: string } = {},
+    ) => {
+      const params = new URLSearchParams();
+      if (filters.status) params.set("status", filters.status);
+      if (filters.streamId) params.set("stream_id", filters.streamId);
+      const query = params.toString();
+      return request<Alert[]>(`/api/v1/alerts${query ? `?${query}` : ""}`, {}, token);
+    },
     acknowledge: (token: ApiAuthToken, alertId: string) =>
       request(`/api/v1/alerts/${alertId}/acknowledge`, { method: "PATCH" }, token),
+    dismiss: (token: ApiAuthToken, alertId: string) =>
+      request(`/api/v1/alerts/${alertId}/dismiss`, { method: "PATCH" }, token),
   },
   bans: {
     list: (token: ApiAuthToken) => request<Ban[]>("/api/v1/bans", {}, token),
