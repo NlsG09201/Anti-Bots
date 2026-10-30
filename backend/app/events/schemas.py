@@ -117,10 +117,9 @@ class PipelineEvent(BaseModel):
         import json
 
         meta_raw = fields.get("metadata") or "{}"
-        try:
-            metadata = json.loads(meta_raw)
-        except json.JSONDecodeError:
-            metadata = {}
+        metadata = json.loads(meta_raw)
+        if not isinstance(metadata, dict):
+            raise ValueError("event metadata must be a JSON object")
         return cls(
             stream_id=fields["stream_id"],
             tenant_id=fields["tenant_id"],

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.config import get_settings
@@ -14,6 +15,7 @@ settings = get_settings()
 
 STREAM_MAIN = "ss:events:main"
 STREAM_PRIORITY = "ss:events:priority"
+STREAM_DEAD_LETTER = "ss:events:dead-letter"
 CONSUMER_GROUP = "ss-processors"
 
 
@@ -106,12 +108,46 @@ class EventStreamService:
                         event = PipelineEvent.from_stream_fields(fields)
                         out.append((stream_key, entry_id, event))
                     except Exception as exc:
+                        await self.dead_letter(
+                            stream_key=stream_key,
+                            entry_id=entry_id,
+                            fields=fields,
+                            error_type=type(exc).__name__,
+                        )
+                        await self.ack(stream_key, entry_id)
                         logger.warning(
-                            "event_stream_parse_failed",
-                            error=str(exc),
+                            "event_stream_entry_dead_lettered",
+                            error_type=type(exc).__name__,
                             entry_id=entry_id,
                         )
         return out
+
+    async def dead_letter(
+        self,
+        *,
+        stream_key: str,
+        entry_id: str,
+        fields: Dict[str, Any],
+        error_type: str,
+    ) -> None:
+        """Persist an unparseable entry before acknowledging its source message."""
+        client = await get_redis()
+
+        def text(value: Any) -> str:
+            return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value)
+
+        original_fields = {text(key): text(value) for key, value in fields.items()}
+        await client.xadd(
+            STREAM_DEAD_LETTER,
+            {
+                "source_stream": stream_key,
+                "source_entry_id": text(entry_id),
+                "error_type": error_type[:80],
+                "original_fields": json.dumps(original_fields, separators=(",", ":")),
+            },
+            maxlen=settings.event_stream_max_len,
+            approximate=True,
+        )
 
     async def ack(self, stream_key: str, entry_id: str) -> None:
         if not redis_is_configured():

@@ -134,3 +134,10 @@
 - Notification IDs are claimed atomically in the cache. Completed duplicates return 204; concurrent/in-progress duplicates request a retry, and failed processing releases its claim for retry. Production rejects notifications when the shared cache is not configured.
 - Added coverage for signed callback verification, stale-message rejection, duplicate suppression, retry after processing failure, and atomic in-memory cache claims.
 - Verification: full backend suite passed (`107 passed, 1 skipped, 20 warnings`); `python -m compileall -q app scripts tests` and `git diff --check` passed. Existing sklearn artifact-version and FastAPI/Starlette deprecation warnings remain.
+
+## API background task lifecycle (2026-10-29)
+
+- Added a lifespan-owned task registry for background tasks created by the FastAPI process. It retains task references, logs uncaught failures with task name and exception type, and cancels/gathers unfinished tasks during shutdown.
+- Twitch Insights loading, the channel monitor, and API-started monitoring/health/viewer-flow engine tasks now use the registry. Existing service-specific stop methods remain responsible for their internal loops.
+- Added focused tests for failure logging and shutdown cancellation.
+- Verification: full backend suite passed (`109 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version, FastAPI response, and Starlette test-client deprecation warnings remain.

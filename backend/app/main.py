@@ -118,7 +118,6 @@ async def lifespan(app: FastAPI):
     logger.info("starting_application", env=get_settings().app_env)
     background_tasks = BackgroundTaskRegistry(logger)
     app.state.background_tasks = background_tasks
-    monitor_task = None
     try:
         await init_database(engine)
         from app.infrastructure.database.migrations import run_startup_migrations
@@ -162,10 +161,9 @@ async def lifespan(app: FastAPI):
                     max_heap=_cfg.weka_jvm_max_heap,
                 ),
             )
-        monitor_task = background_tasks.create(
+        background_tasks.create(
             _background_channel_monitor(), name="background_channel_monitor"
         )
-        platform_monitor_task = None
         from app.core.config import get_settings as _gs2
 
         cfg_mon = _gs2()

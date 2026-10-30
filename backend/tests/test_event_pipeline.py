@@ -4,6 +4,9 @@ from uuid import uuid4
 
 from app.events.schemas import EventCategory, PipelineEvent, resolve_category
 from app.events.schemas import EVENT_TYPE_TO_CATEGORY
+from app.events.streams import EventStreamService, STREAM_DEAD_LETTER, STREAM_PRIORITY
+import app.events.streams as streams_module
+import pytest
 
 
 def test_event_categories_mapping():
@@ -41,3 +44,43 @@ def test_normalize_event_type_mapping():
 
     assert _normalize_event_type("channel.follow") == "follow"
     assert _normalize_event_type("channel.chat.message") == "chat_message"
+
+
+@pytest.mark.asyncio
+async def test_malformed_stream_entry_is_dead_lettered_before_ack(monkeypatch):
+    class FakeRedis:
+        def __init__(self):
+            self.dead_letters = []
+            self.acks = []
+
+        async def xgroup_create(self, *args, **kwargs):
+            return None
+
+        async def xreadgroup(self, *, streams, **kwargs):
+            stream_key = next(iter(streams))
+            if stream_key == STREAM_PRIORITY:
+                return [(stream_key, [("123-0", {"category": "invalid"})])]
+            return []
+
+        async def xadd(self, stream_key, fields, **kwargs):
+            self.dead_letters.append((stream_key, fields))
+
+        async def xack(self, stream_key, group, entry_id):
+            self.acks.append((stream_key, group, entry_id))
+
+    fake = FakeRedis()
+    monkeypatch.setattr(streams_module, "redis_is_configured", lambda: True)
+
+    async def get_fake_redis():
+        return fake
+
+    monkeypatch.setattr(streams_module, "get_redis", get_fake_redis)
+
+    events = await EventStreamService().read_batch("test-consumer")
+
+    assert events == []
+    assert fake.dead_letters[0][0] == STREAM_DEAD_LETTER
+    assert fake.dead_letters[0][1]["source_stream"] == STREAM_PRIORITY
+    assert fake.dead_letters[0][1]["source_entry_id"] == "123-0"
+    assert fake.dead_letters[0][1]["error_type"] == "ValueError"
+    assert fake.acks == [(STREAM_PRIORITY, "ss-processors", "123-0")]
