@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { api } from "@/lib/api";
 import { usePowerBiSocData } from "@/hooks/usePowerBiSocData";
 
 const colors = {
@@ -139,6 +140,7 @@ function EmptyState({ label }: { label: string }) {
 
 export function SocDashboard() {
   const [hours, setHours] = useState(168);
+  const [exportError, setExportError] = useState<string | null>(null);
   const {
     accessToken,
     overview,
@@ -211,27 +213,23 @@ export function SocDashboard() {
 
   async function downloadExport(kind: "json" | "excel" | "powerbi-package") {
     if (!accessToken) return;
-    const path =
-      kind === "powerbi-package"
-        ? `/api/v1/analytics/exports/powerbi-package?hours=${hours}`
-        : `/api/v1/analytics/exports/${kind}?hours=${hours}`;
-    const response = await fetch(path, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      credentials: "include",
-    });
-    if (!response.ok) return;
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download =
-      kind === "excel"
-        ? "streamshield-analytics.xlsx"
-        : kind === "json"
-          ? "streamshield-analytics.json"
-          : "streamshield-powerbi-package.zip";
-    anchor.click();
-    URL.revokeObjectURL(url);
+    setExportError(null);
+    try {
+      const blob = await api.powerBiAnalytics.exportFile(accessToken, kind, hours);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download =
+        kind === "excel"
+          ? "streamshield-analytics.xlsx"
+          : kind === "json"
+            ? "streamshield-analytics.json"
+            : "streamshield-powerbi-package.zip";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "No se pudo descargar la exportación.");
+    }
   }
 
   if (error) {
@@ -498,6 +496,11 @@ export function SocDashboard() {
               </div>
             }
           >
+            {exportError && (
+              <p role="alert" className="mb-4 rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+                {exportError}
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
               <div className="xl:col-span-2 overflow-x-auto rounded-lg border border-cyber-border/70">
                 <table className="w-full min-w-[780px] text-sm">

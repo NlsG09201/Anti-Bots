@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import CurrentUser
+from app.api.dependencies import CurrentUser, StreamModeratorUser
 from app.core.logging import get_logger
 from app.infrastructure.database.models import (
     Incident,
@@ -168,7 +168,7 @@ async def create_playbook(
     name: str,
     conditions: dict,
     actions: list,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     description: Optional[str] = None,
     enabled: bool = True,
     db: AsyncSession = Depends(get_db),
@@ -259,7 +259,7 @@ async def get_playbook(
 @router.put("/playbooks/{playbook_id}")
 async def update_playbook(
     playbook_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     name: Optional[str] = None,
     conditions: Optional[dict] = None,
     actions: Optional[list] = None,
@@ -294,7 +294,7 @@ async def update_playbook(
 @router.delete("/playbooks/{playbook_id}")
 async def delete_playbook(
     playbook_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     """Delete playbook."""
@@ -318,7 +318,7 @@ async def delete_playbook(
 async def execute_playbook(
     playbook_id: UUID,
     incident_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     """Manually execute a playbook against an incident."""

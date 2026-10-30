@@ -46,6 +46,35 @@ async def test_http_error_envelope_keeps_detail_for_compatibility(client: AsyncC
 
 
 @pytest.mark.asyncio
+async def test_viewer_cannot_execute_moderation_playbook(client: AsyncClient):
+    from uuid import uuid4
+
+    from app.api.dependencies import get_current_user
+    from app.infrastructure.database.models import User, UserRole
+    from app.main import app
+
+    viewer = User(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        email="viewer@test.com",
+        username="viewer",
+        hashed_password="unused-test-hash",
+        role=UserRole.VIEWER,
+    )
+
+    async def get_viewer():
+        return viewer
+
+    app.app.dependency_overrides[get_current_user] = get_viewer
+    response = await client.post(
+        f"/api/v1/soc/playbooks/{uuid4()}/execute",
+        params={"incident_id": str(uuid4())},
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_api_cors_preflight_allows_configured_frontend(client: AsyncClient):
     from app.core.config import get_settings
 

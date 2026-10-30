@@ -345,3 +345,21 @@
 - Added regression tests with injected secret strings covering both action-level partial failure and execution-level failure.
 - Verification: focused tests passed (`2 passed`); full backend suite passed (`159 passed, 1 skipped, 23 warnings`); `git diff --check` passed. Existing model-artifact and framework deprecation warnings remain.
 - Follow-up tenant-isolation review found alert playbook actions used the incident's `stream_id` as `alerts.tenant_id`, violating the foreign-key contract and risking cross-tenant data corruption. The executor now passes its verified tenant ID to alert creation, with a regression test asserting it differs from the stream ID. Verification after the fix: focused playbook tests passed (`3 passed`); full backend suite passed (`160 passed, 1 skipped, 23 warnings`).
+
+## CI pull request and frontend typecheck coverage (2026-10-30)
+
+- CI, CodeQL, and OSV dependency scans now run for pull requests targeting both `main` and `develop`, matching the branches already used for push workflows. OSV merge-queue checks now cover both branches as well.
+- Added an explicit TypeScript typecheck command to frontend CI. It disables incremental output so the check does not modify the repository's tracked `tsbuildinfo` artifact.
+- Verification: `npm run typecheck` passed; `git diff --check` passed. Workflow runtime validation remains with GitHub Actions after push.
+
+## Frontend export requests use shared API client (2026-10-30)
+
+- Power BI downloads now go through the centralized API client, so they share bearer-token refresh, 401 handling, and standardized API errors with JSON calls. Added blob response support to the same request path.
+- Export failures now render an accessible inline error instead of silently doing nothing. Downloaded filenames and export endpoints are unchanged.
+- Verification: `npm run typecheck` and `npm run lint` passed; `git diff --check` passed.
+
+## Playbook mutation authorization (2026-10-30)
+
+- Playbook creation, updates, deletion, and execution now require the stream moderator role or higher; authenticated viewers retain read access but cannot configure or trigger moderation actions.
+- Added an API regression test proving viewer access to execution is rejected with 403.
+- Verification: authorization test passed; full backend suite passed (`161 passed, 1 skipped, 23 warnings`); `git diff --check` passed. Existing model-artifact and framework deprecation warnings remain.

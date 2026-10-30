@@ -105,6 +105,7 @@ async function request<T>(
   token?: ApiAuthToken,
   baseUrl?: string,
   allowAuthRetry = true,
+  responseMode: "json" | "blob" = "json",
 ): Promise<T> {
   const isAuthAttempt =
     path === "/api/v1/auth/login" ||
@@ -175,7 +176,7 @@ async function request<T>(
     if (allowAuthRetry) {
       const refreshed = await tryRefreshToken();
       if (refreshed) {
-        return request<T>(path, options, refreshed, baseUrl, false);
+        return request<T>(path, options, refreshed, baseUrl, false, responseMode);
       }
     }
     await handleAuthFailure();
@@ -188,6 +189,7 @@ async function request<T>(
     throw new ApiError(response.status, message);
   }
 
+  if (responseMode === "blob") return response.blob() as Promise<T>;
   return response.json();
 }
 
@@ -428,6 +430,15 @@ export const api = {
       ),
   },
   powerBiAnalytics: {
+    exportFile: (token: ApiAuthToken, kind: "json" | "excel" | "powerbi-package", hours = 168) =>
+      request<Blob>(
+        `/api/v1/analytics/exports/${kind}?hours=${encodeURIComponent(String(hours))}`,
+        {},
+        token,
+        DIRECT_API_URL,
+        true,
+        "blob",
+      ),
     overview: (token: ApiAuthToken, hours = 168) =>
       request<PowerBiOverview>(
         `/api/v1/analytics/overview?hours=${hours}`,
