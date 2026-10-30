@@ -37,10 +37,12 @@ variable "postgres_engine_version" {
 }
 
 variable "allowed_client_cidrs" {
-  description = "Static IPv4 CIDRs for the Power BI gateway host and admin workstation. Never use 0.0.0.0/0."
+  description = "Static IPv4 /32 host CIDRs for the Power BI gateway and admin workstation."
   type        = list(string)
   validation {
-    condition     = length(var.allowed_client_cidrs) > 0 && alltrue([for cidr in var.allowed_client_cidrs : cidr != "0.0.0.0/0"])
-    error_message = "Add at least one trusted static CIDR and do not expose PostgreSQL to the internet."
+    condition = length(var.allowed_client_cidrs) > 0 && alltrue([
+      for cidr in var.allowed_client_cidrs : can(cidrnetmask(cidr)) && endswith(cidr, "/32")
+    ])
+    error_message = "Provide at least one valid static IPv4 /32 address for each trusted client."
   }
 }

@@ -7,6 +7,8 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     v_first_date date;
+    v_calendar_start date;
+    v_calendar_end date;
 BEGIN
     SELECT LEAST(
         p_from_date,
@@ -20,6 +22,9 @@ BEGIN
                   WHERE s.tenant_id = p_tenant_id), p_from_date)
     ) INTO v_first_date;
 
+    v_calendar_start := date_trunc('year', v_first_date)::date;
+    v_calendar_end := (date_trunc('year', current_date) + interval '1 year' - interval '1 day')::date;
+
     INSERT INTO bi.dim_date(date_key, full_date, year, quarter, month, month_name,
                             day_of_month, iso_week, day_of_week)
     SELECT to_char(d::date, 'YYYYMMDD')::integer, d::date,
@@ -27,7 +32,7 @@ BEGIN
            extract(month FROM d)::smallint, to_char(d, 'FMMonth'),
            extract(day FROM d)::smallint, extract(week FROM d)::smallint,
            extract(isodow FROM d)::smallint
-    FROM generate_series(v_first_date, current_date, interval '1 day') AS d
+    FROM generate_series(v_calendar_start, v_calendar_end, interval '1 day') AS d
     ON CONFLICT (full_date) DO NOTHING;
 
     INSERT INTO bi.dim_streamer(streamer_id, tenant_id, username, role, created_at)

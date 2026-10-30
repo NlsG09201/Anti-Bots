@@ -81,6 +81,8 @@ El backend registra `authentication_rejected` junto con una causa acotada (`miss
 
 Un 401 en el dominio directo de Render y en el rewrite de Vercel no prueba que exista un problema de CORS: ambos caminos pueden estar enviando un Bearer rechazado por el API.
 
+En el cliente actual, `/api/v1/streams` y las llamadas de estado del monitor usan el API directo de Render; `viewers` usa el proxy relativo de Vercel. Ambos agregan el access token resuelto desde memoria/sessionStorage como `Authorization: Bearer ...` y comparten el mismo refresh de sesión. Al filtrar `authentication_rejected` en Render, comprueba las rutas y causas de ambos caminos en una sesión recién iniciada. `missing_or_malformed_authorization` significa que el Bearer no llegó con el formato esperado; `access_token_expired` requiere renovar sesión; `access_token_invalid_signature_or_malformed` con login reciente indica comparar `JWT_SECRET_KEY` y el API destino; `user_missing_or_inactive` requiere revisar que el usuario siga activo en la base a la que apunta el API.
+
 ## SOC multi-plataforma (Kick / YouTube / TikTok)
 
 Variables recomendadas en Render:

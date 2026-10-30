@@ -40,6 +40,7 @@ AWS publica PostgreSQL 16.15 para RDS a la fecha de esta implementación; confir
 - `powerbi/PowerQuery.m`: diez pasos de transformación, sin credenciales incluidas.
 - `powerbi/queries/`: consultas M completas para dimensiones y hechos tenant scoped; `PowerQuery.m` transforma el snapshot para análisis.
 - `powerbi/measures.dax`: medidas KPI para el modelo estrella.
+- `powerbi/StreamShield-BI.pbip`: proyecto inicial de Power BI con modelo TMDL y reporte PBIR de dos páginas; requiere completar conexión/credenciales y validarlo en Power BI Desktop.
 
 ## Implementación de infraestructura
 
@@ -85,7 +86,7 @@ Para validar contra una base real después de cargar el warehouse, configura `DA
 python business-intelligence/scripts/validate_warehouse.py
 ```
 
-El validador compara canales, sesiones, ataques, snapshots del día y mensajes/grupos de actividad de chat de los últimos 90 días por tenant. Imprime las cuentas comparadas y termina con código 1 si detecta diferencias. Sólo usa filas existentes; no genera datos sintéticos. Aún no se ha ejecutado aquí porque no hay una conexión a la base RDS desplegada.
+El validador comprueba que `dim_date` sea un calendario continuo de años completos y compara canales, sesiones, ataques, snapshots del día y mensajes/grupos de actividad de chat de los últimos 90 días por tenant. Imprime las cuentas comparadas y termina con código 1 si detecta diferencias. Sólo usa filas existentes; no genera datos sintéticos. Aún no se ha ejecutado aquí porque no hay una conexión a la base RDS desplegada.
 
 ## Seguridad y conexión de Power BI
 
@@ -98,7 +99,9 @@ El validador compara canales, sesiones, ataques, snapshots del día y mensajes/g
 7. Crea las medidas de `powerbi/measures.dax`. Los KPI de streams, viewers y chatters en vivo usan el ultimo snapshot disponible dentro del filtro de fecha para no sumar el historico diario. Tablero sugerido: **Resumen ejecutivo** (streams live, viewers, chatters, riesgo, ataques activos); **Actividad** (línea de mensajes por fecha, cobertura por canal y plataforma); **Amenazas** (ataques por severidad/tipo, viewers sospechosos, tabla de mitigaciones); **Sesiones** (duración, mensajes y riesgo por canal). Añade segmentadores de fecha, plataforma, canal y severidad.
 8. Publica en un workspace dedicado. Instala y registra el **On-premises data gateway** en el host con IP autorizada, registra la conexión PostgreSQL con las credenciales del tenant y enlázala al semantic model. En Power BI Service activa actualización diaria a las 08:00 UTC. La cuenta/licencia, el workspace y el gateway son recursos del usuario y deben habilitarse en Microsoft 365.
 
-El PBIX final y su publicación requieren Power BI Desktop/Service y una cuenta Microsoft autorizada. No se genera un PBIX ficticio ni se afirma una publicación que no se haya ejecutado.
+El PBIP es un proyecto fuente editable con ocho tablas TMDL, relaciones, medidas y dos páginas PBIR. Abre `powerbi/StreamShield-BI.pbip` en Power BI Desktop, configura `pServer` y `pDatabase`, y proporciona las credenciales PostgreSQL del tenant en el diálogo de conexión; no guardes credenciales en el proyecto. Revisa que las vistas `vw_powerbi_*` existan, valida que todas las tablas y visuales carguen, y marca `dim_date[full_date]` como tabla de fechas tras verificar valores únicos, continuidad y años completos. El ETL crea el calendario desde el 1 de enero del año inicial de los datos hasta el 31 de diciembre del año actual. Las consultas M completas están en `powerbi/queries/`; `powerbi/PowerQuery.m` define diez transformaciones del snapshot. Compara las medidas con conteos SQL antes de publicar.
+
+Este entorno no tiene Power BI Desktop, RDS ni una cuenta Power BI Service, así que el PBIP no se ha abierto ni validado contra datos reales. La carga del modelo, la exportación final a PBIX, y la publicación requieren Desktop/Service y cuentas autorizadas; no se afirma que esas acciones externas se hayan ejecutado.
 
 ## Exportación y actualización mediante API
 
@@ -106,6 +109,7 @@ La API ofrece CSV/JSON/Excel y paquete Power BI bajo `/api/v1/analytics/exports/
 
 ## Evidencias y límites de esta entrega
 
+- Verificación local: PostgreSQL temporal ejecutó `001_warehouse.sql`, creó el procedimiento de `002_refresh_warehouse.sql` y lo llamó contra un esquema operacional vacío, modelado con las columnas requeridas. El calendario resultante fue continuo y cubrió 2026 completo (365 días); no se insertaron filas de negocio. Esto valida sintaxis/ejecución del DDL y del camino vacío, pero no valida conteos ni resultados con datos reales.
 - El DDL/ETL y los conectores se construyen a partir del esquema operacional existente; no se insertan registros sintéticos.
 - La evidencia de conteos, conexión Power BI, publicación y refresh debe capturarse después de aplicar la infraestructura y ejecutar el proyecto contra una cuenta AWS y tenant Microsoft reales.
 - El archivo adjunto registra 401 en rutas protegidas servidas tanto por el dominio directo de Render como por el rewrite de Vercel. No incluye el cuerpo de respuesta, encabezado Authorization ni cookies; por eso no demuestra que ambas llamadas usaran el mismo token ni identifica la causa. El cliente intenta renovar el access token usando la cookie HttpOnly y reintenta la llamada una sola vez. Diagnostico pendiente en las cuentas: iniciar sesion de nuevo, comprobar `/api/v1/auth/me` con ese access token y confirmar en Render que todas las instancias usan el mismo `JWT_SECRET_KEY`; no copiar tokens, cookies ni secretos en tickets o logs. Si `/auth/me` devuelve 200 pero una ruta protegida sigue en 401, revisar los logs del mismo despliegue y confirmar que Vercel y las llamadas directas apuntan al API esperado.
@@ -120,7 +124,7 @@ La API ofrece CSV/JSON/Excel y paquete Power BI bajo `/api/v1/analytics/exports/
 | Conexión/importación Power BI | guía de conexión de esta página y vistas tenant scoped |
 | 8+ transformaciones Power Query | `powerbi/PowerQuery.m` |
 | Data Warehouse y ETL | esquemas `bi` y procedimiento idempotente |
-| KPI/tablero | `powerbi/measures.dax`, blueprint de reporte backend y diseño de páginas arriba |
+| KPI/tablero | `powerbi/measures.dax`, `powerbi/StreamShield-BI.pbip` y páginas PBIR incluidas |
 | Publicación | procedimiento de workspace/gateway arriba; requiere sesión Microsoft |
 | Código y documentación | esta carpeta y `project-docs/POWERBI-ANALYTICS.md` |
 | Actualización automática | cron diario + Power BI Service refresh; requiere activar credenciales y gateway |

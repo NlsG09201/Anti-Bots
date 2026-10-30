@@ -128,7 +128,7 @@ SELECT f.snapshot_date, s.tenant_id, f.stream_id, s.streamer_id,
        f.engagement_rate, f.threat_score, f.loaded_at
 FROM bi.fact_stream_snapshot f
 JOIN bi.dim_stream s USING (stream_id)
-JOIN bi.dim_platform p USING (platform_key)
+JOIN bi.dim_platform p ON p.platform_key = f.platform_key
 WHERE s.tenant_id = bi.current_tenant_id();
 
 CREATE OR REPLACE VIEW bi.vw_powerbi_fact_stream_snapshot AS
@@ -137,7 +137,7 @@ JOIN bi.dim_stream s USING (stream_id)
 WHERE s.tenant_id = bi.current_tenant_id();
 
 CREATE OR REPLACE VIEW bi.vw_powerbi_viewer_session AS
-SELECT s.tenant_id, v.session_id, v.stream_id, d.platform_key, d.channel_name,
+SELECT s.tenant_id, v.session_id, v.stream_id, d.platform_key, s.channel_name,
        v.joined_date, v.joined_at, v.left_at, v.is_active,
        v.is_suspected_bot, v.risk_score, v.chat_messages,
        v.watch_duration_seconds, v.source

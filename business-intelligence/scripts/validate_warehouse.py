@@ -43,6 +43,29 @@ async def validate() -> bool:
     all_ok = True
 
     async with AsyncSessionLocal() as db:
+        date_calendar = (
+            await db.execute(
+                text(
+                    """SELECT count(*) AS days, min(full_date) AS first_date,
+                              max(full_date) AS last_date,
+                              coalesce(
+                                  count(*) = (max(full_date) - min(full_date) + 1)
+                                  AND to_char(min(full_date), 'MM-DD') = '01-01'
+                                  AND to_char(max(full_date), 'MM-DD') = '12-31',
+                                  false
+                              ) AS calendar_valid
+                       FROM bi.dim_date"""
+                )
+            )
+        ).one()
+        calendar_valid = bool(date_calendar.calendar_valid)
+        all_ok &= calendar_valid
+        print(
+            f"{'PASS' if calendar_valid else 'FAIL'} date_calendar: "
+            f"days={date_calendar.days} first={date_calendar.first_date} "
+            f"last={date_calendar.last_date} full_years={calendar_valid}"
+        )
+
         # Use PostgreSQL's current_date, matching ETL and avoiding a one-day
         # validation-window mismatch with the workstation timezone.
         from_date = (
