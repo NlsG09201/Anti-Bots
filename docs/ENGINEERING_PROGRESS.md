@@ -317,3 +317,4 @@
 - Enabled Redis AOF persistence on a named volume and switched to `noeviction`; evicting event/queue keys under memory pressure would otherwise silently lose work. Full memory now rejects writes and surfaces backpressure instead of deleting arbitrary queue entries.
 - Clarified that Render's API needs `REDIS_URL` for arq regardless of whether the optional Celery worker is deployed; Celery variables do not replace it.
 - Added a local-only environment example and changed the Compose instructions to stop copying the production Render import file into the enterprise development stack. Created the ignored local `.env` from that safe example and verified `docker compose ... config --quiet` succeeds; no containers were started.
+- Restricted local/enterprise PostgreSQL, Redis, and API host ports to loopback; the previous wildcard bindings exposed unauthenticated developer databases and Redis to every reachable network interface.
