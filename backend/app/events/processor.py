@@ -36,6 +36,13 @@ async def process_pipeline_event(
         if not stream:
             logger.warning("pipeline_stream_not_found", stream_id=event.stream_id)
             return {"processed": False, "error": "stream_not_found"}
+        if stream.tenant_id != tenant_uuid:
+            logger.warning(
+                "pipeline_tenant_mismatch",
+                stream_id=event.stream_id,
+                event_tenant_id=event.tenant_id,
+            )
+            return {"processed": False, "error": "tenant_mismatch"}
 
         ingest = EventIngest(
             event_type=_normalize_event_type(event.event_type),

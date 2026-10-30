@@ -4,9 +4,17 @@ from uuid import uuid4
 
 from app.events.schemas import EventCategory, PipelineEvent, resolve_category
 from app.events.schemas import EVENT_TYPE_TO_CATEGORY
-from app.events.streams import EventStreamService, STREAM_DEAD_LETTER, STREAM_PRIORITY
+from app.events.streams import (
+    CONSUMER_GROUP,
+    EventStreamService,
+    STREAM_DEAD_LETTER,
+    STREAM_MAIN,
+    STREAM_PRIORITY,
+)
 import app.events.streams as streams_module
+import app.events.processor as processor_module
 import pytest
+from types import SimpleNamespace
 
 
 def test_event_categories_mapping():
@@ -44,6 +52,47 @@ def test_normalize_event_type_mapping():
 
     assert _normalize_event_type("channel.follow") == "follow"
     assert _normalize_event_type("channel.chat.message") == "chat_message"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_rejects_event_for_stream_owned_by_another_tenant(monkeypatch):
+    stream_id = uuid4()
+    owner_tenant_id = uuid4()
+    event = PipelineEvent.from_ingest(
+        stream_id=stream_id,
+        tenant_id=uuid4(),
+        event_type="chat_message",
+        metadata={"content": "must not be processed"},
+    )
+    stream = SimpleNamespace(id=stream_id, tenant_id=owner_tenant_id)
+    processed = False
+
+    class FakeResult:
+        def scalar_one_or_none(self):
+            return stream
+
+    class FakeDatabase:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def execute(self, _query):
+            return FakeResult()
+
+    monkeypatch.setattr(processor_module, "AsyncSessionLocal", FakeDatabase)
+
+    async def should_not_process(*_args, **_kwargs):
+        nonlocal processed
+        processed = True
+
+    monkeypatch.setattr(processor_module, "process_stream_event", should_not_process)
+
+    result = await processor_module.process_pipeline_event(event)
+
+    assert result == {"processed": False, "error": "tenant_mismatch"}
+    assert not processed
 
 
 @pytest.mark.asyncio
@@ -147,3 +196,72 @@ async def test_stale_pending_stream_entry_is_reclaimed(monkeypatch):
     assert fake.claim_calls[0][1]["min_idle_time"] >= (
         streams_module.settings.event_queue_job_timeout_seconds * 1000 + 30_000
     )
+
+
+@pytest.mark.asyncio
+async def test_pending_count_reports_backlog_per_stream(monkeypatch):
+    class FakeRedis:
+        async def xinfo_stream(self, stream_key):
+            return {"length": 30 if stream_key == STREAM_MAIN else 5, "groups": 1}
+
+        async def xinfo_groups(self, stream_key):
+            pending = 7 if stream_key == STREAM_MAIN else 2
+            return [
+                {"name": CONSUMER_GROUP, "pending": pending, "consumers": 3}
+            ]
+
+        async def xlen(self, stream_key):
+            assert stream_key == STREAM_DEAD_LETTER
+            return 4
+
+    monkeypatch.setattr(streams_module, "redis_is_configured", lambda: True)
+
+    async def get_fake_redis():
+        return FakeRedis()
+
+    monkeypatch.setattr(streams_module, "get_redis", get_fake_redis)
+    stats = await EventStreamService().pending_count()
+
+    assert stats[STREAM_MAIN] == {
+        "available": True,
+        "length": 30,
+        "groups": 1,
+        "pending": 7,
+        "consumers": 3,
+    }
+    assert stats[STREAM_PRIORITY]["pending"] == 2
+    assert stats["dead_letter"] == {
+        "available": True,
+        "length": 4,
+        "max_len": streams_module.settings.event_stream_max_len,
+    }
+
+
+@pytest.mark.asyncio
+async def test_pending_count_does_not_report_failed_query_as_zero(monkeypatch):
+    class FakeRedis:
+        async def xinfo_stream(self, stream_key):
+            return {"length": 12, "groups": 1}
+
+        async def xinfo_groups(self, stream_key):
+            raise RuntimeError("temporarily unavailable")
+
+        async def xlen(self, stream_key):
+            raise ConnectionError("temporarily unavailable")
+
+    monkeypatch.setattr(streams_module, "redis_is_configured", lambda: True)
+
+    async def get_fake_redis():
+        return FakeRedis()
+
+    monkeypatch.setattr(streams_module, "get_redis", get_fake_redis)
+    stats = await EventStreamService().pending_count()
+
+    assert stats[STREAM_MAIN]["length"] == 12
+    assert stats[STREAM_MAIN]["pending"] is None
+    assert stats[STREAM_MAIN]["pending_error_type"] == "RuntimeError"
+    assert stats["dead_letter"] == {
+        "available": False,
+        "error_type": "ConnectionError",
+        "max_len": streams_module.settings.event_stream_max_len,
+    }

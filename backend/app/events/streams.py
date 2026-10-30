@@ -187,10 +187,48 @@ class EventStreamService:
         for stream_key in (STREAM_MAIN, STREAM_PRIORITY):
             try:
                 info = await client.xinfo_stream(stream_key)
+            except Exception as exc:
                 stats[stream_key] = {
-                    "length": info.get("length", 0),
-                    "groups": info.get("groups", 0),
+                    "available": False,
+                    "error_type": type(exc).__name__,
                 }
-            except Exception:
-                stats[stream_key] = {"length": 0}
+                continue
+            stream_stats = {
+                "available": True,
+                "length": info.get("length", 0),
+                "groups": info.get("groups", 0),
+            }
+            try:
+                groups = await client.xinfo_groups(stream_key)
+                consumer_group = next(
+                    (
+                        group
+                        for group in groups
+                        if group.get("name") == CONSUMER_GROUP
+                    ),
+                    {},
+                )
+                stream_stats["pending"] = consumer_group.get("pending", 0) or 0
+                stream_stats["consumers"] = consumer_group.get("consumers", 0) or 0
+            except Exception as exc:
+                stream_stats.update(
+                    {
+                        "pending": None,
+                        "consumers": None,
+                        "pending_error_type": type(exc).__name__,
+                    }
+                )
+            stats[stream_key] = stream_stats
+        try:
+            stats["dead_letter"] = {
+                "available": True,
+                "length": await client.xlen(STREAM_DEAD_LETTER),
+                "max_len": settings.event_stream_max_len,
+            }
+        except Exception as exc:
+            stats["dead_letter"] = {
+                "available": False,
+                "error_type": type(exc).__name__,
+                "max_len": settings.event_stream_max_len,
+            }
         return stats

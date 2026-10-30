@@ -156,3 +156,22 @@
 - Added coverage for reclaiming a stale pending event and the minimum claim idle interval.
 - Operational compatibility: `XAUTOCLAIM` requires Redis 6.2 or newer; the local/development Compose definitions use the Redis 7 image family. Verify managed Redis compatibility before enabling this code in older production environments.
 - Verification: full backend suite passed (`111 passed, 1 skipped, 20 warnings`); `python -m compileall -q app scripts tests` and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
+
+## Event pipeline backlog observability (2026-10-30)
+
+- The authenticated pipeline status now reports Redis stream availability, retained length, consumer-group count, actual pending-message count for `ss-processors`, and active consumer count for both main and priority streams.
+- Failed `XINFO GROUPS` queries report an unknown pending count and error type instead of presenting a false zero; a stream metadata failure is represented as unavailable.
+- Added tests for backlog totals and query-failure reporting.
+- Verification: full backend suite passed (`113 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
+
+## Dead-letter backlog visibility (2026-10-30)
+
+- Pipeline status now includes the dead-letter stream length and configured cap, without returning event payloads. Redis query failures are reported as unavailable with an error type rather than a misleading zero.
+- Added coverage for both the dead-letter backlog value and unavailable-query reporting.
+- Verification: full backend suite passed (`113 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
+
+## Event pipeline tenant ownership check (2026-10-30)
+
+- Pipeline processing now verifies that the tenant ID carried by a queued event matches the owner of the referenced stream before invoking ingest logic. Mismatches are logged and rejected without processing.
+- Added a regression test proving a cross-tenant event is rejected before the event handler runs.
+- Verification: full backend suite passed (`114 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
