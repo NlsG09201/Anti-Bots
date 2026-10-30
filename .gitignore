@@ -11,6 +11,9 @@ deploy/vps/config.ps1
 deploy/.twitch-secret.tmp
 backend/.env
 frontend/.env.local
+frontend/.test-build/
+backend/coverage.xml
+backend/.coverage
 *.db
 __pycache__/
 *.pyc

@@ -6,7 +6,10 @@
     "build": "npm --prefix frontend run build",
     "lint": "npm --prefix frontend run lint",
     "typecheck": "npm --prefix frontend run typecheck",
-    "test:backend": "cd backend && uv run --python 3.11 --with-requirements requirements.txt --with-requirements requirements-dev.txt -- python -m pytest tests/ -q --tb=short -x",
+    "test:backend": "cd backend && uv run --python 3.11 --with-requirements requirements.txt --with-requirements requirements-dev.txt -- python -m pytest tests/ -q --tb=short --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml",
+    "test:frontend": "npm --prefix frontend test",
+    "test": "npm run test:backend && npm run test:frontend",
+    "quality": "npm test && npm run lint && npm run typecheck && npm run build",
     "stack:up": "docker compose -f deploy/local/docker-compose.dev.yml up --build",
     "stack:down": "docker compose -f deploy/local/docker-compose.dev.yml down",
     "vercel-build": "npm --prefix frontend ci && npm --prefix frontend run build"

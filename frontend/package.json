@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit --incremental false"
+    "typecheck": "tsc --noEmit --incremental false",
+    "test": "tsc src/lib/runtime-urls.ts src/components/PlatformBadge.tsx src/components/StatCard.tsx --outDir .test-build --module commonjs --target es2020 --jsx react-jsx --lib dom,es2020 --types node --skipLibCheck --esModuleInterop && node --test tests"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.28.0",
