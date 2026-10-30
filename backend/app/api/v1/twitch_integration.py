@@ -19,6 +19,7 @@ from app.core.security import encrypt_value
 from app.infrastructure.cache.redis_client import RedisCache
 from app.infrastructure.database.models import Platform, Stream, UserRole
 from app.infrastructure.database.session import get_db
+from app.infrastructure.repositories.stream_repository import StreamRepository
 from app.integrations.twitch.oauth import (
     TwitchOAuth,
     resolve_twitch_redirect_uri,
@@ -341,6 +342,10 @@ async def twitch_callback(
         return _frontend_redirect(f"/dashboard/twitch-moderator?stream={stream.id}&bot=connected")
 
     upgrade_id = stored.get("upgrade_stream_id")
+
+    await StreamRepository(db).lock_identity(
+        UUID(stored["tenant_id"]), Platform.TWITCH, broadcaster_id
+    )
 
     stream = None
     if upgrade_id:

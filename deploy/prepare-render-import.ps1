@@ -34,6 +34,8 @@ if (-not $trustedHosts -or $trustedHosts -contains '') {
 }
 if ([string]::IsNullOrWhiteSpace($values['REDIS_URL'])) {
     $problems += 'REDIS_URL is blank; set the native redis:// or rediss:// connection URL (Upstash REST credentials are not a substitute).'
+} elseif ($values['REDIS_URL'] -notmatch '^rediss?://[^\s/]+') {
+    $problems += 'REDIS_URL must be a native Redis TCP URL starting with redis:// or rediss://; Upstash REST HTTPS URLs are cache-only.'
 }
 if ($problems.Count -gt 0) {
     $problems | ForEach-Object { Write-Error $_ }

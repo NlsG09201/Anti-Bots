@@ -43,6 +43,7 @@ class StreamWatchService:
         owner_id: UUID,
     ) -> Stream:
         slug = login.lower()
+        await self.streams.lock_identity(tenant_id, platform, slug)
         stream = await self.streams.get_by_channel_name(tenant_id, platform, slug)
         settings = self._monitor_settings(slug)
         if stream:
@@ -79,6 +80,7 @@ class StreamWatchService:
         broadcaster_id = user["id"]
         canonical_login = user["login"]
         display_name = user.get("display_name", canonical_login)
+        await self.streams.lock_identity(tenant_id, Platform.TWITCH, broadcaster_id)
         stream = await self.streams.get_by_platform_and_external_id(
             tenant_id,
             Platform.TWITCH,

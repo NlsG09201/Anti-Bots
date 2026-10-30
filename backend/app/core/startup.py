@@ -108,8 +108,11 @@ def run_startup_checks() -> None:
             print(f"startup_validation_failed: {err}", flush=True)
         if settings.is_production:
             print(
-                "Render: set DATABASE_URL, APP_SECRET_KEY, JWT_SECRET_KEY, AES_ENCRYPTION_KEY "
-                "in Dashboard -> Environment (import deploy/render.import.env).",
+                "Render: open Dashboard -> anti-bots-api -> Environment. Set "
+                "TRUSTED_HOSTS=anti-bots.onrender.com,anti-bots-api.onrender.com "
+                "and set REDIS_URL to the provider's native redis:// or rediss:// URL. "
+                "Upstash REST credentials do not replace REDIS_URL. Update deploy/render.env "
+                "before regenerating deploy/render.import.env; do not import a stale file.",
                 flush=True,
             )
             sys.exit(1)

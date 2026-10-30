@@ -84,6 +84,16 @@ async def create_stream(
     current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
+    repository = StreamRepository(db)
+    await repository.lock_identity(
+        current_user.tenant_id, data.platform, data.external_id
+    )
+    existing = await repository.get_by_platform_and_external_id(
+        current_user.tenant_id, data.platform, data.external_id
+    )
+    if existing:
+        return _as_stream_response(existing, current_user)
+
     stream = Stream(
         tenant_id=current_user.tenant_id,
         owner_id=current_user.id,

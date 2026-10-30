@@ -129,6 +129,17 @@ class Stream(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "streams"
     __table_args__ = (
         Index("ix_streams_platform_external", "platform", "external_id"),
+        Index(
+            "ix_streams_tenant_platform_external",
+            "tenant_id",
+            "platform",
+            "external_id",
+        ),
+        Index(
+            "ix_streams_widget_ingest_key",
+            text("(settings ->> 'ingest_key')"),
+            postgresql_where=text("settings ? 'ingest_key'"),
+        ).ddl_if(dialect="postgresql"),
     )
 
     tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)

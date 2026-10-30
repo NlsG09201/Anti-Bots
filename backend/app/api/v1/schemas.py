@@ -245,10 +245,10 @@ class AlertResponse(BaseModel):
 
 class BanCreate(BaseModel):
     target_type: str = Field(..., pattern="^(user|ip|fingerprint|asn)$")
-    target_value: str
-    reason: str
-    ban_type: str = "ban"
-    duration_hours: Optional[int] = None
+    target_value: str = Field(..., min_length=1, max_length=255)
+    reason: str = Field(..., min_length=1, max_length=500)
+    ban_type: str = Field(default="ban", pattern="^(ban|shadow_ban|mute|timeout|quarantine)$")
+    duration_hours: Optional[int] = Field(default=None, ge=1, le=336)
 
 
 class BanResponse(BaseModel):
@@ -297,7 +297,11 @@ class ViewerSessionResponse(BaseModel):
 
 
 class BlockViewerRequest(BaseModel):
-    reason: str = "Actividad sospechosa detectada por StreamShield"
+    reason: str = Field(
+        default="Actividad sospechosa detectada por StreamShield",
+        min_length=1,
+        max_length=500,
+    )
     action: Literal["timeout", "ban"] = "timeout"
     duration_seconds: Optional[int] = Field(default=None, ge=1, le=1_209_600)
     duration_hours: Optional[int] = Field(default=24, ge=1, le=336)
@@ -311,7 +315,7 @@ class MitigationTarget(BaseModel):
 
 class MitigationRequest(BaseModel):
     action: Optional[MitigationAction] = None
-    targets: List[MitigationTarget] = Field(default_factory=list)
+    targets: List[MitigationTarget] = Field(default_factory=list, max_length=100)
     duration_hours: Optional[int] = Field(default=None, ge=1, le=336)
     full_mitigation: bool = Field(
         False,

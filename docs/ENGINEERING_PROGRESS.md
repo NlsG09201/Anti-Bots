@@ -392,3 +392,34 @@
 - OAuth invite creation now requires the stream owner or a tenant administrator, in addition to moderator-level role. This aligns invite issuance with the callback's existing broadcaster-to-target-channel check.
 - Added a same-tenant cross-owner regression test confirming another streamer cannot create an invite.
 - Verification: focused ownership test passed; full backend suite passed (`172 passed, 1 skipped, 23 warnings`); `git diff --check` passed.
+
+## Detection analysis authorization and input bounds (2026-10-30)
+
+- IP analysis now validates input as an IPv4/IPv6 address and requires analyst-level role. Batch analysis no longer accepts an optional user, requires analyst-level role, validates the event type, and caps payloads at 500 event objects.
+- Batch analysis now checks the requested stream belongs to the authenticated user's tenant before running detection. Added viewer rejection and cross-tenant stream tests.
+- Verification: focused authorization/isolation tests passed; full backend suite passed (`173 passed, 1 skipped, 23 warnings`); `git diff --check` passed.
+
+## Mitigation request limits (2026-10-30)
+
+- Limited a single mitigation operation to 100 explicit targets. Direct ban requests now bound target/reason lengths, permit only supported ban types, and cap duration at 336 hours; individual viewer-block reasons are capped at 500 characters.
+- Added six schema validation tests for oversize target batches, values, reasons, durations, and unsupported ban types.
+- Verification: focused schema tests passed (`6 passed`); full backend suite passed (`179 passed, 1 skipped, 23 warnings`); `git diff --check` passed.
+
+## Widget ingest-key lookup scaling (2026-10-30)
+
+- Replaced the per-ping ORM load and Python scan of every stream with a database-side JSON key predicate. Added a partial PostgreSQL expression index for streams that have an ingest key; startup migration adds it to existing installations, while metadata declares it for new PostgreSQL schemas.
+- Added regression tests for selecting the matching stream, rejecting malformed short keys before database access, and confirming the PostgreSQL lookup expression matches its partial index.
+- Verification: focused lookup tests passed (`3 passed`); full backend suite passed (`182 passed, 1 skipped, 23 warnings`); `git diff --check` passed.
+
+## Render startup diagnostics (2026-10-30)
+
+- Startup failures now print the exact public `TRUSTED_HOSTS` value and explain that Render needs native Redis TCP (`redis://`/`rediss://`), not Upstash REST. The hint directs operators to update the source environment before regenerating the import file, which avoids repeating the failed stale-import path.
+- The Render import generator now rejects HTTPS/REST URLs in `REDIS_URL` before writing an import file.
+- The local Render source environment has the correct public hosts but no native Redis URL. This workspace cannot supply the provider URL or change live Render settings; add the provider's Redis TCP URL in `deploy/render.env` and Render Dashboard before redeploying.
+- Verification: production startup security tests passed (`13 passed`); Render environment tests passed (`7 passed`); `git diff --check` passed. The PowerShell generator could not be run because this machine's execution policy blocks scripts.
+
+## Tenant-scoped stream lookup index (2026-10-30)
+
+- Added a composite `(tenant_id, platform, external_id)` index to match the stream repository and OAuth callback lookups. The existing cross-tenant platform index remains for other query patterns.
+- Added the index to the PostgreSQL startup migration and a schema regression test. This is non-unique so it preserves all existing rows; safe duplicate cleanup or uniqueness enforcement still requires a live-data audit.
+- Verification: widget lookup tests passed (`4 passed`); `git diff --check` passed.

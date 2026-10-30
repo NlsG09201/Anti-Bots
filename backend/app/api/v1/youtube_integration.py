@@ -22,6 +22,7 @@ from app.core.security import encrypt_value
 from app.infrastructure.cache.redis_client import RedisCache
 from app.infrastructure.database.models import Platform, Stream, UserRole
 from app.infrastructure.database.session import get_db
+from app.infrastructure.repositories.stream_repository import StreamRepository
 from app.integrations.youtube.constants import resolve_youtube_redirect_uri
 from app.integrations.youtube.oauth import YouTubeOAuth, youtube_credentials_valid
 
@@ -136,6 +137,9 @@ async def youtube_callback(
         )
 
     upgrade_id = stored.get("upgrade_stream_id")
+    await StreamRepository(db).lock_identity(
+        UUID(stored["tenant_id"]), Platform.YOUTUBE, channel_id
+    )
     stream = None
     if upgrade_id:
         result = await db.execute(

@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import String, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser, StreamModeratorUser
@@ -64,12 +64,15 @@ def _ensure_ingest_key(stream: Stream) -> str:
 async def _stream_by_ingest_key(db: AsyncSession, stream_key: str) -> Optional[Stream]:
     if not stream_key or len(stream_key) < 16:
         return None
-    result = await db.execute(select(Stream))
-    for stream in result.scalars().all():
-        settings_map = stream.settings or {}
-        if settings_map.get("ingest_key") == stream_key:
-            return stream
-    return None
+    indexed_ingest_key = Stream.settings.op("->>", return_type=String())(
+        literal_column("'ingest_key'")
+    )
+    result = await db.execute(
+        select(Stream)
+        .where(indexed_ingest_key == stream_key)
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 class WidgetFingerprint(BaseModel):

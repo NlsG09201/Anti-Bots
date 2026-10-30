@@ -45,7 +45,29 @@ async def run_startup_migrations(engine: AsyncEngine) -> None:
                 """
             )
         )
+        await conn.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS ix_streams_tenant_platform_external
+                ON streams (tenant_id, platform, external_id)
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS ix_streams_widget_ingest_key
+                ON streams ((settings ->> 'ingest_key'))
+                WHERE settings ? 'ingest_key'
+                """
+            )
+        )
     logger.info(
         "startup_migrations_applied",
-        migrations=["platform_tiktok", "kick_auto_mitigation_default_off"],
+        migrations=[
+            "platform_tiktok",
+            "kick_auto_mitigation_default_off",
+            "streams_tenant_platform_external_index",
+            "streams_widget_ingest_key_index",
+        ],
     )
