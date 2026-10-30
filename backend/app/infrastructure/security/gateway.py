@@ -107,6 +107,16 @@ class SecurityGatewayMiddleware(BaseHTTPMiddleware):
                 content=str(exc.message),
                 headers={"Retry-After": "60"},
             )
+        except Exception as exc:
+            logger.error(
+                "security_rate_limit_unavailable",
+                error_type=type(exc).__name__,
+            )
+            return Response(
+                status_code=503,
+                content="Request protection is temporarily unavailable",
+                headers={"Retry-After": "5"},
+            )
 
         try:
             response = await call_next(request)

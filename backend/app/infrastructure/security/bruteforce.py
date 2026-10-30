@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+
 from app.core.config import get_settings
 from app.core.exceptions import AuthenticationError
 from app.core.logging import get_logger
@@ -12,13 +15,22 @@ class BruteForceProtection:
         self.cache = RedisCache(prefix="bruteforce")
 
     def _key(self, identifier: str) -> str:
-        return f"login:{identifier}"
+        fingerprint = hmac.new(
+            settings.app_secret_key.encode("utf-8"),
+            identifier.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return f"login:{fingerprint}"
 
     async def record_failure(self, identifier: str) -> int:
         key = self._key(identifier)
         count = await self.cache.incr(key, ttl=settings.fail2ban_window_seconds)
         if count >= settings.fail2ban_max_attempts:
-            logger.warning("bruteforce_lockout", identifier=identifier, attempts=count)
+            logger.warning(
+                "bruteforce_lockout",
+                identifier_hash=key.removeprefix("login:")[:16],
+                attempts=count,
+            )
         return count
 
     async def clear_failures(self, identifier: str) -> None:
@@ -39,3 +51,4 @@ class BruteForceProtection:
             raise AuthenticationError(
                 f"Too many failed attempts. Try again in {settings.fail2ban_window_seconds // 60} minutes."
             )
+

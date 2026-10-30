@@ -6,9 +6,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import get_settings
 from app.core.exceptions import RateLimitError
+from app.core.logging import get_logger
 from app.infrastructure.cache.redis_client import RedisCache
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -59,8 +61,13 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
                 settings.rate_limit_per_minute,
                 60,
             )
-        except Exception:
-            allowed, current = True, 0
+        except Exception as exc:
+            logger.error("security_rate_limit_unavailable", error_type=type(exc).__name__)
+            return Response(
+                status_code=503,
+                content="Request protection is temporarily unavailable",
+                headers={"Retry-After": "5"},
+            )
 
         if not allowed:
             raise RateLimitError(f"Rate limit exceeded: {current}/{settings.rate_limit_per_minute}")

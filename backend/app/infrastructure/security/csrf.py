@@ -28,6 +28,13 @@ CSRF_EXEMPT_PATHS = {
 }
 
 
+def _is_csrf_exempt_path(path: str) -> bool:
+    return any(
+        path == prefix or path.startswith(f"{prefix.rstrip('/')}/")
+        for prefix in CSRF_EXEMPT_PATHS
+    )
+
+
 class CSRFMiddleware(BaseHTTPMiddleware):
     """Validates CSRF token for cookie-authenticated state-changing requests."""
 
@@ -38,7 +45,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if request.method in SAFE_METHODS:
             return await call_next(request)
-        if any(path.startswith(p) for p in CSRF_EXEMPT_PATHS):
+        if _is_csrf_exempt_path(path):
             return await call_next(request)
 
         # JWT Bearer (sessionStorage) no depende de double-submit cookie

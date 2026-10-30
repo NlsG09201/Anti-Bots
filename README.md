@@ -51,6 +51,7 @@ La API queda en `http://localhost:8000`; `/health` es liveness y `/readyz` compr
 
 ## Despliegue
 
+- Security reporting and incident response: [`SECURITY.md`](SECURITY.md).
 - Docker: consulte [`deploy/DOCKER.md`](deploy/DOCKER.md) para desarrollo, tests, staging y producción.
 - Render: consulte `render.yaml` y `docs/OPENAI_SETUP.md`; los secretos se configuran en el panel de Render o en el flujo de importación protegido.
 - VPS: siga [`deploy/vps/README.md`](deploy/vps/README.md).

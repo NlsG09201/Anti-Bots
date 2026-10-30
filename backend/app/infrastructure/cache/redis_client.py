@@ -228,16 +228,13 @@ class RedisCache:
         return results[0]
 
     async def is_blacklisted(self, jti: str) -> bool:
-        try:
-            full = self._key(f"blacklist:{jti}")
-            if self._use_memory:
-                return _memory_get(full) is not None
-            if self._use_rest:
-                return bool((await _upstash_pipeline([["EXISTS", full]]))[0])
-            client = await get_redis()
-            return bool(await client.exists(full))
-        except Exception:
-            return False
+        full = self._key(f"blacklist:{jti}")
+        if self._use_memory:
+            return _memory_get(full) is not None
+        if self._use_rest:
+            return bool((await _upstash_pipeline([["EXISTS", full]]))[0])
+        client = await get_redis()
+        return bool(await client.exists(full))
 
     async def blacklist_token(self, jti: str, ttl: int) -> None:
         full = self._key(f"blacklist:{jti}")
@@ -251,8 +248,5 @@ class RedisCache:
         await client.setex(full, ttl, "1")
 
     async def check_rate_limit(self, identifier: str, limit: int, window: int) -> tuple[bool, int]:
-        try:
-            current = await self.incr(f"ratelimit:{identifier}", ttl=window)
-            return current <= limit, current
-        except Exception:
-            return True, 0
+        current = await self.incr(f"ratelimit:{identifier}", ttl=window)
+        return current <= limit, current

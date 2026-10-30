@@ -49,9 +49,11 @@ def _slugify(name: str) -> str:
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    # The security gateway resolves forwarding headers only at the configured
+    # proxy trust boundary. Never derive brute-force keys from raw XFF here.
+    validated_ip = getattr(request.state, "client_ip", None)
+    if validated_ip:
+        return validated_ip
     return request.client.host if request.client else "unknown"
 
 

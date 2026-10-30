@@ -48,7 +48,15 @@ async def get_current_user(
         raise AuthenticationError("Invalid or expired token")
 
     cache = RedisCache()
-    if await cache.is_blacklisted(payload.get("jti", "")):
+    try:
+        token_revoked = await cache.is_blacklisted(payload.get("jti", ""))
+    except Exception as exc:
+        logger.error("token_revocation_check_failed", error_type=type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication services are temporarily unavailable.",
+        ) from exc
+    if token_revoked:
         logger.warning(
             "authentication_rejected",
             reason="revoked_access_token",

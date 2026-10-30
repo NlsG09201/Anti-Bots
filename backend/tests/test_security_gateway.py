@@ -7,7 +7,10 @@ import pytest
 from fastapi import FastAPI, Request
 from starlette.testclient import TestClient
 
+from app.api.v1.auth import _client_ip
+from app.infrastructure.security.bruteforce import BruteForceProtection
 from app.infrastructure.security.client_ip import resolve_client_ip
+from app.infrastructure.security.csrf import _is_csrf_exempt_path
 from app.infrastructure.security.headers import validate_request_headers
 from app.infrastructure.security.replay import ReplayProtection
 
@@ -67,6 +70,42 @@ def test_headers_detect_automation_ua():
     result = validate_request_headers(req)
     assert result.automation_detected is True
     assert "automated_user_agent" in result.flags
+
+
+def test_auth_rate_limit_ip_uses_gateway_value_not_raw_forwarded_header():
+    req = _make_request(
+        headers={"X-Forwarded-For": "198.51.100.99"},
+        client_host="203.0.113.10",
+    )
+    req.state.client_ip = "203.0.113.10"
+
+    assert _client_ip(req) == "203.0.113.10"
+
+
+def test_bruteforce_cache_key_does_not_contain_email_or_ip():
+    identifier = "person@example.com:203.0.113.10"
+
+    key = BruteForceProtection()._key(identifier)
+
+    assert "person@example.com" not in key
+    assert "203.0.113.10" not in key
+    assert key == BruteForceProtection()._key(identifier)
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("/api/v1/auth/refresh", True),
+        ("/api/v1/auth/refresh/", True),
+        ("/api/v1/auth/refresh-evil", False),
+        ("/api/v1/webhooks/kick", True),
+        ("/api/v1/webhooks-evil", False),
+        ("/api/v1/widget/ping", True),
+        ("/api/v1/widget-evil/action", False),
+    ],
+)
+def test_csrf_exempt_paths_respect_segment_boundaries(path, expected):
+    assert _is_csrf_exempt_path(path) is expected
 
 
 @pytest.mark.asyncio
@@ -196,6 +235,32 @@ async def test_redis_cache_set_if_absent_is_atomic_for_memory_backend(monkeypatc
     assert await cache.get("delivery") == "completed"
 
 
+@pytest.mark.asyncio
+async def test_revocation_lookup_propagates_store_failure():
+    from app.infrastructure.cache.redis_client import RedisCache
+
+    cache = RedisCache()
+    cache._use_memory = False
+    cache._use_rest = False
+    with patch(
+        "app.infrastructure.cache.redis_client.get_redis",
+        AsyncMock(side_effect=RuntimeError("redis unavailable")),
+    ):
+        with pytest.raises(RuntimeError, match="redis unavailable"):
+            await cache.is_blacklisted("token-id")
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_lookup_propagates_store_failure():
+    from app.infrastructure.cache.redis_client import RedisCache
+
+    cache = RedisCache()
+    cache.incr = AsyncMock(side_effect=RuntimeError("redis unavailable"))
+
+    with pytest.raises(RuntimeError, match="redis unavailable"):
+        await cache.check_rate_limit("client", 10, 60)
+
+
 def test_security_gateway_blocks_scanner_paths():
     from app.infrastructure.security.gateway import SecurityGatewayMiddleware
 
@@ -209,3 +274,23 @@ def test_security_gateway_blocks_scanner_paths():
     client = TestClient(app)
     resp = client.get("/.env")
     assert resp.status_code == 404
+
+
+def test_security_gateway_fails_closed_when_rate_limit_store_is_unavailable(monkeypatch):
+    from app.infrastructure.security import gateway
+
+    async def unavailable(_request):
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr(gateway.AdvancedRateLimiter, "check", unavailable)
+    app = FastAPI()
+
+    @app.get("/ok")
+    async def ok():
+        return {"ok": True}
+
+    app.add_middleware(gateway.SecurityGatewayMiddleware)
+    response = TestClient(app).get("/ok")
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "5"
