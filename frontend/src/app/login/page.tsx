@@ -17,6 +17,7 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [dismissedOAuthQuery, setDismissedOAuthQuery] = useState("");
   const [mfaStep, setMfaStep] = useState(false);
   const [mfaToken, setMfaToken] = useState("");
   const [mfaCode, setMfaCode] = useState("");
@@ -50,7 +51,7 @@ function LoginForm() {
       : searchParams.get("error")
         ? searchParams.get("error_description") || `OAuth: ${searchParams.get("error")}`
         : "";
-  const displayedError = error || oauthError;
+  const displayedError = error || (dismissedOAuthQuery === searchParams.toString() ? "" : oauthError);
 
   const finishLogin = async (accessToken: string) => {
     resetAuthSessionState();
@@ -65,6 +66,7 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setDismissedOAuthQuery(searchParams.toString());
 
     try {
       if (mfaStep) {

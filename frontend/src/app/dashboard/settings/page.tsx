@@ -22,64 +22,53 @@ function SettingsContent() {
     provisioning_uri: string;
   } | null>(null);
   const [message, setMessage] = useState("");
-  const [youtubeFailure, setYoutubeFailure] = useState<{
-    code: string;
-    message: string;
-    redirectUri?: string;
-  } | null>(null);
 
   const isAdmin =
     user?.role === "admin" || user?.role === "super_admin" || user?.role === "analyst";
 
   useEffect(() => {
-    if (searchParams.get("twitch") === "connected") {
-      setMessage("Twitch conectado. Se actualizó el estado de permisos y EventSub.");
-      queryClient.invalidateQueries({ queryKey: ["twitch-status"] });
-    }
-    if (searchParams.get("kick") === "connected") {
-      setMessage("Kick conectado. Monitores SOC activos cuando el canal esté LIVE.");
-      queryClient.invalidateQueries({ queryKey: ["kick-status"] });
-    }
-    if (searchParams.get("youtube") === "connected") {
-      setMessage("YouTube conectado. Live chat y métricas vía OAuth.");
-      queryClient.invalidateQueries({ queryKey: ["youtube-status"] });
-    }
-    const kickError = searchParams.get("kick_error");
-    if (kickError) {
-      const detail = searchParams.get("kick_msg") || kickError;
-      setMessage(
-        kickError === "token_exchange_failed" && detail.toLowerCase().includes("invalid_client")
-          ? "Kick rechazó las credenciales OAuth. En Render, verifica que KICK_CLIENT_ID y KICK_CLIENT_SECRET pertenezcan a la misma app de Kick y que KICK_REDIRECT_URI coincida exactamente con la registrada. Actualiza también DEPLOY_RENDER_ENV en GitHub Actions si despliegas las variables desde ahí, y redepliega el backend."
-          : detail,
-      );
-    }
-    const youtubeError = searchParams.get("youtube_error");
-    if (youtubeError) {
-      const detail = searchParams.get("youtube_msg") || youtubeError;
-      const redirectUri = searchParams.get("youtube_redirect_uri") || undefined;
-      setYoutubeFailure({ code: youtubeError, message: detail, redirectUri });
-      const normalized = detail.toLowerCase();
-      setMessage(
-        youtubeError === "token_exchange_failed" && normalized.includes("access_denied")
-          ? "YouTube bloqueó el acceso porque la app sigue en modo de prueba o tu cuenta no está autorizada como tester."
-          : youtubeError === "token_exchange_failed" && normalized.includes("invalid_client")
-            ? "YouTube rechazó la autenticación del cliente. Revisa Client ID, Client Secret y la Redirect URI exacta."
-            : detail,
-      );
-    }
-    const twitchError = searchParams.get("twitch_error");
-    if (twitchError) {
-      const detail = searchParams.get("twitch_msg") || twitchError;
-      setMessage(
-        twitchError === "redirect_mismatch"
-          ? `Twitch: la Redirect URI no coincide. En dev.twitch.tv añade exactamente: https://anti-bots.onrender.com/api/v1/integrations/twitch/callback (${detail})`
-          : twitchError === "credentials_invalid"
-            ? `Twitch: credenciales inválidas en Render. Revisa TWITCH_CLIENT_ID y TWITCH_CLIENT_SECRET (${detail})`
-            : `Error Twitch (${twitchError}): ${detail}`,
-      );
-    }
+    if (searchParams.get("twitch") === "connected") void queryClient.invalidateQueries({ queryKey: ["twitch-status"] });
+    if (searchParams.get("kick") === "connected") void queryClient.invalidateQueries({ queryKey: ["kick-status"] });
+    if (searchParams.get("youtube") === "connected") void queryClient.invalidateQueries({ queryKey: ["youtube-status"] });
   }, [searchParams, queryClient]);
 
+  const kickError = searchParams.get("kick_error");
+  const kickDetail = searchParams.get("kick_msg") || kickError || "";
+  const youtubeError = searchParams.get("youtube_error");
+  const youtubeDetail = searchParams.get("youtube_msg") || youtubeError || "";
+  const youtubeFailure = youtubeError
+    ? {
+        code: youtubeError,
+        message: youtubeDetail,
+        redirectUri: searchParams.get("youtube_redirect_uri") || undefined,
+      }
+    : null;
+  const twitchError = searchParams.get("twitch_error");
+  const twitchDetail = searchParams.get("twitch_msg") || twitchError || "";
+  const callbackMessage = twitchError
+    ? twitchError === "redirect_mismatch"
+      ? "Twitch: la Redirect URI no coincide. En dev.twitch.tv anade exactamente: https://anti-bots.onrender.com/api/v1/integrations/twitch/callback (" + twitchDetail + ")"
+      : twitchError === "credentials_invalid"
+        ? "Twitch: credenciales invalidas en Render. Revisa TWITCH_CLIENT_ID y TWITCH_CLIENT_SECRET (" + twitchDetail + ")"
+        : "Error Twitch (" + twitchError + "): " + twitchDetail
+    : youtubeError
+      ? youtubeError === "token_exchange_failed" && youtubeDetail.toLowerCase().includes("access_denied")
+        ? "YouTube bloqueo el acceso porque la app sigue en modo de prueba o tu cuenta no esta autorizada como tester."
+        : youtubeError === "token_exchange_failed" && youtubeDetail.toLowerCase().includes("invalid_client")
+          ? "YouTube rechazo la autenticacion del cliente. Revisa Client ID, Client Secret y la Redirect URI exacta."
+          : youtubeDetail
+      : kickError
+        ? kickError === "token_exchange_failed" && kickDetail.toLowerCase().includes("invalid_client")
+          ? "Kick rechazo las credenciales OAuth. En Render, verifica que KICK_CLIENT_ID y KICK_CLIENT_SECRET pertenezcan a la misma app de Kick y que KICK_REDIRECT_URI coincida exactamente con la registrada. Actualiza tambien DEPLOY_RENDER_ENV en GitHub Actions si despliegas las variables desde ahi, y redepliega el backend."
+          : kickDetail
+        : searchParams.get("youtube") === "connected"
+          ? "YouTube conectado. Live chat y metricas via OAuth."
+          : searchParams.get("kick") === "connected"
+            ? "Kick conectado. Monitores SOC activos cuando el canal este LIVE."
+            : searchParams.get("twitch") === "connected"
+              ? "Twitch conectado. Se actualizo el estado de permisos y EventSub."
+              : "";
+  const displayedMessage = message || callbackMessage;
   const { data: mfaStatus } = useQuery({
     queryKey: ["mfa-status"],
     queryFn: () => api.mfa.status(token),
@@ -252,10 +241,10 @@ function SettingsContent() {
         <p className="text-cyber-muted text-sm mt-1">Integraciones y seguridad de cuenta</p>
       </div>
 
-      {message && (
+      {displayedMessage && (
         <div className="cyber-card flex items-center gap-3 text-cyber-accent border-cyber-accent/30">
           <CheckCircle size={20} />
-          <p className="text-sm">{message}</p>
+          <p className="text-sm">{displayedMessage}</p>
         </div>
       )}
 
