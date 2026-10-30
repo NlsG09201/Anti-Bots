@@ -322,7 +322,7 @@ class Settings(BaseSettings):
 
     @property
     def is_production(self) -> bool:
-        return self.app_env == "production"
+        return self.app_env.lower() in {"production", "staging"}
 
     def model_post_init(self, __context) -> None:
         if self.is_production and not self.cookie_secure:

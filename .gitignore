@@ -6,6 +6,7 @@ deploy/render.import.env
 deploy/render.api.key
 /deploy/enterprise/.env
 deploy/vps/.env
+deploy/vps/.env.staging
 deploy/vps/config.ps1
 deploy/.twitch-secret.tmp
 backend/.env

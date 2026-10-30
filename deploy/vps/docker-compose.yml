@@ -12,6 +12,9 @@ services:
     init: true
     restart: unless-stopped
     stop_grace_period: 35s
+    networks:
+      - edge
+      - backend
     expose:
       - "8000"
     healthcheck:
@@ -24,11 +27,16 @@ services:
       resources:
         limits:
           memory: ${API_MEMORY_LIMIT:-2G}
+    depends_on:
+      redis:
+        condition: service_healthy
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     init: true
+    networks:
+      - edge
     ports:
       - "80:80"
       - "443:443"
@@ -42,12 +50,13 @@ services:
       api:
         condition: service_healthy
 
-  # Opcional: rate limiting distribuido (perfil redis)
+  # Internal Redis for queues, pub/sub, and rate limiting. Not host-published.
   redis:
     image: redis:7-alpine
-    profiles: ["redis"]
     restart: unless-stopped
     command: redis-server --appendonly yes
+    networks:
+      - backend
     volumes:
       - redis_data:/data
     expose:
@@ -62,3 +71,7 @@ volumes:
   caddy_data:
   caddy_config:
   redis_data:
+
+networks:
+  edge:
+  backend:

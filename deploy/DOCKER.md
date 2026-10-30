@@ -33,6 +33,6 @@ docker compose -p anti-bots-staging --env-file deploy/vps/.env.staging up -d --b
 docker compose -p anti-bots-production --env-file deploy/vps/.env up -d --build
 ```
 
-Both environments use the VPS API + Caddy stack, but separate project names, databases, hostnames, and credentials. The staging database must be provisioned separately; Compose does not create or migrate an external database. The optional local Redis cache is enabled with `--profile redis`; set `REDIS_URL` to use it. Back up external databases and keep Compose environment files out of Git.
+Run staging and production on separate hosts because each Caddy stack binds ports 80 and 443. They use separate project names, databases, hostnames, Redis volumes, and credentials. The staging database must be provisioned separately; Compose does not create or migrate an external database. Redis runs privately on the backend network and is not published to the host. Back up external databases and keep Compose environment files out of Git.
 
 The API image excludes tests and development dependencies, runs as an unprivileged user, and has a health check. The frontend image uses Next.js standalone output and a non-root runtime. Frontend Docker builds should provide intended public API URLs and `API_PROXY_TARGET` at build time because Next.js rewrites are compiled into the server bundle.

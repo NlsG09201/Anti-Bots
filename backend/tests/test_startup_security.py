@@ -3,6 +3,15 @@ from types import SimpleNamespace
 import pytest
 
 from app.core import startup
+from app.core.config import Settings
+
+
+def test_staging_uses_production_security_defaults():
+    settings = Settings(app_env="staging", _env_file=None)
+
+    assert settings.is_production is True
+    assert settings.cookie_secure is True
+    assert settings.cookie_samesite == "none"
 
 
 def _production_settings(**overrides):
