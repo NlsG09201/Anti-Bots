@@ -314,5 +314,6 @@
 
 - The enterprise Compose stack had a Celery worker but no Celery Beat process, so the configured periodic reputation, cleanup, and correlation tasks were never scheduled. Added a single Beat service using the registered schedule.
 - Explicitly separated Redis logical databases for arq (0), Celery broker (1), and Celery results (2) in the API/worker containers, and added restart policies to core data, API, and worker services.
+- Enabled Redis AOF persistence on a named volume and switched to `noeviction`; evicting event/queue keys under memory pressure would otherwise silently lose work. Full memory now rejects writes and surfaces backpressure instead of deleting arbitrary queue entries.
 - Clarified that Render's API needs `REDIS_URL` for arq regardless of whether the optional Celery worker is deployed; Celery variables do not replace it.
-- Added a local-only environment example and changed the Compose instructions to stop copying the production Render import file into the enterprise development stack. Runtime Compose validation found the documented `deploy/enterprise/.env` had not been created, so validation remains pending until the safe example is copied there.
+- Added a local-only environment example and changed the Compose instructions to stop copying the production Render import file into the enterprise development stack. Created the ignored local `.env` from that safe example and verified `docker compose ... config --quiet` succeeds; no containers were started.
