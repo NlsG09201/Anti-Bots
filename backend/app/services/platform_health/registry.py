@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from app.services.platform_health.tracker import MonitorHealthTracker
+from app.domain.platform_health.tracker import MonitorHealthTracker
 
 _TRACKERS: Dict[str, MonitorHealthTracker] = {}
 

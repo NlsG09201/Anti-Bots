@@ -10,7 +10,7 @@ import httpx
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.services.platform_health.circuit_breaker import get_circuit_breaker
-from app.services.platform_health.schemas import IntegrationProbeResult
+from app.domain.platform_health.schemas import IntegrationProbeResult
 
 logger = get_logger(__name__)
 settings = get_settings()

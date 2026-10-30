@@ -7,7 +7,7 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Deque, List, Optional, Tuple
 
-from app.services.platform_health.schemas import StreamMonitorHealth
+from app.domain.platform_health.schemas import StreamMonitorHealth
 
 
 class MonitorHealthTracker:
@@ -47,6 +47,7 @@ class MonitorHealthTracker:
         self._socket_transport = ""
         self._reconnect_count = 0
         self._error_count = 0
+        self._error_timestamps: Deque[float] = deque()
         self._last_error: Optional[str] = None
         self._events_total = 0
         self._chat_events_1h = 0
@@ -98,8 +99,16 @@ class MonitorHealthTracker:
         self._reconnect_count += 1
 
     def record_error(self, message: str) -> None:
+        now = time.monotonic()
         self._error_count += 1
+        self._error_timestamps.append(now)
+        self._prune_error_timestamps(now)
         self._last_error = (message or "")[:300]
+
+    def _prune_error_timestamps(self, now: Optional[float] = None) -> None:
+        cutoff = (time.monotonic() if now is None else now) - 300.0
+        while self._error_timestamps and self._error_timestamps[0] < cutoff:
+            self._error_timestamps.popleft()
 
     def _messages_per_min(self) -> float:
         cutoff = time.monotonic() - 60.0
@@ -145,7 +154,8 @@ class MonitorHealthTracker:
         if self._reconnect_count >= 8:
             flags.append("excessive_reconnects")
             score += 20.0
-        if self._error_count >= 5:
+        self._prune_error_timestamps(now)
+        if len(self._error_timestamps) >= 5:
             flags.append("high_errors")
             score += 15.0
         if (

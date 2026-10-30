@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from app.core.logging import get_logger
 from app.infrastructure.cache.redis_client import RedisCache, optional_get_redis, redis_is_configured
-from app.services.platform_health.schemas import (
+from app.domain.platform_health.schemas import (
     IntegrationProbeResult,
     PlatformHealthOverview,
     StreamMonitorHealth,

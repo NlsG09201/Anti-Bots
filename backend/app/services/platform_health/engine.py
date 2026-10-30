@@ -16,7 +16,7 @@ from app.infrastructure.database.models import Alert, AlertSeverity, Platform, S
 from app.infrastructure.database.session import AsyncSessionLocal
 from app.services.platform_health.probes import run_all_integration_probes
 from app.services.platform_health.registry import all_trackers
-from app.services.platform_health.schemas import (
+from app.domain.platform_health.schemas import (
     HealthStatus,
     PlatformHealthOverview,
     StreamMonitorHealth,

@@ -3,7 +3,7 @@
 import pytest
 
 from app.services.platform_health.circuit_breaker import get_circuit_breaker
-from app.services.platform_health.tracker import MonitorHealthTracker
+from app.domain.platform_health.tracker import MonitorHealthTracker
 
 
 def test_circuit_breaker_opens_after_failures():
@@ -35,3 +35,18 @@ def test_tracker_snapshot_fields():
     assert snap.viewer_count == 100
     assert snap.platform == "youtube"
     assert snap.poll_latency_ms == 42.0
+
+
+def test_tracker_high_errors_uses_recent_errors_not_lifetime_total():
+    import time
+
+    tracker = MonitorHealthTracker("s3", "kick", "channel")
+    for _ in range(5):
+        tracker.record_error("temporary provider failure")
+
+    assert "high_errors" in tracker.compute_ai_flags()[1]
+
+    tracker._error_timestamps.clear()
+    tracker._error_timestamps.extend([time.monotonic() - 301] * 5)
+    assert tracker._error_count == 5
+    assert "high_errors" not in tracker.compute_ai_flags()[1]
