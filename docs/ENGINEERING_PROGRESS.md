@@ -112,3 +112,10 @@
 - Login retains the ability to clear a callback error when a new submission begins.
 - Added `npm run lint` to frontend CI after resolving all lint errors.
 - Verification: `npm run lint` passed with 0 errors and 32 existing warnings. `npm run build` passed TypeScript and all 28 routes. `git diff --check` passed.
+
+## Backend ban tenant isolation (2026-10-29)
+
+- The active ban creation endpoint accepted a stream UUID without checking its tenant. It now verifies the stream against the authenticated user's tenant before inserting a ban.
+- Ban revocation previously loaded a ban by UUID alone. `MitigationService.revoke_ban` now requires a tenant ID and scopes the lookup by both ban and tenant.
+- Added API tests proving a user cannot create a ban for another tenant's stream or revoke another tenant's ban.
+- Verification: focused tenant-isolation tests passed (2 passed); full backend suite passed (97 passed, 1 skipped, 17 warnings). Existing sklearn model-version and FastAPI/Starlette deprecation warnings remain.
