@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 permissions:
   contents: read
@@ -99,6 +99,8 @@ jobs:
         run: npm audit --audit-level=high
       - name: Lint frontend
         run: npm run lint
+      - name: Typecheck frontend
+        run: npm run typecheck
       - run: npm run build
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000
