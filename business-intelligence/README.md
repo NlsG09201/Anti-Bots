@@ -86,7 +86,7 @@ Para validar contra una base real después de cargar el warehouse, configura `DA
 python business-intelligence/scripts/validate_warehouse.py
 ```
 
-El validador comprueba que `dim_date` sea un calendario continuo de años completos y compara canales, sesiones, ataques, snapshots del día y mensajes/grupos de actividad de chat de los últimos 90 días por tenant. Imprime las cuentas comparadas y termina con código 1 si detecta diferencias. Sólo usa filas existentes; no genera datos sintéticos. Aún no se ha ejecutado aquí porque no hay una conexión a la base RDS desplegada.
+El validador comprueba que `dim_date` sea un calendario continuo de años completos y compara, por tenant, canales, sesiones, ataques, cantidad y valores del snapshot diario, y mensajes/grupos de actividad de chat de los últimos 90 días. Imprime las cuentas y discrepancias y termina con código 1 si detecta diferencias. Sólo usa filas existentes; no genera datos sintéticos. Aún no se ha ejecutado contra datos de RDS porque no hay una conexión a la base desplegada.
 
 ## Seguridad y conexión de Power BI
 

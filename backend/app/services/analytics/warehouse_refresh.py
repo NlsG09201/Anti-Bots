@@ -31,7 +31,7 @@ async def main() -> None:
                         "CALL bi.refresh_warehouse("
                         "CAST(:tenant_id AS uuid), CAST(:from_date AS date))"
                     ),
-                    {"tenant_id": tenant, "from_date": cutoff},
+                    {"tenant_id": tenant_id, "from_date": cutoff},
                 )
                 await db.commit()
                 logger.info("warehouse refresh completed tenant=%s", tenant)
