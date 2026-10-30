@@ -195,6 +195,8 @@ class TwitchEventSubClient:
         body: bytes,
         signature: str,
     ) -> bool:
+        if not settings.twitch_webhook_secret:
+            return False
         message = message_id.encode() + timestamp.encode() + body
         expected = hmac.new(
             settings.twitch_webhook_secret.encode(),

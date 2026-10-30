@@ -119,3 +119,11 @@
 - Ban revocation previously loaded a ban by UUID alone. `MitigationService.revoke_ban` now requires a tenant ID and scopes the lookup by both ban and tenant.
 - Added API tests proving a user cannot create a ban for another tenant's stream or revoke another tenant's ban.
 - Verification: focused tenant-isolation tests passed (2 passed); full backend suite passed (97 passed, 1 skipped, 17 warnings). Existing sklearn model-version and FastAPI/Starlette deprecation warnings remain.
+
+## Authenticated SOC alerts contract (2026-10-29)
+
+- The SOC alert panel was calling unauthenticated endpoints that were not registered by the FastAPI app. It now uses the shared token-aware API client and the active tenant-scoped alert routes.
+- The active alert list supports an optional stream filter. It joins through the alert's attack to the stream and checks both alert and stream tenant IDs.
+- Added a tenant-scoped dismiss endpoint; cross-tenant alert IDs return not found. Alert rows retain the existing `open`/`dismissed` lifecycle used by the panel.
+- Added tests for tenant-filtered alert listing, stream-filtered listing, and cross-tenant dismiss rejection.
+- Verification: full backend suite passed (`100 passed, 1 skipped, 19 warnings`); frontend lint passed (`0 errors, 33 warnings`); production build passed TypeScript and all 28 routes.

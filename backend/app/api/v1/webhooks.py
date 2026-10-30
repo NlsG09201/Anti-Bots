@@ -25,6 +25,8 @@ from app.integrations.kick.oauth import KICK_WEBHOOK_EVENTS
 logger = get_logger(__name__)
 settings = get_settings()
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
+_TWITCH_MAX_MESSAGE_AGE_SECONDS = 600
+_TWITCH_FUTURE_TOLERANCE_SECONDS = 30
 _kick_public_key = None
 _kick_public_key_loaded_at = 0.0
 KICK_EVENT_TYPES = frozenset(KICK_WEBHOOK_EVENTS)
@@ -52,10 +54,33 @@ async def twitch_webhook(
     twitch_eventsub_message_type: str = Header(None, alias="Twitch-Eventsub-Message-Type"),
 ):
     body = await request.body()
+    if not all((
+        twitch_eventsub_message_id,
+        twitch_eventsub_message_timestamp,
+        twitch_eventsub_message_signature,
+        twitch_eventsub_message_type,
+    )):
+        return Response(status_code=403)
 
-    if twitch_eventsub_message_type == "webhook_callback_verification":
-        data = await request.json()
-        return {"challenge": data.get("challenge")}
+    try:
+        sent_at = datetime.fromisoformat(
+            twitch_eventsub_message_timestamp.replace("Z", "+00:00")
+        )
+        if sent_at.tzinfo is None:
+            return Response(status_code=403)
+        age = (datetime.now(timezone.utc) - sent_at.astimezone(timezone.utc)).total_seconds()
+        if (
+            age > _TWITCH_MAX_MESSAGE_AGE_SECONDS
+            or age < -_TWITCH_FUTURE_TOLERANCE_SECONDS
+        ):
+            logger.warning(
+                "twitch_webhook_rejected",
+                reason="timestamp_outside_tolerance",
+                message_id=twitch_eventsub_message_id,
+            )
+            return Response(status_code=403)
+    except (TypeError, ValueError):
+        return Response(status_code=403)
 
     if not TwitchEventSubClient.verify_signature(
         twitch_eventsub_message_id or "",
@@ -64,6 +89,15 @@ async def twitch_webhook(
         twitch_eventsub_message_signature or "",
     ):
         return Response(status_code=403)
+
+    if twitch_eventsub_message_type == "webhook_callback_verification":
+        try:
+            data = await request.json()
+        except (ValueError, UnicodeDecodeError):
+            return Response(status_code=400)
+        if not isinstance(data, dict) or not isinstance(data.get("challenge"), str):
+            return Response(status_code=400)
+        return {"challenge": data["challenge"]}
 
     if twitch_eventsub_message_type == "notification":
         payload = await request.json()
