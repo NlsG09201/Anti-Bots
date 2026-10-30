@@ -3,11 +3,18 @@ name: Deploy Render env
 on:
   workflow_dispatch:
 
+concurrency:
+  group: production-render-deploy
+  cancel-in-progress: false
+
 jobs:
   push-env:
     runs-on: ubuntu-latest
+    environment: production
     permissions:
+      actions: read
       contents: read
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -15,7 +22,21 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Write deploy/render.import.env from secret
+      - name: Require main and successful CI for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo "Production deploys must be dispatched from main" >&2
+            exit 1
+          }
+          runs=$(gh run list --workflow ci.yml --branch main --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId)
+          test "$(printf '%s' "$runs" | jq 'length')" -gt 0 || {
+            echo "No successful CI run for $GITHUB_SHA" >&2
+            exit 1
+          }
+
+      - name: Write deployment environment to runner temp
         env:
           DEPLOY_RENDER_ENV: ${{ secrets.DEPLOY_RENDER_ENV }}
         run: |
@@ -23,7 +44,10 @@ jobs:
             echo "Missing GitHub secret DEPLOY_RENDER_ENV (contents of render.import.env)"
             exit 1
           fi
-          printf '%s\n' "$DEPLOY_RENDER_ENV" > deploy/render.import.env
+          env_file="$RUNNER_TEMP/render.import.env"
+          umask 077
+          printf '%s\n' "$DEPLOY_RENDER_ENV" > "$env_file"
+          echo "RENDER_ENV_FILE=$env_file" >> "$GITHUB_ENV"
 
       - name: Push variables to Render and deploy API and worker
         env:
@@ -31,3 +55,5 @@ jobs:
         run: |
           RENDER_SERVICE_NAME=anti-bots-api python deploy/push_render_env.py
           RENDER_SERVICE_NAME=anti-bots-platform-monitor python deploy/push_render_env.py
+        # Configure required reviewers for the GitHub `production` environment
+        # before enabling this workflow for production use.

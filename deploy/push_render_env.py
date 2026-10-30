@@ -13,7 +13,7 @@ import urllib.request
 from pathlib import Path
 
 DEPLOY_DIR = Path(__file__).resolve().parent
-IMPORT_FILE = DEPLOY_DIR / "render.import.env"
+IMPORT_FILE = Path(os.environ.get("RENDER_ENV_FILE", DEPLOY_DIR / "render.import.env"))
 API_KEY_FILE = DEPLOY_DIR / "render.api.key"
 SERVICE_NAME = os.environ.get("RENDER_SERVICE_NAME", "anti-bots-api")
 API_BASE = "https://api.render.com/v1"
