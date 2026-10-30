@@ -132,10 +132,9 @@ async def process_kick_webhook_event_job(ctx: dict, webhook_event_id: str) -> Di
                 .where(KickWebhookEvent.id == webhook_uuid)
                 .with_for_update()
             )
-            if not row or row.processing_status in ("processed", "ignored", "expired"):
+            if not row or row.processing_status in ("processed", "ignored", "expired", "failed"):
                 return {"status": row.processing_status if row else "missing"}
             row.processing_status = "processing"
-            row.processing_attempts += 1
             stream = await db.scalar(select(Stream).where(Stream.id == row.stream_id)) if row.stream_id else None
             if not stream:
                 row.processing_status = "ignored"
