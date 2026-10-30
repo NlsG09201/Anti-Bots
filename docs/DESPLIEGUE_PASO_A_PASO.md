@@ -112,11 +112,12 @@ JWT_SECRET_KEY=<tu secreto 2>
 AES_ENCRYPTION_KEY=<tu secreto 3>
 DATABASE_URL=<neon connection string>
 REDIS_URL=<upstash rediss url>
-CELERY_BROKER_URL=<misma upstash url>
-CELERY_RESULT_BACKEND=<misma upstash url>
 COOKIE_SECURE=true
 COOKIE_SAMESITE=none
+TRUSTED_HOSTS=anti-bots.onrender.com,anti-bots-api.onrender.com
 ```
+
+`REDIS_URL` debe ser una URL Redis TCP (`redis://` o `rediss://`): el endpoint REST de Upstash no sirve para arq, Redis Streams ni pub/sub. No agregues `localhost` ni direcciones loopback a `TRUSTED_HOSTS`. El Blueprint actual usa el servicio Docker `anti-bots-api`; sigue `render.yaml` para crear o actualizarlo y configura en Render los secretos marcados `sync: false`.
 
 Deja `APP_CORS_ORIGINS` y `APP_FRONTEND_URL` vacíos por ahora (las añades después de Vercel).
 

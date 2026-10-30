@@ -31,7 +31,7 @@ npm ci
 npm run build
 ```
 
-Los pasos de CI están en `.github/workflows/ci.yml`; el análisis estático de seguridad multilenguaje está en `.github/workflows/codeql.yml` y publica hallazgos en GitHub Code Scanning cuando esa función está habilitada en el repositorio. La API expone `/health`; este endpoint comprueba que el proceso responde, no certifica por sí solo la disponibilidad de PostgreSQL, Redis ni proveedores externos.
+Los pasos de CI están en `.github/workflows/ci.yml`; el análisis estático multilenguaje usa `.github/workflows/codeql.yml`, y el análisis de dependencias OSV corre en PR/merge queue y semanalmente en `.github/workflows/dependency-scan.yml`. Ambos publican resultados en GitHub Code Scanning cuando está habilitado en el repositorio. La API expone `/health`; este endpoint comprueba que el proceso responde, no certifica por sí solo la disponibilidad de PostgreSQL, Redis ni proveedores externos.
 
 Para levantar el stack local con PostgreSQL, Redis, API y worker (sin cargar variables de Render):
 

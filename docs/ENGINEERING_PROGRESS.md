@@ -282,3 +282,17 @@
 - Removed the unregistered legacy alert router, enhanced persistence engine, repository, and duplicate domain model after confirming no active imports; the authenticated tenant-scoped alert endpoints and current ORM model remain in place. Replaced `DATABASE_ALERTS_IMPLEMENTATION.md` with current API/schema guidance.
 - `scripts/deploy.sh` now aborts when Alembic upgrade fails instead of suppressing the failure and starting services. Updated the data-store guide to stop implying that the manual enterprise index script is automatically applied.
 - Verification after removing the unreachable alert subsystem: backend suite passed (`148 passed, 1 skipped, 23 warnings`).
+
+## Frontend lint cleanup (2026-10-30)
+
+- Removed unused imports, variables, and chart props from dashboard components and cleaned unused error bindings from the public browser scripts.
+- Stabilized the SOC threat-series fallback so its `useMemo` dependency does not become a new empty array on every render.
+- Kept the full-page navigation for Twitch OAuth because that API endpoint starts an external authorization flow; documented the targeted lint exception at the call site.
+- Verification: `frontend/npm run lint` passed with zero warnings and zero errors; the optimized Next.js production build passed and generated all 28 static routes.
+- Updated the deployment guide to match the current Render Docker Blueprint and arq-based Redis requirements; removed obsolete Celery environment variables and documented the public trusted-host values.
+
+## Dependency vulnerability coverage (2026-10-30)
+
+- CI already audits Python and npm dependencies, while Dependabot updates Python, npm, Maven, and GitHub Actions. Added OSV-Scanner's official reusable workflows for PR/merge-queue delta checks and full scheduled/push scans, covering the unscanned Maven and transitive dependency trees.
+- The workflow uses read-only repository permissions plus the code-scanning upload permission required by the upstream workflows. GitHub Code Scanning must be enabled for uploaded findings to appear there.
+- The first GitHub workflow run remains the authoritative vulnerability result; it was not executable from this local workspace.
