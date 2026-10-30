@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Loader2, Send, ShieldCheck, UserRound } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, type Stream } from "@/lib/api";
 import { useApiToken } from "@/stores/authStore";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -19,6 +20,33 @@ export default function AssistantPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [streamId, setStreamId] = useState("");
+  const [moderationMode, setModerationMode] = useState<"monitor" | "assisted" | "automatic">("monitor");
+  const queryClient = useQueryClient();
+  const streamsQuery = useQuery({
+    queryKey: ["assistant-streams"],
+    queryFn: () => api.streams.list(token!),
+    enabled: !!token,
+  });
+  const usageQuery = useQuery({
+    queryKey: ["ai-usage"],
+    queryFn: () => api.ai.usage(token!),
+    enabled: !!token,
+  });
+  const modeQuery = useQuery({
+    queryKey: ["ai-moderation-mode", streamId],
+    queryFn: () => api.ai.moderationMode(token!, streamId),
+    enabled: !!token && !!streamId,
+  });
+  const streams = (streamsQuery.data ?? []) as Stream[];
+  useEffect(() => {
+    if (modeQuery.data) setModerationMode(modeQuery.data.mode);
+  }, [modeQuery.data]);
+  const modeMutation = useMutation({
+    mutationFn: () => api.ai.setModerationMode(token!, streamId, moderationMode),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-moderation-mode", streamId] }),
+    onError: (err: Error) => setError(err.message),
+  });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -31,7 +59,11 @@ export default function AssistantPage() {
     setError("");
     setLoading(true);
     try {
-      const response = await api.assistant.chat(token, { message: text, history: previous });
+      const response = await api.assistant.chat(token, {
+        message: text,
+        history: previous,
+        ...(streamId ? { stream_id: streamId } : {}),
+      });
       setMessages((current) => [...current, { role: "assistant", content: response.answer }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible consultar al asistente.");
@@ -50,6 +82,62 @@ export default function AssistantPage() {
           Orientación para investigar amenazas de bots. No ejecuta bloqueos ni sustituye la revisión humana.
         </p>
       </header>
+
+      <section className="cyber-card flex flex-wrap items-center justify-between gap-4 p-4">
+        <label className="min-w-64 flex-1 text-sm text-cyber-muted" htmlFor="assistant-stream">
+          Contexto de canal
+          <select
+            id="assistant-stream"
+            value={streamId}
+            onChange={(event) => setStreamId(event.target.value)}
+            className="mt-2 block w-full rounded-lg border border-cyber-border bg-cyber-bg p-2 text-white"
+          >
+            <option value="">Sin datos de canal</option>
+            {streams.map((stream) => (
+              <option key={stream.id} value={stream.id}>
+                {stream.channel_name} · {stream.platform}
+              </option>
+            ))}
+          </select>
+        </label>
+        {streamId && modeQuery.data?.can_manage && (
+          <label className="text-sm text-cyber-muted" htmlFor="ai-moderation-mode">
+            Modo de moderación asistida
+            <div className="mt-2 flex gap-2">
+              <select
+                id="ai-moderation-mode"
+                value={moderationMode}
+                onChange={(event) => setModerationMode(event.target.value as typeof moderationMode)}
+                className="rounded-lg border border-cyber-border bg-cyber-bg p-2 text-white"
+              >
+                <option value="monitor">Monitoreo</option>
+                <option value="assisted">Asistido</option>
+                <option value="automatic" disabled={!modeQuery.data.automatic_available}>Automático (reglas locales)</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => modeMutation.mutate()}
+                disabled={modeMutation.isPending || moderationMode === "automatic" && !modeQuery.data.automatic_available}
+                className="rounded-lg bg-cyber-accent/20 px-3 py-2 text-cyber-accent disabled:opacity-50"
+              >Guardar</button>
+            </div>
+          </label>
+        )}
+        <div className="text-sm text-cyber-muted" aria-live="polite">
+          {usageQuery.data ? (
+            <>
+              <strong className="text-white">Uso IA · últimos {usageQuery.data.days} días</strong>
+              <div>{usageQuery.data.request_count} solicitudes · {(usageQuery.data.input_tokens + usageQuery.data.output_tokens).toLocaleString()} tokens</div>
+              <div>
+                {usageQuery.data.cost_estimation_configured
+                  ? `Costo estimado: $${(usageQuery.data.estimated_cost_usd ?? 0).toFixed(4)} USD`
+                  : "Configura precios por token para estimar costos"}
+                {usageQuery.data.openai_configured ? " · OpenAI activo" : " · OpenAI no configurado"}
+              </div>
+            </>
+          ) : "Uso IA no disponible"}
+        </div>
+      </section>
 
       <section className="cyber-card min-h-[420px] p-4">
         <div className="space-y-4">

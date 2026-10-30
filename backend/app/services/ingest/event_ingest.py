@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas import EventIngest
-from app.infrastructure.database.models import AttackType, Stream, StreamEvent
+from app.infrastructure.database.models import Alert, AlertSeverity, AttackType, Stream, StreamEvent
 from app.services.ai.service import AIService
 from app.services.correlation.service import CorrelationService
 from app.services.dashboard.metrics import get_tenant_stream_ids
@@ -23,6 +23,7 @@ from app.services.realtime.notify import push_dashboard_realtime
 from app.services.reputation.service import ReputationService
 from app.services.streams.helpers import stream_auto_mitigate, stream_monitor_mode
 from app.services.viewers.session import ViewerSessionService
+from app.threat_intel_engine.chat_lexical import ChatLexicalAnalyzer
 
 detection_engine = BotDetectionEngine()
 ai_service = AIService()
@@ -30,6 +31,7 @@ network_policy = NetworkPolicyEngine()
 anomaly_svc = AnomalyIntelligenceService()
 ingest_settings = get_settings()
 logger = get_logger(__name__)
+chat_lexical_analyzer = ChatLexicalAnalyzer()
 
 
 async def process_stream_event(
@@ -43,6 +45,24 @@ async def process_stream_event(
     correlation = CorrelationService(db)
     reputation_svc = ReputationService(db)
     mitigation = MitigationService(db)
+    correlation_id = correlation.generate_correlation_id()
+
+    # Local lexical/repetition features are cheap and run for chat messages on
+    # every platform; they gate any external OpenAI analysis.
+    chat_message_text = ""
+    if event.event_type == "chat_message":
+        chat_message_text = str(
+            event.metadata.get("content") or event.metadata.get("message") or ""
+        )[:2000]
+        if chat_message_text:
+            lexical = chat_lexical_analyzer.analyze(
+                str(stream.id),
+                event.platform_user_id or event.platform_username or "unknown",
+                chat_message_text,
+            )
+            event.metadata["chat_lexical"] = lexical
+            event.metadata["repetition_score"] = lexical.get("repetition_score", 0.0)
+            event.metadata["flags"] = lexical.get("flags", [])
 
     if ingest_settings.live_intel_enabled:
         try:
@@ -206,6 +226,37 @@ async def process_stream_event(
         )
         risk_score = max(risk_score, rt_assessment.risk_score)
 
+    local_risk_score = risk_score
+    openai_chat_analysis = None
+    ai_moderation_mode = str((stream.settings or {}).get("ai_moderation_mode", "monitor"))
+    if chat_message_text:
+        try:
+            from app.services.ai.openai_engine import OpenAISecurityEngine
+
+            openai_chat_analysis = await OpenAISecurityEngine().analyze_chat_message(
+                tenant_id=tenant_id,
+                stream_id=stream.id,
+                platform=stream.platform.value,
+                message=chat_message_text,
+                context=event.metadata,
+                incident_reference=correlation_id,
+                db=db,
+            )
+            if openai_chat_analysis:
+                # AI can corroborate an existing local signal by a bounded amount,
+                # but it never drives automatic moderation or acts as the sole detector.
+                if local_risk_score >= 30:
+                    corroboration = max(
+                        0.0,
+                        float(openai_chat_analysis.get("risk_score", 0)) - local_risk_score,
+                    )
+                    risk_score = max(
+                        local_risk_score,
+                        min(100.0, local_risk_score + min(15.0, corroboration * 0.25)),
+                    )
+        except Exception as exc:
+            logger.warning("openai_chat_analysis_failed", error_type=type(exc).__name__)
+
     meta = dict(event.metadata)
     if source in ("platform_kick", "kick_webhook"):
         # Chat content is analyzed above and retained in the webhook inbox for
@@ -233,6 +284,9 @@ async def process_stream_event(
         meta["known_public_bot"] = tbi_result.is_known_bot
     if meta_anomaly:
         meta["anomaly"] = meta_anomaly
+    if openai_chat_analysis:
+        meta["openai_chat_analysis"] = openai_chat_analysis
+        meta["ai_moderation_mode"] = ai_moderation_mode
     if ai_assessment:
         meta["ai_intel"] = ai_assessment.to_dict()
 
@@ -281,7 +335,7 @@ async def process_stream_event(
         is_datacenter=ip_data.get("is_datacenter", False),
         risk_score=risk_score,
         event_metadata=meta,
-        correlation_id=correlation.generate_correlation_id(),
+        correlation_id=correlation_id,
     )
     db.add(stream_event)
     await db.flush()
@@ -351,6 +405,11 @@ async def process_stream_event(
             stream.channel_name,
             evidence,
             monitor_mode=stream_monitor_mode(stream),
+            db=db,
+            tenant_id=tenant_id,
+            stream_id=stream.id,
+            platform=stream.platform.value,
+            incident_reference=correlation_id,
         )
         evidence["ai_insight"] = ai_insight
 
@@ -397,7 +456,7 @@ async def process_stream_event(
                 "created_at": alert.created_at.isoformat(),
             }
 
-        if risk_score >= 70.0 and stream_auto_mitigate(stream):
+        if local_risk_score >= 70.0 and stream_auto_mitigate(stream):
             targets = []
             uid = (event.platform_user_id or "").strip()
             if uid.isdigit():
@@ -419,6 +478,52 @@ async def process_stream_event(
                     evidence=evidence,
                     stream=stream,
                 )
+
+    # High-confidence chat findings can raise an assisted-review alert even
+    # when the combined numeric score does not create a conventional attack.
+    # This path never calls the moderation executor.
+    if (
+        openai_chat_analysis
+        and ai_moderation_mode in {"assisted", "automatic"}
+        and alert_payload is None
+        and float(openai_chat_analysis.get("risk_score", 0)) >= 75
+        and (openai_chat_analysis.get("moderation_flagged") or local_risk_score >= 30)
+    ):
+        level = openai_chat_analysis.get("risk_level")
+        severity = {
+            "critical": AlertSeverity.CRITICAL,
+            "high": AlertSeverity.HIGH,
+            "medium": AlertSeverity.MEDIUM,
+        }.get(level, AlertSeverity.LOW)
+        category = str(openai_chat_analysis.get("threat_category") or "suspicious_chat")[:40]
+        alert = Alert(
+            tenant_id=tenant_id,
+            title=f"Revisión de chat: {category}",
+            message=str(openai_chat_analysis.get("explanation") or "Señal sospechosa detectada en chat.")[:1000],
+            severity=severity,
+            source="openai_assisted",
+            alert_metadata={
+                "event_id": str(stream_event.id),
+                "incident_reference": correlation_id,
+                "platform": stream.platform.value,
+                "risk_score": openai_chat_analysis.get("risk_score"),
+                "confidence": openai_chat_analysis.get("confidence"),
+                "evidence": openai_chat_analysis.get("evidence", [])[:8],
+                "recommended_action": openai_chat_analysis.get("recommended_action"),
+                "requires_human_review": True,
+                "moderation_mode": ai_moderation_mode,
+            },
+        )
+        db.add(alert)
+        await db.flush()
+        alert_payload = {
+            "id": str(alert.id),
+            "title": alert.title,
+            "message": alert.message,
+            "severity": alert.severity.value,
+            "status": alert.status,
+            "created_at": alert.created_at.isoformat(),
+        }
 
     tenant_streams = await get_tenant_stream_ids(db, tenant_id)
     await push_dashboard_realtime(

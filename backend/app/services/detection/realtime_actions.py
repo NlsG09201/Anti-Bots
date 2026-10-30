@@ -50,6 +50,11 @@ async def apply_viewbot_assessment(
         stream.channel_name,
         evidence,
         monitor_mode=stream_monitor_mode(stream),
+        db=db,
+        tenant_id=tenant_id,
+        stream_id=stream.id,
+        platform=stream.platform.value,
+        incident_reference=correlation_id,
     )
     evidence["ai_insight"] = ai_insight
 

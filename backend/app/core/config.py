@@ -157,7 +157,16 @@ class Settings(BaseSettings):
     threat_intel_block_threshold: float = 85.0
 
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = ""
+    openai_moderation_model: str = ""
+    openai_timeout_seconds: float = Field(default=12.0, ge=1.0, le=60.0)
+    openai_max_retries: int = Field(default=2, ge=0, le=5)
+    openai_max_output_tokens: int = Field(default=350, ge=64, le=2000)
+    openai_rate_limit_per_minute: int = Field(default=60, ge=1, le=10000)
+    openai_analysis_cache_seconds: int = Field(default=900, ge=0, le=86400)
+    openai_input_cost_per_million: float = Field(default=0.0, ge=0.0)
+    openai_output_cost_per_million: float = Field(default=0.0, ge=0.0)
+    openai_chat_analysis_enabled: bool = True
     ai_enabled: bool = True
 
     ai_intel_enabled: bool = True

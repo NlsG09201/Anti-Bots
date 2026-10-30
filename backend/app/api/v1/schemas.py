@@ -125,6 +125,8 @@ class AssistantHistoryMessage(BaseModel):
 class AssistantChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000)
     history: List[AssistantHistoryMessage] = Field(default_factory=list, max_length=6)
+    stream_id: Optional[UUID] = None
+    attack_id: Optional[UUID] = None
 
 
 class AssistantChatResponse(BaseModel):

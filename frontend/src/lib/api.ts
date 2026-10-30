@@ -418,13 +418,13 @@ export const api = {
   assistant: {
     chat: (
       token: ApiAuthToken,
-      body: { message: string; history: { role: "user" | "assistant"; content: string }[] },
+      body: { message: string; history: { role: "user" | "assistant"; content: string }[]; stream_id?: string; attack_id?: string },
     ) =>
       request<{ answer: string; source: string; disclaimer: string }>(
         "/api/v1/assistant/chat",
         { method: "POST", body: JSON.stringify(body) },
         token,
-        SPRING_API_URL || undefined,
+        body.stream_id || body.attack_id ? undefined : SPRING_API_URL || undefined,
       ),
   },
   powerBiAnalytics: {
@@ -965,6 +965,28 @@ export const api = {
   ai: {
     attackInsight: (token: ApiAuthToken, attackId: string) =>
       request<AIInsight>(`/api/v1/ai/attacks/${attackId}/insight`, {}, token),
+    moderationMode: (token: ApiAuthToken, streamId: string) =>
+      request<{ stream_id: string; mode: "monitor" | "assisted" | "automatic"; automatic_available: boolean; can_manage: boolean }>(
+        `/api/v1/ai/streams/${streamId}/moderation-mode`,
+        {},
+        token,
+      ),
+    setModerationMode: (token: ApiAuthToken, streamId: string, mode: "monitor" | "assisted" | "automatic") =>
+      request<{ stream_id: string; mode: "monitor" | "assisted" | "automatic" }>(
+        `/api/v1/ai/streams/${streamId}/moderation-mode`,
+        { method: "PUT", body: JSON.stringify({ mode }) },
+        token,
+      ),
+    usage: (token: ApiAuthToken) =>
+      request<{
+        days: number;
+        request_count: number;
+        input_tokens: number;
+        output_tokens: number;
+        estimated_cost_usd: number | null;
+        cost_estimation_configured: boolean;
+        openai_configured: boolean;
+      }>("/api/v1/ai/usage", {}, token),
   },
   mfa: {
     status: (token: ApiAuthToken) =>

@@ -208,6 +208,35 @@ class KickWebhookEvent(UUIDMixin, TimestampMixin, Base):
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
+class AIUsageRecord(UUIDMixin, Base):
+    """Tenant-scoped OpenAI usage for observability and configurable cost estimates."""
+
+    __tablename__ = "ai_usage_records"
+    __table_args__ = (
+        Index("ix_ai_usage_tenant_created", "tenant_id", "created_at"),
+        Index("ix_ai_usage_stream_created", "stream_id", "created_at"),
+    )
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    stream_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("streams.id", ondelete="SET NULL")
+    )
+    operation: Mapped[str] = mapped_column(String(40), nullable=False)
+    platform: Mapped[Optional[str]] = mapped_column(String(20))
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    estimated_cost_usd: Mapped[Optional[float]] = mapped_column(Float)
+    cache_hit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ok")
+    error_code: Mapped[Optional[str]] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class Fingerprint(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "fingerprints"
     __table_args__ = (

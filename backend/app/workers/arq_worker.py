@@ -336,6 +336,9 @@ async def shutdown(ctx: dict) -> None:
     engine = ctx.get("live_intel_engine")
     if engine:
         await engine.stop()
+    from app.services.ai.openai_engine import close_openai_client
+
+    await close_openai_client()
     logger.info("arq_worker_shutdown")
 
 

@@ -469,6 +469,11 @@ class ChannelMonitorService:
                 stream.channel_name,
                 evidence,
                 monitor_mode=stream_monitor_mode(stream),
+                db=self.db,
+                tenant_id=tenant_id,
+                stream_id=stream.id,
+                platform=stream.platform.value,
+                incident_reference=str(evidence.get("correlation_id") or ""),
             )
             evidence["ai_insight"] = ai_insight
 

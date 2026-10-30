@@ -226,6 +226,9 @@ async def lifespan(app: FastAPI):
 
     await stop_pipeline_consumer()
     await stop_realtime_subscriber()
+    from app.services.ai.openai_engine import close_openai_client
+
+    await close_openai_client()
     await close_redis()
     await engine.dispose()
     logger.info("application_shutdown")
