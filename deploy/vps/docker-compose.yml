@@ -1,5 +1,6 @@
 # StreamShield API en VPS — Neon + Caddy (HTTPS automático)
-# Uso: cd deploy/vps && cp env.example .env && nano .env && docker compose up -d --build
+# Uso local: docker compose --env-file .env up -d --build
+# Staging y producción usan archivos de entorno y Compose projects separados.
 
 services:
   api:
@@ -7,8 +8,10 @@ services:
       context: ../../backend
       dockerfile: Dockerfile
     env_file:
-      - .env
+      - ${APP_ENV_FILE:-.env}
+    init: true
     restart: unless-stopped
+    stop_grace_period: 35s
     expose:
       - "8000"
     healthcheck:
@@ -17,10 +20,15 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: ${API_MEMORY_LIMIT:-2G}
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    init: true
     ports:
       - "80:80"
       - "443:443"
@@ -44,6 +52,11 @@ services:
       - redis_data:/data
     expose:
       - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
 volumes:
   caddy_data:

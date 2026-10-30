@@ -1,0 +1,16 @@
+# Isolated, one-shot test runner; uses in-memory SQLite and no developer services.
+services:
+  backend-tests:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile.test
+    environment:
+      APP_ENV: test
+      APP_SECRET_KEY: test-secret-key-minimum-32-characters-long
+      JWT_SECRET_KEY: test-jwt-secret-key-minimum-32-chars
+      AES_ENCRYPTION_KEY: test-aes-encryption-key-32bytes!
+      DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+      REDIS_URL: redis://localhost:6379/15
+      CELERY_BROKER_URL: memory://
+    init: true
+    restart: "no"

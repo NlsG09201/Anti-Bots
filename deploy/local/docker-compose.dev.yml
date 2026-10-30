@@ -3,6 +3,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: streamshield
       POSTGRES_PASSWORD: local_only_change_me
@@ -19,6 +20,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
       - "127.0.0.1:6379:6379"
@@ -33,6 +35,9 @@ services:
       context: ../../backend
       dockerfile: Dockerfile
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
     environment:
       APP_ENV: development
       APP_DEBUG: "false"
@@ -62,12 +67,49 @@ services:
       timeout: 5s
       retries: 5
       start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: ${API_MEMORY_LIMIT:-2G}
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      target: development
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 15s
+    environment:
+      API_PROXY_TARGET: http://api:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_DIRECT_URL: http://localhost:8000
+      NEXT_PUBLIC_WS_URL: ws://localhost:8000
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ../../frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
 
   event-worker:
     build:
       context: ../../backend
       dockerfile: Dockerfile
     command: ["arq", "app.workers.arq_worker.WorkerSettings"]
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
     environment:
       APP_ENV: development
       APP_SECRET_KEY: local-only-app-secret-key-change-before-any-shared-use
@@ -87,6 +129,10 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   local_postgres_data:
+  frontend_node_modules:
+  frontend_next:

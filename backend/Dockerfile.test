@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt requirements-dev.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt -r requirements-dev.txt
+COPY app ./app
+COPY tests ./tests
+COPY scripts ./scripts
+COPY data ./data
+COPY alembic ./alembic
+COPY alembic.ini pytest.ini ./
+CMD ["python", "-m", "pytest", "tests", "-q", "--tb=short"]
