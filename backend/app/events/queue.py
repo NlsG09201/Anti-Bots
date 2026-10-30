@@ -47,15 +47,27 @@ async def enqueue_event_job(
 
         redis_settings = RedisSettings.from_dsn(settings.redis_url)
         pool = await create_pool(redis_settings)
-        job = await pool.enqueue_job(
-            "process_pipeline_event_job",
-            event.model_dump(mode="json"),
-            stream_entry_id=stream_entry_id,
-            _queue_name=UNIFIED_QUEUE,
-            _job_id=f"{event.category.value}:{event.stream_id}:{event.enqueued_at}",
-        )
-        await pool.close()
-        return job.job_id if job else None
+        job_id = f"{event.category.value}:{event.stream_id}:{event.enqueued_at}"
+        try:
+            job = await pool.enqueue_job(
+                "process_pipeline_event_job",
+                event.model_dump(mode="json"),
+                stream_entry_id=stream_entry_id,
+                _queue_name=UNIFIED_QUEUE,
+                _job_id=job_id,
+            )
+            # arq returns None when this deterministic ID is already queued or
+            # retained as a result. It was accepted earlier, so do not process
+            # the duplicate inline.
+            return job.job_id if job else job_id
+        finally:
+            try:
+                await pool.close()
+            except Exception as exc:
+                logger.warning(
+                    "event_queue_pool_close_failed",
+                    error_type=type(exc).__name__,
+                )
     except Exception as exc:
         logger.warning("event_queue_enqueue_failed", error=str(exc))
         return None

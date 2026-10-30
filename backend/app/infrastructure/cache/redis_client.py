@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import time
 from typing import Any, Optional
@@ -14,22 +15,35 @@ _rest_client: Optional[httpx.AsyncClient] = None
 _memory: dict[str, tuple[str, float]] = {}
 
 
-def redis_is_configured() -> bool:
-    """Return whether native Redis TCP is configured (required by arq/pubsub)."""
-    url = (settings.redis_url or "").strip()
-    if not url or "PEGAR_" in url:
+def redis_tcp_url_is_configured(url: Optional[str]) -> bool:
+    """Validate a native Redis TCP URL without connecting to the service."""
+    url = (url or "").strip()
+    if not url or "PEGAR_" in url.upper():
         return False
     try:
         parsed = urlparse(url)
+        hostname = parsed.hostname
+        port = parsed.port
     except ValueError:
         return False
-    if parsed.scheme not in {"redis", "rediss"} or not parsed.netloc:
+    if parsed.scheme not in {"redis", "rediss"} or not hostname:
         return False
-    if "localhost" in url or "127.0.0.1" in url:
+    if port is not None and not 1 <= port <= 65535:
         return False
-    if url.startswith("redis://:redis_secure_password"):
+    try:
+        is_localhost = hostname.lower().rstrip(".") == "localhost"
+        if is_localhost or ipaddress.ip_address(hostname).is_loopback:
+            return False
+    except ValueError:
+        pass
+    if parsed.password == "redis_secure_password":
         return False
     return True
+
+
+def redis_is_configured() -> bool:
+    """Return whether native Redis TCP is configured (required by arq/pubsub)."""
+    return redis_tcp_url_is_configured(settings.redis_url)
 
 
 def redis_rest_is_configured() -> bool:

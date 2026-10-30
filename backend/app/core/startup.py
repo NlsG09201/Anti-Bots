@@ -3,6 +3,7 @@ from urllib.parse import urlsplit
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.infrastructure.cache.redis_client import redis_tcp_url_is_configured
 
 logger = get_logger(__name__)
 
@@ -69,12 +70,7 @@ def validate_production_settings() -> list[str]:
             "DATABASE_URL points to localhost — set Neon URL in Render Environment"
         )
 
-    redis_tcp_configured = bool(settings.redis_url) and not (
-        "PEGAR_" in settings.redis_url
-        or settings.redis_url.startswith("redis://:redis")
-        or "localhost" in settings.redis_url
-        or "127.0.0.1" in settings.redis_url
-    )
+    redis_tcp_configured = redis_tcp_url_is_configured(settings.redis_url)
     redis_rest_configured = bool(
         settings.upstash_redis_rest_url.startswith("https://")
         and settings.upstash_redis_rest_token

@@ -189,3 +189,9 @@
 - Added coverage for missing Redis, REST-only Redis, and the explicit all-features-disabled fallback.
 - Verification: full backend suite passed (`118 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
 - Render still requires a dashboard environment update and redeploy; no live service state was changed.
+
+## Redis URL validation consistency (2026-10-30)
+
+- Startup and Redis client now share one native Redis URL validator, avoiding a false-ready state where a malformed `REDIS_URL` passed startup checks but was rejected by the client.
+- Validation checks supported schemes, host, port syntax/range, placeholder credentials, and loopback addresses. Added production tests for malformed ports, HTTP URLs, and IPv4/IPv6 loopback targets.
+- Verification: full backend suite passed (`122 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.

@@ -72,6 +72,28 @@ def test_production_requires_native_redis_for_stream_features(
     )
 
 
+@pytest.mark.parametrize(
+    "redis_url",
+    [
+        "redis://redis.example.com:not-a-port/0",
+        "redis://localhost:6379/0",
+        "redis://[::1]:6379/0",
+        "https://redis.example.com/0",
+    ],
+)
+def test_production_rejects_invalid_or_loopback_redis_urls(monkeypatch, redis_url):
+    monkeypatch.setattr(
+        startup,
+        "get_settings",
+        lambda: _production_settings(redis_url=redis_url),
+    )
+
+    assert any(
+        "REDIS_URL is required in production" in error
+        for error in startup.validate_production_settings()
+    )
+
+
 def test_production_can_disable_stream_features_without_redis(monkeypatch):
     monkeypatch.setattr(
         startup,
