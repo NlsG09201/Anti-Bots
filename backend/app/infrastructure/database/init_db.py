@@ -24,7 +24,7 @@ async def init_database(engine: AsyncEngine, *, max_attempts: int = 10) -> None:
                 "database_connect_retry",
                 attempt=attempt,
                 max_attempts=max_attempts,
-                error=str(exc),
+                error_type=type(exc).__name__,
             )
             if attempt < max_attempts:
                 await asyncio.sleep(min(3 * attempt, 15))

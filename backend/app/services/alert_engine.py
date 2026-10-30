@@ -168,7 +168,7 @@ class AlertEngine:
             tasks.append(self._send_discord_notification(alert))
 
         # Custom webhooks
-        if settings.alert_webhook_urls:
+        if settings.alert_webhook_urls_list:
             tasks.append(self._send_webhook_notifications(alert))
 
         if tasks:
@@ -202,19 +202,21 @@ class AlertEngine:
 
     async def _send_webhook_notifications(self, alert: ThreatAlert) -> None:
         """Send custom webhook notifications."""
-        if not settings.alert_webhook_urls:
+        webhook_urls = settings.alert_webhook_urls_list
+        if not webhook_urls:
             return
 
         import httpx
 
         payload = alert.to_dict()
 
-        for webhook_url in settings.alert_webhook_urls:
+        for webhook_url in webhook_urls:
             try:
                 async with httpx.AsyncClient(timeout=10) as client:
                     await client.post(webhook_url, json=payload)
             except Exception as exc:
-                logger.warning("webhook_notification_failed", webhook=webhook_url, error=str(exc))
+                # Webhook paths commonly contain bearer tokens; never log the URL or request error.
+                logger.warning("webhook_notification_failed", error_type=type(exc).__name__)
 
     @staticmethod
     def _get_color_for_severity(severity: AlertSeverity) -> int:

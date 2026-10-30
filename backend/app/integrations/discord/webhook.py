@@ -39,8 +39,9 @@ class DiscordNotifier:
                 response = await client.post(self.webhook_url, json=payload)
                 response.raise_for_status()
                 return True
-        except Exception as e:
-            logger.error("discord_webhook_failed", error=str(e))
+        except Exception as exc:
+            # Discord webhook URLs contain a secret token in their path.
+            logger.error("discord_webhook_failed", error_type=type(exc).__name__)
             return False
 
     async def send_attack_notification(

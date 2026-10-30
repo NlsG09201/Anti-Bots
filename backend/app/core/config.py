@@ -141,6 +141,7 @@ class Settings(BaseSettings):
     kick_pusher_cluster: str = "us2"
 
     discord_webhook_url: str = ""
+    alert_webhook_urls: str = ""
     cloudflare_api_token: str = ""
     cloudflare_zone_id: str = ""
 
@@ -313,6 +314,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> List[str]:
         return [o.strip() for o in self.app_cors_origins.split(",") if o.strip()]
+
+    @property
+    def alert_webhook_urls_list(self) -> List[str]:
+        return [url.strip() for url in self.alert_webhook_urls.split(",") if url.strip()]
 
     @property
     def is_production(self) -> bool:
