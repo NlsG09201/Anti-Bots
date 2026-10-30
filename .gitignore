@@ -21,6 +21,7 @@ build/
 .venv/
 venv/
 *.log
+backups/
 .DS_Store
 Thumbs.db
 backend/streamshield.db

@@ -448,6 +448,25 @@ The enterprise Compose stack evaluates `infrastructure/prometheus/alerts.yml`. I
 
 The repository configuration does not define an Alertmanager receiver, so rules are evaluated and visible in Prometheus but notifications are not delivered externally. Connect an Alertmanager and configure a team-owned receiver before relying on paging or chat notifications.
 
+### PostgreSQL Backup and Restore
+
+Run the operator tool from `backend/` with `DATABASE_URL` configured and PostgreSQL client tools (`pg_dump`, `pg_restore`, and `psql`) installed. Use a client version at least as new as the database server.
+
+```powershell
+uv run --python 3.11 --with-requirements requirements.txt -- python scripts/database_backup.py backup --output-dir ..\backups\postgres
+uv run --python 3.11 --with-requirements requirements.txt -- python scripts/database_backup.py verify ..\backups\postgres\anti-bots-postgres-YYYYMMDDTHHMMSSffffffZ.dump
+```
+
+Backups use PostgreSQL's custom archive format and include a SHA-256 manifest. Copy both files to access-controlled, encrypted off-host storage; the local output directory is git-ignored and is not a backup until copied. Configure scheduling and retention in the hosting environment to match the service's recovery-point objective, and rehearse a restore regularly.
+
+Restore only to a separately provisioned, empty database. Set `DATABASE_URL` to that target, verify the artifact, then explicitly confirm the empty-target operation:
+
+```powershell
+uv run --python 3.11 --with-requirements requirements.txt -- python scripts/database_backup.py restore ..\backups\postgres\anti-bots-postgres-YYYYMMDDTHHMMSSffffffZ.dump --confirm-empty-target
+```
+
+The restore command refuses nonempty targets and wraps `pg_restore` in a single transaction. It does not drop or overwrite an existing database. After restoring, verify Alembic revision and representative application reads before switching traffic.
+
 ## Scaling Considerations
 
 ### Horizontal Scaling
