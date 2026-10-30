@@ -324,3 +324,23 @@
 - Added an operator runbook for PostgreSQL dump verification, encrypted/off-host storage, explicit empty-target restore, and isolated recovery drills. It states clearly that the utility itself does not schedule, encrypt, or prune backups.
 - Added a restore regression test proving archive verification and empty-target checks precede `pg_restore`, and that restore uses a single transaction with stop-on-error without destructive `--clean`/`--create` flags.
 - Verification: full backend suite passed (`152 passed, 1 skipped, 23 warnings`); the new restore test uses mocked PostgreSQL tools and no database was touched. Existing scikit-learn artifact-version and FastAPI/Starlette deprecation warnings remain.
+
+## API exception disclosure review (2026-10-30)
+
+- OAuth callbacks for Twitch, Kick, and YouTube now use provider/status-only messages rather than returning provider response bodies or transport exception strings. Power BI and stream-sync errors return stable error codes; Twitch subscription, chat-bot, Weka, WebSocket, and API error logs omit raw exception messages and log exception types.
+- Updated other API handlers to avoid `logger.exception` traceback output when it could include request/provider details. The dormant `threat_intelligence_advanced` router was also sanitized; it is not registered by `app.main`.
+- Added tests proving OAuth response bodies and request URLs with injected secrets are omitted from user-facing messages, and that Power BI sync returns a generic 503 error.
+- Verification: full backend suite passed (`155 passed, 1 skipped, 23 warnings`); `rg` found no raw `str(exc)`/`logger.exception` use remaining under `backend/app/api`. Existing scikit-learn artifact-version and FastAPI/Starlette deprecation warnings remain.
+
+## Consistent API error responses (2026-10-30)
+
+- Added a global 422 validation envelope that reports field locations and error types without echoing submitted values, which may include passwords or tokens.
+- Added a global HTTP exception envelope while preserving the existing `detail` field and response headers for client compatibility. Domain exceptions retain their existing envelope.
+- Added tests for secret-free validation responses and 404 compatibility.
+- Verification: full backend suite passed (`157 passed, 1 skipped, 23 warnings`); `git diff --check` passed. Existing model-artifact and framework deprecation warnings remain.
+
+## Playbook failure disclosure hardening (2026-10-30)
+
+- Playbook action and execution failures now persist stable error codes and log only exception types. Discord notification failures also omit provider exception text; this prevents credentials, request details, or target data from leaking into logs and execution records.
+- Added regression tests with injected secret strings covering both action-level partial failure and execution-level failure.
+- Verification: focused tests passed (`2 passed`); full backend suite passed (`159 passed, 1 skipped, 23 warnings`); `git diff --check` passed. Existing model-artifact and framework deprecation warnings remain.

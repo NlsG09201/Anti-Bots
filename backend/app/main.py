@@ -2,11 +2,13 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, ORJSONResponse
 from prometheus_client import Counter, Histogram, generate_latest
 from sqlalchemy import text
 from starlette.responses import Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1 import (
     auth,
@@ -306,6 +308,38 @@ async def streamshield_exception_handler(request: Request, exc: StreamShieldErro
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": exc.code, "message": exc.message},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    # Never echo submitted values: validation input may contain credentials or tokens.
+    details = [
+        {
+            "loc": list(error.get("loc", ())),
+            "msg": "Invalid value",
+            "type": error.get("type", "value_error"),
+        }
+        for error in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "VALIDATION_ERROR",
+            "message": "Request validation failed",
+            "detail": details,
+        },
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    detail = exc.detail
+    message = detail if isinstance(detail, str) else "Request failed"
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": "HTTP_ERROR", "message": message, "detail": detail},
+        headers=exc.headers,
     )
 
 

@@ -17,6 +17,35 @@ async def test_readiness_checks_database(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_validation_error_envelope_does_not_echo_submitted_secrets(client: AsyncClient):
+    sentinel = "do-not-return-this-password"
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "not-an-email", "password": sentinel},
+    )
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"] == "VALIDATION_ERROR"
+    assert body["message"] == "Request validation failed"
+    assert body["detail"]
+    assert sentinel not in response.text
+    assert all("input" not in item for item in body["detail"])
+
+
+@pytest.mark.asyncio
+async def test_http_error_envelope_keeps_detail_for_compatibility(client: AsyncClient):
+    response = await client.get("/route-that-does-not-exist")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": "HTTP_ERROR",
+        "message": "Not Found",
+        "detail": "Not Found",
+    }
+
+
+@pytest.mark.asyncio
 async def test_api_cors_preflight_allows_configured_frontend(client: AsyncClient):
     from app.core.config import get_settings
 

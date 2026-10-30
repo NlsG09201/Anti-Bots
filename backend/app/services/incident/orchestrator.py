@@ -64,15 +64,15 @@ class PlaybookExecutor:
                         "executed_at": datetime.now(timezone.utc).isoformat(),
                     })
                 except Exception as exc:
-                    logger.exception(
+                    logger.error(
                         "playbook_action_failed",
                         playbook_id=str(playbook.id),
                         action=action_config.get("action"),
-                        error=str(exc)[:200],
+                        error_type=type(exc).__name__,
                     )
                     failed_actions.append({
                         "action": action_config.get("action"),
-                        "error": str(exc)[:200],
+                        "error": "action_failed",
                         "failed_at": datetime.now(timezone.utc).isoformat(),
                     })
 
@@ -80,14 +80,14 @@ class PlaybookExecutor:
             execution.executed_actions = executed_actions
             execution.failed_actions = failed_actions
         except Exception as exc:
-            logger.exception(
+            logger.error(
                 "playbook_execution_failed",
                 playbook_id=str(playbook.id),
                 incident_id=str(incident.id),
-                error=str(exc)[:300],
+                error_type=type(exc).__name__,
             )
             execution.status = "failed"
-            execution.error_message = str(exc)[:500]
+            execution.error_message = "execution_failed"
 
         end_time = datetime.now(timezone.utc)
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
@@ -140,7 +140,7 @@ class PlaybookExecutor:
         if action_type == "ban":
             return await self._action_ban(action_config, incident, tenant_id)
         elif action_type == "alert":
-            return await self._action_alert(action_config, incident)
+            return await self._action_alert(action_config, incident, tenant_id)
         elif action_type == "escalate":
             return await self._action_escalate(action_config, incident)
         elif action_type == "notify":
@@ -192,6 +192,7 @@ class PlaybookExecutor:
         self,
         config: Dict[str, Any],
         incident: Incident,
+        tenant_id: UUID,
     ) -> Dict[str, Any]:
         """Create alert for incident."""
         from app.infrastructure.database.models import Alert, AlertSeverity
@@ -212,7 +213,7 @@ class PlaybookExecutor:
         message = config.get("message", f"Auto-generated alert for incident {incident.id}")
 
         alert = Alert(
-            tenant_id=incident.stream_id,
+            tenant_id=tenant_id,
             title=title,
             message=message,
             severity=severity,
@@ -253,7 +254,11 @@ class PlaybookExecutor:
                 await send_discord_webhook(message)
                 return {"notified": True, "channel": channel}
             except Exception as exc:
-                logger.warning("discord_notification_failed", error=str(exc)[:100])
-                return {"notified": False, "channel": channel, "error": str(exc)[:100]}
+                logger.warning(
+                    "discord_notification_failed",
+                    channel=channel,
+                    error_type=type(exc).__name__,
+                )
+                return {"notified": False, "channel": channel, "error": "notification_failed"}
 
-        return {"notified": False, "reason": f"unknown_channel: {channel}"}
+        return {"notified": False, "reason": "unsupported_channel"}
