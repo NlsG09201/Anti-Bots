@@ -57,7 +57,7 @@ export function SuspiciousViewers({ viewers, stream }: SuspiciousViewersProps) {
         )}
       </div>
       <div className="p-3 border-t border-cyber-border/60">
-        <Link href="/dashboard/viewers">
+        <Link href="/dashboard/viewers" prefetch={false}>
           <Button variant="outline" size="sm" className="w-full">
             Ver todos
             <ExternalLink size={14} />

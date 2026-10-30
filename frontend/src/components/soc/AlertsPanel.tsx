@@ -23,6 +23,7 @@ export function AlertsPanel({ alerts }: { alerts: Alert[] }) {
       <div className="px-4 pb-4">
         <Link
           href="/dashboard/alerts"
+          prefetch={false}
           className="text-xs text-cyber-accent hover:underline font-medium"
         >
           Centro de alertas →

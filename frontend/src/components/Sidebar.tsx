@@ -88,7 +88,7 @@ export function Sidebar({
         )}
       >
         <div className="flex h-[4.5rem] shrink-0 items-center justify-between border-b border-cyber-border px-5">
-          <Link href="/dashboard" onClick={onClose} className="flex items-center gap-3 rounded-md focus-visible:outline-none">
+          <Link href="/dashboard" prefetch={false} onClick={onClose} className="flex items-center gap-3 rounded-md focus-visible:outline-none">
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-cyber-accent/10 text-cyber-accent ring-1 ring-cyber-accent/20">
               <Shield size={19} strokeWidth={2.2} />
             </span>
@@ -123,6 +123,7 @@ export function Sidebar({
                       <Link
                         key={href}
                         href={href}
+                        prefetch={false}
                         onClick={onClose}
                         aria-current={active ? "page" : undefined}
                         className={clsx(

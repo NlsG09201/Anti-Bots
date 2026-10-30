@@ -57,7 +57,7 @@ export function AdminPanel({ security }: AdminPanelProps) {
 
       <div className="mt-4 grid grid-cols-1 gap-2">
         {adminLinks.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href}>
+          <Link key={href} href={href} prefetch={false}>
             <Button variant="outline" size="sm" className="w-full justify-start">
               <Icon size={16} />
               {label}
