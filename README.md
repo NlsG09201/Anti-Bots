@@ -47,5 +47,6 @@ La API queda en `http://localhost:8000`; `/health` es liveness y `/readyz` compr
 - VPS: siga [`deploy/vps/README.md`](deploy/vps/README.md).
 - Integraciones de plataforma: [`docs/KICK_WEBHOOKS.md`](docs/KICK_WEBHOOKS.md) y [`docs/PLATFORM_INTEGRATION_AUDIT.md`](docs/PLATFORM_INTEGRATION_AUDIT.md).
 - Esquema PostgreSQL y límites actuales de Alembic: [`docs/DATABASE_MIGRATIONS.md`](docs/DATABASE_MIGRATIONS.md).
+- Backup PostgreSQL y restauración aislada: [`docs/DATABASE_BACKUP_RECOVERY.md`](docs/DATABASE_BACKUP_RECOVERY.md).
 
 Revise [`docs/ENGINEERING_PROGRESS.md`](docs/ENGINEERING_PROGRESS.md) para el estado de arquitectura, prioridades y verificaciones pendientes.

@@ -318,3 +318,9 @@
 - Clarified that Render's API needs `REDIS_URL` for arq regardless of whether the optional Celery worker is deployed; Celery variables do not replace it.
 - Added a local-only environment example and changed the Compose instructions to stop copying the production Render import file into the enterprise development stack. Created the ignored local `.env` from that safe example and verified `docker compose ... config --quiet` succeeds; no containers were started.
 - Restricted local/enterprise PostgreSQL, Redis, and API host ports to loopback; the previous wildcard bindings exposed unauthenticated developer databases and Redis to every reachable network interface.
+
+## Backup recovery runbook and restore validation (2026-10-30)
+
+- Added an operator runbook for PostgreSQL dump verification, encrypted/off-host storage, explicit empty-target restore, and isolated recovery drills. It states clearly that the utility itself does not schedule, encrypt, or prune backups.
+- Added a restore regression test proving archive verification and empty-target checks precede `pg_restore`, and that restore uses a single transaction with stop-on-error without destructive `--clean`/`--create` flags.
+- Verification: full backend suite passed (`152 passed, 1 skipped, 23 warnings`); the new restore test uses mocked PostgreSQL tools and no database was touched. Existing scikit-learn artifact-version and FastAPI/Starlette deprecation warnings remain.

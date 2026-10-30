@@ -115,6 +115,39 @@ def test_restore_refuses_nonempty_target(tmp_path, monkeypatch):
         backup._assert_empty_target(DATABASE_URL)
 
 
+def test_restore_verifies_archive_and_uses_atomic_restore(tmp_path, monkeypatch):
+    dump_path = tmp_path / "recovery.dump"
+    dump_path.write_bytes(b"valid archive")
+    backup._manifest_path(dump_path).write_text(
+        json.dumps(
+            {
+                "version": backup.MANIFEST_VERSION,
+                "file": dump_path.name,
+                "size_bytes": dump_path.stat().st_size,
+                "sha256": backup._hash_file(dump_path),
+            }
+        ),
+        encoding="utf-8",
+    )
+    commands = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        stdout = "empty\n" if command[0] == "psql" else ""
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(backup, "_run", fake_run)
+
+    backup.restore_backup(dump_path, DATABASE_URL)
+
+    assert [command[0] for command in commands] == ["pg_restore", "psql", "pg_restore"]
+    restore_command = commands[-1]
+    assert "--single-transaction" in restore_command
+    assert "--exit-on-error" in restore_command
+    assert "--clean" not in restore_command
+    assert "--create" not in restore_command
+
+
 def test_restore_cli_requires_explicit_empty_target_confirmation(capsys, monkeypatch):
     monkeypatch.setattr(
         backup,

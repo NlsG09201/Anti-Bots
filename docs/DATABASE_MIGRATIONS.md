@@ -10,7 +10,7 @@
 
 ## Procedimiento seguro para cambios de esquema
 
-1. En una copia aislada, guardar un backup PostgreSQL y verificar su manifiesto con `python -m scripts.database_backup verify <archivo>`.
+1. En una copia aislada, guardar un backup PostgreSQL y verificar su manifiesto con `python -m scripts.database_backup verify <archivo>`; consultar el [procedimiento de backup y recuperación](DATABASE_BACKUP_RECOVERY.md).
 2. Capturar el esquema existente sin datos sensibles: `pg_dump --schema-only` y `alembic current`/`alembic history`.
 3. Comparar ese esquema con `Base.metadata` y resolver explícitamente los modelos duplicados/obsoletos antes de crear un baseline inmutable.
 4. Escribir revisiones forward-only y aditivas cuando sea posible. Para cambios de datos, definir lotes, idempotencia y una consulta de verificación posterior.
