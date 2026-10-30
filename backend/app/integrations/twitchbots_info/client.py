@@ -36,11 +36,12 @@ async def _throttle() -> None:
 
 
 class TwitchBotsInfoClient:
-    def __init__(self) -> None:
+    def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
         base = (settings.twitchbots_info_base_url or "https://api.twitchbots.info/v2").rstrip("/")
         self._base = base
         self._timeout = max(float(settings.twitchbots_info_request_timeout), 5.0)
         self._retries = max(int(settings.twitchbots_info_max_retries), 1)
+        self._transport = transport
 
     async def _request(
         self,
@@ -56,7 +57,10 @@ class TwitchBotsInfoClient:
         for attempt in range(self._retries):
             await _throttle()
             try:
-                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                async with httpx.AsyncClient(
+                    timeout=self._timeout,
+                    transport=self._transport,
+                ) as client:
                     response = await client.request(method, url, params=params)
                 if response.status_code == 404:
                     return None

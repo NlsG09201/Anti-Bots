@@ -2,11 +2,11 @@ import { cn } from "@/lib/utils";
 
 const variants = {
   default:
-    "bg-cyber-accent text-cyber-bg hover:bg-green-400 shadow-[0_0_20px_rgba(0,255,136,0.2)]",
+    "bg-cyber-accent text-cyber-on-accent hover:bg-cyber-accent/90 shadow-sm",
   outline:
     "border border-cyber-border bg-transparent text-white hover:bg-cyber-bg/80",
   ghost: "text-cyber-muted hover:text-white hover:bg-cyber-bg/60",
-  danger: "bg-cyber-danger/90 text-white hover:bg-red-500",
+  danger: "bg-cyber-danger/90 text-white keep-white hover:bg-red-500",
 };
 
 export function Button({

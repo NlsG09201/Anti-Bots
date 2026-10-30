@@ -1,5 +1,6 @@
 """Tests for TwitchBots.info integration."""
 
+import httpx
 import pytest
 
 from app.integrations.twitchbots_info.client import TwitchBotsInfoClient
@@ -10,8 +11,16 @@ from app.integrations.twitchbots_info.schemas import (
 
 
 @pytest.mark.asyncio
-async def test_client_fetch_nightbot():
-    client = TwitchBotsInfoClient()
+async def test_client_fetch_bot_by_id():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path.endswith("/bot/19264788")
+        return httpx.Response(
+            200,
+            json={"id": 19264788, "username": "nightbot", "type": None},
+        )
+
+    client = TwitchBotsInfoClient(transport=httpx.MockTransport(handler))
     record = await client.get_bot_by_id("19264788")
     assert record is not None
     assert record.username.lower() == "nightbot"
@@ -20,7 +29,16 @@ async def test_client_fetch_nightbot():
 
 @pytest.mark.asyncio
 async def test_client_batch_ids():
-    client = TwitchBotsInfoClient()
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path.endswith("/bot")
+        assert request.url.params["ids"] == "19264788"
+        return httpx.Response(
+            200,
+            json={"bots": [{"id": 19264788, "username": "nightbot", "type": None}]},
+        )
+
+    client = TwitchBotsInfoClient(transport=httpx.MockTransport(handler))
     hits = await client.get_bots_by_ids(["19264788"])
     assert "19264788" in hits
     assert hits["19264788"].username

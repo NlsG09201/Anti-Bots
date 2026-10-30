@@ -49,7 +49,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     const wsUrl = resolveWsBaseUrl();
     if (!wsUrl) return;
 
-    const ws = new WebSocket(`${wsUrl}/ws/live?token=${accessToken}`);
+    const ws = new WebSocket(`${wsUrl}/ws/live`, ["streamshield", `bearer.${accessToken}`]);
     wsRef.current = ws;
 
     ws.onopen = () => {

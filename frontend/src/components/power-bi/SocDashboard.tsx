@@ -268,7 +268,7 @@ export function SocDashboard() {
                   onClick={() => setHours(item.value)}
                   className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
                     hours === item.value
-                      ? "bg-cyber-accent text-cyber-bg"
+                      ? "bg-cyber-accent text-cyber-on-accent"
                       : "text-cyber-muted hover:text-white"
                   }`}
                 >

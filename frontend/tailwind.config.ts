@@ -7,15 +7,17 @@ const config: Config = {
     extend: {
       colors: {
         cyber: {
-          bg: "#060a12",
-          surface: "#0f1419",
-          "surface-elevated": "#151b24",
-          border: "#1e293b",
-          accent: "#00ff88",
-          danger: "#ff3366",
-          warning: "#ffaa00",
-          info: "#00aaff",
-          muted: "#64748b",
+          bg: "rgb(var(--cyber-bg-rgb) / <alpha-value>)",
+          surface: "rgb(var(--cyber-surface-rgb) / <alpha-value>)",
+          "surface-elevated": "rgb(var(--cyber-surface-elevated-rgb) / <alpha-value>)",
+          border: "rgb(var(--cyber-border-rgb) / <alpha-value>)",
+          accent: "rgb(var(--cyber-accent-rgb) / <alpha-value>)",
+          danger: "rgb(var(--cyber-danger-rgb) / <alpha-value>)",
+          warning: "rgb(var(--cyber-warning-rgb) / <alpha-value>)",
+          info: "rgb(var(--cyber-info-rgb) / <alpha-value>)",
+          muted: "rgb(var(--cyber-muted-rgb) / <alpha-value>)",
+          text: "rgb(var(--cyber-text-rgb) / <alpha-value>)",
+          "on-accent": "rgb(var(--cyber-on-accent-rgb) / <alpha-value>)",
         },
       },
       fontFamily: {

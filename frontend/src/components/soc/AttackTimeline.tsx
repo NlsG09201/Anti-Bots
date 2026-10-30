@@ -89,10 +89,10 @@ export default function AttackTimeline({ streamId }: AttackTimelineProps) {
                     <p className="text-sm text-gray-400 mt-1">{event.description}</p>
                   </div>
                   <span className={`px-3 py-1 rounded text-xs font-semibold whitespace-nowrap ml-2
-                    ${event.severity === "CRITICAL" ? "bg-red-500 text-white" :
-                      event.severity === "HIGH" ? "bg-orange-500 text-white" :
+                    ${event.severity === "CRITICAL" ? "bg-red-500 text-white keep-white" :
+                      event.severity === "HIGH" ? "bg-orange-500 text-white keep-white" :
                       event.severity === "MEDIUM" ? "bg-yellow-500 text-black" :
-                      "bg-blue-500 text-white"}`}>
+                      "bg-blue-500 text-white keep-white"}`}>
                     {event.severity}
                   </span>
                 </div>

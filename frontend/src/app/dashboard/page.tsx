@@ -40,21 +40,19 @@ export default function SocDashboardPage() {
   const { overview: pmhOverview, loading: pmhLoading } = usePlatformMonitorHealth();
 
   return (
-    <div className="space-y-6 -m-2">
-      <div className="relative overflow-hidden rounded-2xl border border-cyber-accent/20 bg-gradient-to-r from-cyber-surface via-cyber-bg to-cyber-surface p-6 md:p-8">
-        <div className="absolute inset-0 scan-line pointer-events-none opacity-30" />
-        <div className="absolute top-0 right-0 w-64 h-64 bg-cyber-accent/5 rounded-full blur-3xl" />
+    <div className="space-y-6">
+      <div className="relative overflow-hidden rounded-2xl border border-cyber-border bg-cyber-surface p-5 sm:p-7">
+        <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-cyber-accent/5 blur-3xl" />
         <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Shield className="text-cyber-accent" size={28} />
-              <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
-                SOC Command Center
-              </h1>
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-cyber-accent">
+              <Shield size={15} /> Security overview
             </div>
-            <p className="text-cyber-muted text-sm max-w-xl">
-              Monitoreo SOC en tiempo real: Kick, YouTube Live y TikTok Live. Deteccion de bots,
-              raids, followbotting y spam con WebSocket y analisis IA.
+            <h1 className="text-2xl font-semibold tracking-tight text-cyber-text md:text-3xl">
+              Your live security workspace
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-cyber-muted">
+              Review channel activity, threat signals, and moderation alerts. Metrics reflect the data available from your connected channels.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

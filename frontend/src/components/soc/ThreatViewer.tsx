@@ -79,7 +79,7 @@ export default function ThreatViewer({ streamId, tenantId }: ThreatViewerProps) 
           name="sort_by"
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as "threat_score" | "join_count")}
-          className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600"
+          className="bg-gray-700 text-white keep-white px-3 py-1 rounded text-sm border border-gray-600"
         >
           <option value="threat_score">Sort by Threat Score</option>
           <option value="join_count">Sort by Join Count</option>

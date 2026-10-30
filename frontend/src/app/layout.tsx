@@ -3,8 +3,8 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "StreamShield - Anti-Bot Security Platform",
-  description: "Enterprise anti-bot protection for Twitch, Kick, and YouTube Live streamers",
+  title: "Anti-Bots AI | StreamShield Security",
+  description: "Monitor suspicious activity and moderation signals across your live streaming channels.",
   icons: { icon: "/icon.svg", apple: "/icon.svg" },
 };
 
