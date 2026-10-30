@@ -221,6 +221,7 @@ class Settings(BaseSettings):
     event_pipeline_enabled: bool = True
     event_pipeline_sync_fallback: bool = False
     event_queue_enabled: bool = True
+    event_queue_max_tries: int = Field(default=5, ge=1, le=20)
     event_stream_max_len: int = 200_000
     event_consumer_batch_size: int = 100
     event_consumer_block_ms: int = 2000

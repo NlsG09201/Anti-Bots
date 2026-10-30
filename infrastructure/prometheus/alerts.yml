@@ -1,0 +1,101 @@
+groups:
+  - name: streamshield.availability
+    rules:
+      - alert: StreamShieldAPIDown
+        expr: up{job="streamshield-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: StreamShield API is unavailable
+          description: Prometheus has been unable to scrape the API for two minutes.
+
+      - alert: StreamShieldPostgresExporterDown
+        expr: up{job="postgres"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: PostgreSQL metrics are unavailable
+          description: Prometheus has been unable to scrape the PostgreSQL exporter for five minutes.
+
+      - alert: StreamShieldRedisExporterDown
+        expr: up{job="redis"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Redis metrics are unavailable
+          description: Prometheus has been unable to scrape the Redis exporter for five minutes.
+
+      - alert: StreamShieldEventQueueUnavailable
+        expr: streamshield_event_queue_enabled == 1 and on (queue) streamshield_event_queue_available == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Event queue metrics are unavailable
+          description: The event queue is enabled but its depth cannot be collected.
+
+      - alert: StreamShieldEventQueueBacklog
+        expr: streamshield_event_queue_depth > 1000 and on (queue) streamshield_event_queue_available == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Event queue backlog is growing
+          description: More than 1000 arq jobs have remained queued for five minutes.
+
+      - alert: StreamShieldEventStreamUnavailable
+        expr: streamshield_event_stream_enabled == 1 and on (stream) streamshield_event_stream_available == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Event stream metrics are unavailable
+          description: The event pipeline is enabled but Redis Stream statistics cannot be collected.
+
+      - alert: StreamShieldEventStreamPendingBacklog
+        expr: streamshield_event_stream_pending > 1000 and on (stream) streamshield_event_stream_available == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Event stream has a large pending backlog
+          description: More than 1000 stream entries remain unacknowledged for five minutes.
+
+      - alert: StreamShieldEventStreamHasNoConsumers
+        expr: streamshield_event_stream_pending > 0 and on (stream) (streamshield_event_stream_consumers == 0) and on (stream) streamshield_event_stream_available == 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Pending events have no active consumers
+          description: An event stream has pending work but no active consumer group members.
+
+      - alert: StreamShieldDeadLetterQueueNotEmpty
+        expr: streamshield_event_dead_letter_length > 0 and streamshield_event_dead_letter_available == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Event dead-letter stream contains entries
+          description: Inspect the dead-letter backlog and determine whether entries can be safely replayed.
+
+      - alert: StreamShieldHighRequestErrorRatio
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: API server error ratio is above 5 percent
+          description: More than 5 percent of observed requests returned 5xx responses for five minutes.
+
+      - alert: StreamShieldHighRequestLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: API p95 latency is above two seconds
+          description: The API request p95 has remained above two seconds for five minutes.

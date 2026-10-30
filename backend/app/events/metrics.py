@@ -19,10 +19,20 @@ EVENT_QUEUE_DEPTH = Gauge(
     "Number of queued arq jobs waiting to be processed.",
     ["queue"],
 )
+EVENT_QUEUE_ENABLED = Gauge(
+    "streamshield_event_queue_enabled",
+    "Whether event queue processing is enabled by configuration.",
+    ["queue"],
+)
 EVENT_QUEUE_AVAILABLE = Gauge(
     "streamshield_event_queue_available",
     "Whether queue depth was successfully collected (1) or unavailable/disabled (0).",
     ["queue"],
+)
+EVENT_STREAM_ENABLED = Gauge(
+    "streamshield_event_stream_enabled",
+    "Whether the Redis Stream pipeline is enabled by configuration.",
+    ["stream"],
 )
 EVENT_STREAM_LENGTH = Gauge(
     "streamshield_event_stream_length",
@@ -58,8 +68,10 @@ async def refresh_event_pipeline_metrics() -> None:
     """Refresh gauges from Redis; values are independent of API status polling."""
     queue_stats = await get_queue_stats()
     queue_payload = queue_stats.get("queues", {})
+    queue_enabled = bool(get_settings().event_queue_enabled)
     queue_available = bool(
-        queue_stats.get("enabled")
+        queue_enabled
+        and queue_stats.get("configured")
         and queue_stats.get("available", True)
         and queue_payload
     )
@@ -68,19 +80,26 @@ async def refresh_event_pipeline_metrics() -> None:
             EVENT_QUEUE_DEPTH.labels(queue=queue_name).set(data["queued_count"])
             EVENT_QUEUE_AVAILABLE.labels(queue=queue_name).set(1)
 
-    # The event system currently has one arq queue, but publish an unavailable
-    # marker even when disabled so dashboards don't mistake stale values as fresh.
+    # The event system currently has one arq queue; keep a stable label when
+    # the queue is disabled or Redis stats cannot be queried.
     known_queue = next(iter(queue_payload), "ss:queue:events")
+    EVENT_QUEUE_ENABLED.labels(queue=known_queue).set(int(queue_enabled))
     if not queue_available:
         EVENT_QUEUE_AVAILABLE.labels(queue=known_queue).set(0)
 
     stream_stats = await get_event_bus().streams.pending_count()
+    stream_enabled = bool(get_settings().event_pipeline_enabled)
     for stream_name, stream_key in (
         ("main", STREAM_MAIN),
         ("priority", STREAM_PRIORITY),
     ):
         snapshot = stream_stats.get(stream_key, {})
-        available = bool(stream_stats.get("configured") and snapshot.get("available"))
+        EVENT_STREAM_ENABLED.labels(stream=stream_name).set(int(stream_enabled))
+        available = bool(
+            stream_enabled
+            and stream_stats.get("configured")
+            and snapshot.get("available")
+        )
         EVENT_STREAM_AVAILABLE.labels(stream=stream_name).set(int(available))
         if available:
             EVENT_STREAM_LENGTH.labels(stream=stream_name).set(snapshot.get("length", 0))
@@ -93,7 +112,9 @@ async def refresh_event_pipeline_metrics() -> None:
 
     dead_letter = stream_stats.get("dead_letter", {})
     dead_letter_available = bool(
-        stream_stats.get("configured") and dead_letter.get("available")
+        stream_enabled
+        and stream_stats.get("configured")
+        and dead_letter.get("available")
     )
     EVENT_DEAD_LETTER_AVAILABLE.set(int(dead_letter_available))
     if dead_letter_available:

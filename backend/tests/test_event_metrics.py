@@ -11,6 +11,7 @@ async def test_refresh_event_pipeline_metrics_exports_depth_and_backlog(monkeypa
     queue_name = "ss:queue:events"
     queue_snapshot = {
         "enabled": True,
+        "configured": True,
         "available": True,
         "queues": {queue_name: {"queued_count": 11}},
     }
@@ -27,10 +28,16 @@ async def test_refresh_event_pipeline_metrics_exports_depth_and_backlog(monkeypa
 
     monkeypatch.setattr(metrics, "get_queue_stats", lambda: _resolved(queue_snapshot))
     monkeypatch.setattr(metrics, "get_event_bus", lambda: SimpleNamespace(streams=FakeStreams()))
+    monkeypatch.setattr(
+        metrics,
+        "get_settings",
+        lambda: SimpleNamespace(event_queue_enabled=True, event_pipeline_enabled=True),
+    )
 
     await metrics.refresh_event_pipeline_metrics()
 
     assert metrics.EVENT_QUEUE_DEPTH.labels(queue=queue_name)._value.get() == 11
+    assert metrics.EVENT_QUEUE_ENABLED.labels(queue=queue_name)._value.get() == 1
     assert metrics.EVENT_QUEUE_AVAILABLE.labels(queue=queue_name)._value.get() == 1
     assert metrics.EVENT_STREAM_LENGTH.labels(stream="main")._value.get() == 120
     assert metrics.EVENT_STREAM_PENDING.labels(stream="main")._value.get() == 8
@@ -51,6 +58,11 @@ async def test_refresh_event_pipeline_metrics_marks_unavailable_sources(monkeypa
 
     monkeypatch.setattr(metrics, "get_queue_stats", disabled_queue_stats)
     monkeypatch.setattr(metrics, "get_event_bus", lambda: SimpleNamespace(streams=FakeStreams()))
+    monkeypatch.setattr(
+        metrics,
+        "get_settings",
+        lambda: SimpleNamespace(event_queue_enabled=False, event_pipeline_enabled=False),
+    )
 
     await metrics.refresh_event_pipeline_metrics()
 
@@ -58,6 +70,8 @@ async def test_refresh_event_pipeline_metrics_marks_unavailable_sources(monkeypa
         metrics.EVENT_QUEUE_AVAILABLE.labels(queue="ss:queue:events")._value.get()
         == 0
     )
+    assert metrics.EVENT_QUEUE_ENABLED.labels(queue="ss:queue:events")._value.get() == 0
+    assert metrics.EVENT_STREAM_ENABLED.labels(stream="main")._value.get() == 0
     assert metrics.EVENT_STREAM_AVAILABLE.labels(stream="main")._value.get() == 0
     assert metrics.EVENT_STREAM_AVAILABLE.labels(stream="priority")._value.get() == 0
     assert metrics.EVENT_DEAD_LETTER_AVAILABLE._value.get() == 0

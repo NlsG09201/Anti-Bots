@@ -198,10 +198,11 @@
 
 ## arq duplicate enqueue handling (2026-10-30)
 
-- `enqueue_event_job` now treats arq's `None` response for an already-existing deterministic job ID as an accepted duplicate. The stream consumer therefore acknowledges the already-queued event instead of processing it inline a second time.
+- `enqueue_event_job` treats arq's `None` response as accepted only when the deterministic job is active or its retained result succeeded. A retained failure or missing job state falls back to inline processing; a processing exception leaves the Redis Stream entry pending for reclaim.
 - The Redis pool is closed in a `finally` block, and close errors are logged without converting an accepted enqueue into an inline fallback.
-- Added tests for duplicate job IDs and close failures after enqueue.
-- Verification: full backend suite passed (`125 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
+- Added tests for active duplicates, successful and failed retained results, missing job state, inline recovery, and close failures after enqueue.
+- arq's enqueue implementation can return `None` for a retained result, not only an active queued job. This distinction is necessary to avoid acknowledging a stream entry whose previous arq attempt exhausted its retries.
+- Verification after the correction: full backend suite passed (`135 passed, 1 skipped, 20 warnings`). Warnings are the existing sklearn artifact-version and framework deprecations.
 
 ## arq queue depth observability (2026-10-30)
 
@@ -210,12 +211,25 @@
 - Added tests for real-depth reporting, shared category labels, disabled state, safe failure reporting, and pool cleanup.
 - Verification: full backend suite passed (`128 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
 
+## arq retry exhaustion dead-lettering (2026-10-30)
+
+- The event worker now uses a configurable `EVENT_QUEUE_MAX_TRIES` limit (default 5, constrained to 1–20). When a stream-backed pipeline job fails on its final attempt, it persists the event and error type to the existing dead-letter stream before acknowledging the already-enqueued source entry.
+- Intermediate failures continue to raise to arq for retry. Added tests verify intermediate attempts do not ack and terminal failures write the dead letter before acking.
+- Verification: focused event-delivery tests passed (`13 passed`); full backend suite passed (`137 passed, 1 skipped, 20 warnings`). Existing sklearn artifact-version and framework deprecation warnings remain.
+
 ## Prometheus event-pipeline gauges (2026-10-30)
 
 - Added bounded-cardinality gauges for arq queue depth/availability, Redis Stream length/pending/consumer count, and dead-letter length/availability.
 - A tracked API-lifespan task refreshes those gauges at the configured `EVENT_METRICS_REFRESH_SECONDS` interval, independent of authenticated status endpoint traffic; task cancellation follows the existing lifespan registry.
 - Added tests for metric refresh and unavailable-source markers.
 - Verification: full backend suite passed (`130 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
+
+## Prometheus alert rules (2026-10-30)
+
+- Added alert rules for API and exporter availability, HTTP 5xx ratio and p95 latency, enabled queue/stream availability, event backlogs, missing stream consumers, and dead-letter contents. Alert rules use availability and feature-enabled gauges so intentionally disabled components do not fire outage alerts.
+- The enterprise Compose stack mounts the full Prometheus configuration directory. CI runs `promtool check config` against the config and alert files.
+- Updated the deployment guide with alert locations and the current operational limit: no Alertmanager receiver is configured, so alerts are visible in Prometheus but are not sent to an external notification channel.
+- Verification: full backend suite passed (`137 passed, 1 skipped, 20 warnings`); `git diff --check` passed. Prometheus rule parsing awaits the new CI check because Docker Desktop is unavailable in this environment.
 
 ## Enterprise Compose monitoring services (2026-10-30)
 

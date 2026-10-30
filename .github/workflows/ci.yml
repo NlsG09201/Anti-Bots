@@ -63,6 +63,12 @@ jobs:
         run: docker build --tag streamshield-backend-api:ci --file Dockerfile .
       - name: Build worker container image
         run: docker build --tag streamshield-backend-worker:ci --file Dockerfile.worker .
+      - name: Validate Prometheus configuration and alert rules
+        run: >-
+          docker run --rm
+          --volume "$GITHUB_WORKSPACE/infrastructure/prometheus:/etc/prometheus:ro"
+          prom/prometheus:v3.15.1
+          promtool check config /etc/prometheus/prometheus.yml
 
   frontend:
     runs-on: ubuntu-latest

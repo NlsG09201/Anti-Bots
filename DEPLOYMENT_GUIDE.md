@@ -442,6 +442,12 @@ Create dashboards for:
 - Cache hit rates
 - Alert volume
 
+### Prometheus Alert Rules
+
+The enterprise Compose stack evaluates `infrastructure/prometheus/alerts.yml`. It covers API/exporter availability, HTTP 5xx ratio and p95 latency, queue and stream availability/backlogs, pending events without consumers, and dead-letter entries. The local Prometheus UI is available at `http://127.0.0.1:9090/alerts`.
+
+The repository configuration does not define an Alertmanager receiver, so rules are evaluated and visible in Prometheus but notifications are not delivered externally. Connect an Alertmanager and configure a team-owned receiver before relying on paging or chat notifications.
+
 ## Scaling Considerations
 
 ### Horizontal Scaling

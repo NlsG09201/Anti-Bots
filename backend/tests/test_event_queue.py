@@ -1,8 +1,11 @@
-import pytest
+from types import SimpleNamespace
 from uuid import uuid4
+
+import pytest
 
 import arq
 import arq.connections
+import arq.jobs
 
 from app.events.queue import UNIFIED_QUEUE, enqueue_event_job, get_queue_stats
 from app.events.schemas import PipelineEvent
@@ -16,11 +19,21 @@ class FakeRedisSettings:
 
 
 class FakePool:
-    def __init__(self, result=None, error=None, close_error=None, queue_count=0):
+    def __init__(
+        self,
+        result=None,
+        error=None,
+        close_error=None,
+        queue_count=0,
+        result_info=None,
+        job_status="queued",
+    ):
         self.result = result
         self.error = error
         self.close_error = close_error
         self.queue_count = queue_count
+        self.result_info = result_info
+        self.job_status = job_status
         self.closed = False
 
     async def enqueue_job(self, *_args, **_kwargs):
@@ -39,6 +52,17 @@ class FakePool:
         return self.queue_count
 
 
+class FakeArqJob:
+    def __init__(self, _job_id, pool, _queue_name):
+        self.pool = pool
+
+    async def result_info(self):
+        return self.pool.result_info
+
+    async def status(self):
+        return self.pool.job_status
+
+
 def _event():
     return PipelineEvent.from_ingest(
         stream_id=uuid4(),
@@ -49,7 +73,7 @@ def _event():
 
 
 @pytest.mark.asyncio
-async def test_existing_arq_job_is_reported_as_accepted_duplicate(monkeypatch):
+async def test_active_arq_duplicate_is_reported_as_accepted(monkeypatch):
     event = _event()
     pool = FakePool(result=None)  # arq signals an existing job with None
 
@@ -58,6 +82,7 @@ async def test_existing_arq_job_is_reported_as_accepted_duplicate(monkeypatch):
 
     monkeypatch.setattr(arq, "create_pool", create_pool)
     monkeypatch.setattr(arq.connections, "RedisSettings", FakeRedisSettings)
+    monkeypatch.setattr(arq.jobs, "Job", FakeArqJob)
     monkeypatch.setattr(queue_module, "redis_is_configured", lambda: True)
     monkeypatch.setattr(queue_module.settings, "event_queue_enabled", True)
 
@@ -68,9 +93,69 @@ async def test_existing_arq_job_is_reported_as_accepted_duplicate(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_successful_arq_result_is_reported_as_accepted_duplicate(monkeypatch):
+    event = _event()
+    pool = FakePool(result=None, result_info=SimpleNamespace(success=True))
+
+    async def create_pool(_settings):
+        return pool
+
+    monkeypatch.setattr(arq, "create_pool", create_pool)
+    monkeypatch.setattr(arq.connections, "RedisSettings", FakeRedisSettings)
+    monkeypatch.setattr(arq.jobs, "Job", FakeArqJob)
+    monkeypatch.setattr(queue_module, "redis_is_configured", lambda: True)
+    monkeypatch.setattr(queue_module.settings, "event_queue_enabled", True)
+
+    result = await enqueue_event_job(event, stream_entry_id="123-0")
+
+    assert result == f"{event.category.value}:{event.stream_id}:{event.enqueued_at}"
+    assert pool.closed
+
+
+@pytest.mark.asyncio
+async def test_failed_arq_result_is_not_treated_as_accepted(monkeypatch):
+    pool = FakePool(
+        result=None,
+        result_info=SimpleNamespace(success=False, result=RuntimeError()),
+    )
+
+    async def create_pool(_settings):
+        return pool
+
+    monkeypatch.setattr(arq, "create_pool", create_pool)
+    monkeypatch.setattr(arq.connections, "RedisSettings", FakeRedisSettings)
+    monkeypatch.setattr(arq.jobs, "Job", FakeArqJob)
+    monkeypatch.setattr(queue_module, "redis_is_configured", lambda: True)
+    monkeypatch.setattr(queue_module.settings, "event_queue_enabled", True)
+
+    assert await enqueue_event_job(_event(), stream_entry_id="123-0") is None
+    assert pool.closed
+
+
+@pytest.mark.asyncio
+async def test_missing_arq_duplicate_is_not_treated_as_accepted(monkeypatch):
+    pool = FakePool(result=None, job_status="not_found")
+
+    async def create_pool(_settings):
+        return pool
+
+    monkeypatch.setattr(arq, "create_pool", create_pool)
+    monkeypatch.setattr(arq.connections, "RedisSettings", FakeRedisSettings)
+    monkeypatch.setattr(arq.jobs, "Job", FakeArqJob)
+    monkeypatch.setattr(queue_module, "redis_is_configured", lambda: True)
+    monkeypatch.setattr(queue_module.settings, "event_queue_enabled", True)
+
+    assert await enqueue_event_job(_event(), stream_entry_id="123-0") is None
+    assert pool.closed
+
+
+@pytest.mark.asyncio
 async def test_pool_close_error_does_not_turn_accepted_job_into_inline_fallback(monkeypatch):
     event = _event()
-    pool = FakePool(result=None, close_error=RuntimeError("close failed"))
+    pool = FakePool(
+        result=SimpleNamespace(job_id="accepted-job"),
+        close_error=RuntimeError("close failed"),
+    )
 
     async def create_pool(_settings):
         return pool
@@ -82,7 +167,7 @@ async def test_pool_close_error_does_not_turn_accepted_job_into_inline_fallback(
 
     result = await enqueue_event_job(event)
 
-    assert result == f"{event.category.value}:{event.stream_id}:{event.enqueued_at}"
+    assert result == "accepted-job"
     assert pool.closed
 
 

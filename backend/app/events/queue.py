@@ -56,10 +56,36 @@ async def enqueue_event_job(
                 _queue_name=UNIFIED_QUEUE,
                 _job_id=job_id,
             )
-            # arq returns None when this deterministic ID is already queued or
-            # retained as a result. It was accepted earlier, so do not process
-            # the duplicate inline.
-            return job.job_id if job else job_id
+            if job:
+                return job.job_id
+
+            # arq returns None for both an active job and a retained result.
+            # A retained failed result is not an accepted delivery: allow the
+            # stream handler to retry inline, and leave the entry pending if
+            # that retry fails too.
+            from arq.jobs import Job
+
+            duplicate = Job(job_id, pool, _queue_name=UNIFIED_QUEUE)
+            result = await duplicate.result_info()
+            if result is not None:
+                if result.success:
+                    return job_id
+                logger.warning(
+                    "event_queue_duplicate_has_failed_result",
+                    error_type=type(result.result).__name__,
+                )
+                return None
+
+            status = await duplicate.status()
+            status_value = getattr(status, "value", status)
+            if status_value in {"queued", "deferred", "in_progress"}:
+                return job_id
+
+            logger.warning(
+                "event_queue_duplicate_not_active",
+                status=str(status_value),
+            )
+            return None
         finally:
             try:
                 await pool.close()
