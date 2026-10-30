@@ -92,3 +92,43 @@ async def test_alert_action_uses_tenant_id_not_stream_id():
     assert len(db.added) == 1
     assert db.added[0].tenant_id == tenant_id
     assert db.added[0].tenant_id != stream_id
+
+
+@pytest.mark.asyncio
+async def test_ban_action_passes_associated_attack_id_to_mitigation():
+    class FakeMitigation:
+        def __init__(self):
+            self.kwargs = None
+
+        async def apply_mitigation(self, **kwargs):
+            self.kwargs = kwargs
+            return [object()]
+
+    attack_id = uuid4()
+    tenant_id = uuid4()
+    incident = SimpleNamespace(
+        id=uuid4(), stream_id=uuid4(), attack_ids=[str(attack_id)],
+        related_ips=["203.0.113.20"], related_fingerprints=[],
+    )
+    executor = PlaybookExecutor(SimpleNamespace())
+    mitigation = FakeMitigation()
+    executor.mitigation = mitigation
+
+    result = await executor._action_ban({"target_type": "ip"}, incident, tenant_id)
+
+    assert result["banned"] == 1
+    assert mitigation.kwargs["attack_id"] == attack_id
+    assert mitigation.kwargs["tenant_id"] == tenant_id
+
+
+@pytest.mark.asyncio
+async def test_ban_action_without_associated_attack_does_not_call_mitigation():
+    incident = SimpleNamespace(
+        id=uuid4(), stream_id=uuid4(), attack_ids=[],
+        related_ips=["203.0.113.20"], related_fingerprints=[],
+    )
+    executor = PlaybookExecutor(SimpleNamespace())
+
+    result = await executor._action_ban({"target_type": "ip"}, incident, uuid4())
+
+    assert result == {"banned": 0, "reason": "no_associated_attack"}

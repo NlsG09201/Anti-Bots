@@ -363,3 +363,9 @@
 - Playbook creation, updates, deletion, and execution now require the stream moderator role or higher; authenticated viewers retain read access but cannot configure or trigger moderation actions.
 - Added an API regression test proving viewer access to execution is rejected with 403.
 - Verification: authorization test passed; full backend suite passed (`161 passed, 1 skipped, 23 warnings`); `git diff --check` passed. Existing model-artifact and framework deprecation warnings remain.
+
+## Playbook ban execution repair (2026-10-30)
+
+- Fixed a runtime contract mismatch: playbook ban actions called `MitigationService.apply_mitigation` without its required `attack_id`, causing every such action to fail. The executor now parses and supplies an associated incident attack ID, and skips safely with a stable reason if none is associated.
+- Added regression tests for successful dispatch and the no-associated-attack case.
+- Verification: focused playbook tests passed (`5 passed`); full backend suite passed (`163 passed, 1 skipped, 23 warnings`); `git diff --check` passed.

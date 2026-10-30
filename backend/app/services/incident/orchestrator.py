@@ -172,6 +172,14 @@ class PlaybookExecutor:
         if not targets:
             return {"banned": 0, "reason": "no_targets"}
 
+        attack_ids = incident.attack_ids or []
+        if not attack_ids:
+            return {"banned": 0, "reason": "no_associated_attack"}
+        try:
+            attack_id = UUID(str(attack_ids[0]))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("incident_attack_reference_invalid") from exc
+
         duration_hours = config.get("duration_hours", 24)
 
         from app.infrastructure.database.models import MitigationAction
@@ -180,6 +188,7 @@ class PlaybookExecutor:
         bans = await self.mitigation.apply_mitigation(
             stream_id=incident.stream_id,
             tenant_id=tenant_id,
+            attack_id=attack_id,
             action=action,
             targets=targets,
             evidence={"playbook_auto_ban": True, "incident_id": str(incident.id)},
