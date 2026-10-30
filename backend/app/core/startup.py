@@ -100,6 +100,7 @@ def run_startup_checks() -> None:
             "threat_intel_ipapi": settings.threat_intel_ipapi_enabled,
             "event_pipeline": settings.event_pipeline_enabled,
             "event_queue_arq": settings.event_queue_enabled,
+            "openai": settings.ai_enabled and bool(settings.openai_api_key),
             "cloudflare": bool(settings.cloudflare_api_token and settings.cloudflare_zone_id),
             "twitch": bool(settings.twitch_client_id),
             "discord": bool(settings.discord_webhook_url),

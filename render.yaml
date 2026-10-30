@@ -33,6 +33,12 @@ services:
         value: "false"
       - key: EVENT_QUEUE_ENABLED
         value: "true"
+      - key: AI_ENABLED
+        value: "true"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
       - key: PLATFORM_MONITOR_ENABLED
         value: "true"
       - key: LIVE_INTEL_ENABLED
@@ -67,6 +73,12 @@ services:
         value: "true"
       - key: EVENT_QUEUE_ENABLED
         value: "true"
+      - key: AI_ENABLED
+        value: "true"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
       - key: LIVE_INTEL_ENABLED
         value: "true"
       - key: WEKA_J48_ENABLED
