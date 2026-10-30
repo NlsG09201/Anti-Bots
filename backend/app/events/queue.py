@@ -41,28 +41,6 @@ async def enqueue_event_job(
     """Encola procesamiento en arq (BullMQ-equivalente)."""
     if not settings.event_queue_enabled or not redis_is_configured():
         return None
-
-
-async def enqueue_kick_webhook_job(webhook_event_id: str) -> Optional[str]:
-    """Queue a durable, already-verified Kick delivery for threat processing."""
-    if not settings.event_queue_enabled or not redis_is_configured():
-        return None
-    try:
-        from arq import create_pool
-        from arq.connections import RedisSettings
-
-        pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
-        job = await pool.enqueue_job(
-            "process_kick_webhook_event_job",
-            webhook_event_id,
-            _queue_name=UNIFIED_QUEUE,
-            _job_id=f"kick-webhook:{webhook_event_id}:{uuid4().hex}",
-        )
-        await pool.close()
-        return job.job_id if job else f"kick-webhook:{webhook_event_id}"
-    except Exception as exc:
-        logger.warning("kick_webhook_queue_error", error_type=type(exc).__name__)
-        return None
     try:
         from arq import create_pool
         from arq.connections import RedisSettings
@@ -80,6 +58,30 @@ async def enqueue_kick_webhook_job(webhook_event_id: str) -> Optional[str]:
         return job.job_id if job else None
     except Exception as exc:
         logger.warning("event_queue_enqueue_failed", error=str(exc))
+        return None
+
+
+async def enqueue_kick_webhook_job(webhook_event_id: str) -> Optional[str]:
+    """Queue a durable, already-verified Kick delivery for threat processing."""
+    if not settings.event_queue_enabled or not redis_is_configured():
+        return None
+    try:
+        from arq import create_pool
+        from arq.connections import RedisSettings
+
+        pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        try:
+            job = await pool.enqueue_job(
+                "process_kick_webhook_event_job",
+                webhook_event_id,
+                _queue_name=UNIFIED_QUEUE,
+                _job_id=f"kick-webhook:{webhook_event_id}:{uuid4().hex}",
+            )
+        finally:
+            await pool.close()
+        return job.job_id if job else f"kick-webhook:{webhook_event_id}"
+    except Exception as exc:
+        logger.warning("kick_webhook_queue_error", error_type=type(exc).__name__)
         return None
 
 

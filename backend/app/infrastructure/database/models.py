@@ -15,6 +15,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
@@ -178,7 +179,14 @@ class StreamEvent(UUIDMixin, TimestampMixin, Base):
 class KickWebhookEvent(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "kick_webhook_events"
     __table_args__ = (
-        UniqueConstraint("message_id", name="uq_kick_webhook_message_id"),
+        UniqueConstraint("message_id", "stream_id", name="uq_kick_webhook_message_stream"),
+        Index(
+            "uq_kick_webhook_untracked_message",
+            "message_id",
+            unique=True,
+            postgresql_where=text("stream_id IS NULL"),
+            sqlite_where=text("stream_id IS NULL"),
+        ),
         Index("ix_kick_webhook_events_status_received", "processing_status", "received_at"),
         Index("ix_kick_webhook_events_stream_received", "stream_id", "received_at"),
     )
@@ -186,7 +194,7 @@ class KickWebhookEvent(UUIDMixin, TimestampMixin, Base):
     message_id: Mapped[str] = mapped_column(String(64), nullable=False)
     subscription_id: Mapped[Optional[str]] = mapped_column(String(64))
     stream_id: Mapped[Optional[UUID]] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("streams.id", ondelete="SET NULL")
+        PGUUID(as_uuid=True), ForeignKey("streams.id", ondelete="CASCADE")
     )
     broadcaster_user_id: Mapped[str] = mapped_column(String(64), nullable=False)
     event_type: Mapped[str] = mapped_column(String(80), nullable=False)

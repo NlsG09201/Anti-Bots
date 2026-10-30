@@ -207,6 +207,25 @@ async def process_stream_event(
         risk_score = max(risk_score, rt_assessment.risk_score)
 
     meta = dict(event.metadata)
+    if source in ("platform_kick", "kick_webhook"):
+        # Chat content is analyzed above and retained in the webhook inbox for
+        # at most 24h; do not copy raw Kick content into the long-lived event log.
+        for key in (
+            "content",
+            "sender",
+            "broadcaster",
+            "follower",
+            "subscriber",
+            "gifter",
+            "giftees",
+            "redeemer",
+            "banned_user",
+            "moderator",
+            "replies_to",
+            "emotes",
+        ):
+            meta.pop(key, None)
+        meta["kick_payload_content_retained"] = False
     meta["ingest_source"] = source
     meta["network_policy"] = policy.to_dict()
     if tbi_result:
@@ -268,7 +287,7 @@ async def process_stream_event(
     await db.flush()
 
     # Widget / pulse: solo registro de IP para proxy; no aparecen en lista de chat
-    if source != "widget" and event.event_type not in ("viewer_pulse",):
+    if source not in ("widget", "kick_webhook") and event.event_type not in ("viewer_pulse",):
         viewer_svc = ViewerSessionService(db)
         await viewer_svc.upsert_from_event(
             stream.id,

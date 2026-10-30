@@ -35,9 +35,9 @@ def upgrade() -> None:
         sa.Column("processed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(["stream_id"], ["streams.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["stream_id"], ["streams.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("message_id", name="uq_kick_webhook_message_id"),
+        sa.UniqueConstraint("message_id", "stream_id", name="uq_kick_webhook_message_stream"),
     )
     op.create_index(
         "ix_kick_webhook_events_status_received",
@@ -49,9 +49,30 @@ def upgrade() -> None:
         "kick_webhook_events",
         ["stream_id", "received_at"],
     )
+    op.create_index(
+        "uq_kick_webhook_untracked_message",
+        "kick_webhook_events",
+        ["message_id"],
+        unique=True,
+        postgresql_where=sa.text("stream_id IS NULL"),
+    )
+    # Older Kick OAuth setup enabled auto-mitigation by default without an
+    # explicit channel-owner action. New webhook findings are alert-only.
+    op.execute(
+        """
+        UPDATE streams
+        SET settings = jsonb_set(
+            jsonb_set(COALESCE(settings, '{}'::jsonb), '{auto_mitigate}', 'false'::jsonb, true),
+            '{kick_mitigation_default_reviewed}', 'true'::jsonb, true
+        )
+        WHERE platform::text IN ('KICK', 'kick')
+          AND settings->>'kick_mitigation_default_reviewed' IS DISTINCT FROM 'true'
+        """
+    )
 
 
 def downgrade() -> None:
+    op.drop_index("uq_kick_webhook_untracked_message", table_name="kick_webhook_events")
     op.drop_index("ix_kick_webhook_events_stream_received", table_name="kick_webhook_events")
     op.drop_index("ix_kick_webhook_events_status_received", table_name="kick_webhook_events")
     op.drop_table("kick_webhook_events")

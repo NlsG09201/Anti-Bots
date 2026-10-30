@@ -30,4 +30,22 @@ async def run_startup_migrations(engine: AsyncEngine) -> None:
                 """
             )
         )
-    logger.info("startup_migrations_applied", migrations=["platform_tiktok"])
+        await conn.execute(
+            text(
+                """
+                UPDATE streams
+                SET settings = jsonb_set(
+                    jsonb_set(COALESCE(settings, '{}'::jsonb), '{auto_mitigate}', 'false'::jsonb, true),
+                    '{kick_mitigation_default_reviewed}',
+                    'true'::jsonb,
+                    true
+                )
+                WHERE platform::text IN ('KICK', 'kick')
+                  AND settings->>'kick_mitigation_default_reviewed' IS DISTINCT FROM 'true'
+                """
+            )
+        )
+    logger.info(
+        "startup_migrations_applied",
+        migrations=["platform_tiktok", "kick_auto_mitigation_default_off"],
+    )

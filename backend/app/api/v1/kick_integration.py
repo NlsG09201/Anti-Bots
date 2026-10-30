@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import quote
 from uuid import UUID
@@ -10,7 +11,7 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
@@ -19,7 +20,7 @@ from app.core.exceptions import AuthorizationError, NotFoundError, ValidationErr
 from app.core.logging import get_logger
 from app.core.security import encrypt_value
 from app.infrastructure.cache.redis_client import RedisCache
-from app.infrastructure.database.models import Platform, Stream, UserRole
+from app.infrastructure.database.models import AuditLog, KickWebhookEvent, Platform, Stream, UserRole
 from app.infrastructure.database.session import get_db
 from app.integrations.kick.constants import resolve_kick_redirect_uri
 from app.integrations.kick.oauth import KickOAuth, kick_credentials_valid
@@ -201,7 +202,10 @@ async def kick_callback(
         "monitor_mode": False,
         "soc_monitor": True,
         "is_owned": True,
-        "auto_mitigate": True,
+        # New connections receive AI alerts first. Automatic bans/timeouts stay
+        # disabled until the channel owner explicitly enables mitigation.
+        "auto_mitigate": False,
+        "kick_mitigation_default_reviewed": True,
         "force_monitor": True,
     }
     expires_in = int(token_data.get("expires_in") or 3600)
@@ -233,13 +237,43 @@ async def kick_callback(
 
     await db.commit()
     try:
-        await oauth.subscribe_chat_events(access_token)
+        previous_settings = dict(stream.settings or {})
+        subscription_result = await oauth.reconcile_event_subscriptions(
+            access_token,
+            previously_requested=previous_settings.get("kick_webhook_subscriptions", []),
+            requested_at=previous_settings.get("kick_webhook_subscriptions_requested_at"),
+        )
         meta = dict(stream.settings or {})
-        meta["kick_chat_webhook_subscribed"] = True
+        meta["kick_webhook_subscriptions"] = (
+            subscription_result.get("subscribed", [])
+            + subscription_result.get("created", [])
+            + subscription_result.get("assumed", [])
+        )
+        if subscription_result.get("created"):
+            meta["kick_webhook_subscriptions_requested_at"] = datetime.now(timezone.utc).isoformat()
+        meta["kick_webhook_subscriptions_verified"] = bool(
+            subscription_result.get("verified_by_api")
+        )
+        meta["kick_chat_webhook_subscribed"] = (
+            "chat.message.sent" in meta["kick_webhook_subscriptions"]
+        )
+        meta["kick_webhook_enabled"] = bool(meta["kick_webhook_subscriptions"])
+        meta["kick_webhook_subscription_error"] = (
+            ",".join(subscription_result.get("failed", [])) or None
+        )
+        meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
         meta["kick_webhook_callback_url"] = settings.kick_webhook_callback_url
         stream.settings = meta
         await db.commit()
-    except httpx.HTTPError as exc:
+    except Exception as exc:
+        meta = dict(stream.settings or {})
+        meta["kick_webhook_subscription_error"] = type(exc).__name__
+        meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
+        stream.settings = meta
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
         # OAuth connection stays valid if the developer app has not enabled
         # its public webhook endpoint yet; expose the reason in Render logs.
         logger.warning(
@@ -262,6 +296,29 @@ async def kick_status(current_user: CurrentUser, db: AsyncSession = Depends(get_
         )
     )
     streams = result.scalars().all()
+    stream_ids = [s.id for s in streams]
+    delivery_counts: dict[str, dict[str, int]] = {}
+    latest_delivery: dict[str, KickWebhookEvent] = {}
+    if stream_ids:
+        counts_result = await db.execute(
+            select(
+                KickWebhookEvent.stream_id,
+                KickWebhookEvent.processing_status,
+                func.count(KickWebhookEvent.id),
+            )
+            .where(KickWebhookEvent.stream_id.in_(stream_ids))
+            .group_by(KickWebhookEvent.stream_id, KickWebhookEvent.processing_status)
+        )
+        for stream_id, status, count in counts_result.all():
+            delivery_counts.setdefault(str(stream_id), {})[status] = count
+        latest_result = await db.execute(
+            select(KickWebhookEvent)
+            .where(KickWebhookEvent.stream_id.in_(stream_ids))
+            .order_by(KickWebhookEvent.received_at.desc())
+            .limit(1000)
+        )
+        for event in latest_result.scalars().all():
+            latest_delivery.setdefault(str(event.stream_id), event)
     return {
         "connected": any(s.oauth_token_encrypted for s in streams),
         "configured": kick_credentials_valid(),
@@ -273,6 +330,36 @@ async def kick_status(current_user: CurrentUser, db: AsyncSession = Depends(get_
                 "external_id": s.external_id,
                 "is_live": s.is_live,
                 "has_oauth": bool(s.oauth_token_encrypted),
+                "webhook_subscriptions": (s.settings or {}).get("kick_webhook_subscriptions", []),
+                "webhook_subscriptions_verified": (s.settings or {}).get("kick_webhook_subscriptions_verified", False),
+                "webhook_last_checked_at": (s.settings or {}).get("kick_webhook_subscriptions_checked_at"),
+                "webhook_subscription_error": (s.settings or {}).get("kick_webhook_subscription_error"),
+                "webhook_deliveries": {
+                    "pending": delivery_counts.get(str(s.id), {}).get("pending", 0),
+                    "processing": delivery_counts.get(str(s.id), {}).get("processing", 0),
+                    "processed": delivery_counts.get(str(s.id), {}).get("processed", 0),
+                    "ignored": delivery_counts.get(str(s.id), {}).get("ignored", 0),
+                    "failed": delivery_counts.get(str(s.id), {}).get("failed", 0),
+                    "last_event_type": (
+                        latest_delivery[str(s.id)].event_type if str(s.id) in latest_delivery else None
+                    ),
+                    "last_status": (
+                        latest_delivery[str(s.id)].processing_status
+                        if str(s.id) in latest_delivery
+                        else None
+                    ),
+                    "last_processing_error": (
+                        latest_delivery[str(s.id)].last_error
+                        if str(s.id) in latest_delivery
+                        else None
+                    ),
+                    "last_received_at": (
+                        latest_delivery[str(s.id)].received_at.isoformat()
+                        if str(s.id) in latest_delivery
+                        and latest_delivery[str(s.id)].received_at
+                        else None
+                    ),
+                },
                 "can_disconnect": s.owner_id == current_user.id or current_user.role in (
                     UserRole.ADMIN,
                     UserRole.SUPER_ADMIN,
@@ -281,6 +368,142 @@ async def kick_status(current_user: CurrentUser, db: AsyncSession = Depends(get_
             for s in streams
         ],
     }
+
+
+@router.post("/events/{message_id}/retry")
+async def retry_kick_webhook_event(
+    message_id: str,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(KickWebhookEvent, Stream)
+        .join(Stream, KickWebhookEvent.stream_id == Stream.id)
+        .where(
+            KickWebhookEvent.message_id == message_id,
+            Stream.tenant_id == current_user.tenant_id,
+        )
+    )
+    pair = result.first()
+    if not pair:
+        raise NotFoundError("Kick webhook event")
+    event, stream = pair
+    if stream.owner_id != current_user.id and current_user.role not in (
+        UserRole.ADMIN,
+        UserRole.SUPER_ADMIN,
+    ):
+        raise AuthorizationError("Only the account owner or a tenant administrator can retry webhook processing")
+    if event.processing_status not in ("failed", "pending"):
+        raise ValidationError("Only pending or failed Kick deliveries can be retried")
+    event.processing_status = "pending"
+    event.processing_attempts = 0
+    event.last_error = None
+    db.add(
+        AuditLog(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            action="kick.webhook.event_retried",
+            resource_type="kick_webhook_event",
+            resource_id=event.message_id,
+            details={"stream_id": str(stream.id)},
+        )
+    )
+    await db.commit()
+    from app.events.queue import enqueue_kick_webhook_job
+
+    job_id = await enqueue_kick_webhook_job(str(event.id))
+    if not job_id:
+        return {"status": "pending", "queued": False}
+    return {"status": "pending", "queued": True}
+
+
+@router.post("/subscriptions/reconcile")
+async def reconcile_kick_subscriptions(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Stream).where(
+            Stream.tenant_id == current_user.tenant_id,
+            Stream.platform == Platform.KICK,
+        )
+    )
+    streams = result.scalars().all()
+    oauth = KickOAuth()
+    outcomes = []
+    for stream in streams:
+        if stream.owner_id != current_user.id and current_user.role not in (
+            UserRole.ADMIN,
+            UserRole.SUPER_ADMIN,
+        ):
+            outcomes.append({"stream_id": str(stream.id), "status": "not_authorized"})
+            continue
+        if (stream.settings or {}).get("is_owned") and not stream.oauth_token_encrypted:
+            outcomes.append({"stream_id": str(stream.id), "status": "not_connected"})
+            continue
+        try:
+            from app.services.platforms.oauth_tokens import get_stream_access_token
+
+            token = await get_stream_access_token(stream)
+            app_token = token is None
+            token = token or await oauth.get_app_access_token()
+            subscriptions = await oauth.reconcile_event_subscriptions(
+                token,
+                str(stream.external_id) if app_token else None,
+                previously_requested=(stream.settings or {}).get("kick_webhook_subscriptions", []),
+                requested_at=(stream.settings or {}).get("kick_webhook_subscriptions_requested_at"),
+            )
+            meta = dict(stream.settings or {})
+            meta["kick_webhook_subscriptions"] = (
+                subscriptions.get("subscribed", []) + subscriptions.get("created", [])
+                + subscriptions.get("assumed", [])
+            )
+            if subscriptions.get("created"):
+                meta["kick_webhook_subscriptions_requested_at"] = datetime.now(timezone.utc).isoformat()
+            meta["kick_webhook_subscriptions_verified"] = bool(
+                subscriptions.get("verified_by_api")
+            )
+            meta["kick_webhook_subscription_error"] = (
+                ",".join(subscriptions.get("failed", [])) or None
+            )
+            meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
+            meta["kick_chat_webhook_subscribed"] = (
+                "chat.message.sent" in meta["kick_webhook_subscriptions"]
+            )
+            meta["kick_webhook_enabled"] = bool(meta["kick_webhook_subscriptions"])
+            meta["kick_webhook_callback_url"] = settings.kick_webhook_callback_url
+            stream.settings = meta
+            outcomes.append(
+                {
+                    "stream_id": str(stream.id),
+                    "status": "partial" if subscriptions.get("failed") else "reconciled",
+                    "created": subscriptions.get("created", []),
+                    "failed": subscriptions.get("failed", []),
+                    "verified_by_api": subscriptions.get("verified_by_api", False),
+                }
+            )
+        except Exception as exc:
+            meta = dict(stream.settings or {})
+            meta["kick_webhook_subscription_error"] = type(exc).__name__
+            meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
+            stream.settings = meta
+            outcomes.append({"stream_id": str(stream.id), "status": "failed"})
+            logger.warning(
+                "kick_subscription_manual_reconcile_failed",
+                stream_id=str(stream.id),
+                error_type=type(exc).__name__,
+            )
+    db.add(
+        AuditLog(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            action="kick.webhook.subscriptions_reconciled",
+            resource_type="kick_webhook_subscription",
+            details={"stream_count": len(streams)},
+        )
+    )
+    await db.commit()
+    return {"callback_url": settings.kick_webhook_callback_url, "streams": outcomes}
 
 
 @router.delete("/disconnect/{stream_id}")
@@ -307,7 +530,39 @@ async def disconnect_kick_account(
 
     from app.services.platforms.oauth_revocation import disconnect_stream_account
 
-    response = await disconnect_stream_account(stream)
+    possible_shared_streams = await db.scalars(
+        select(Stream)
+        .where(
+            Stream.platform == Platform.KICK,
+            Stream.external_id == stream.external_id,
+            Stream.id != stream.id,
+        )
+    )
+    shared_stream = next(
+        (
+            other
+            for other in possible_shared_streams.all()
+            if not (
+                (other.settings or {}).get("is_owned")
+                and not other.oauth_token_encrypted
+            )
+            and bool(
+                (other.settings or {}).get(
+                    "kick_webhook_enabled",
+                    (other.settings or {}).get("kick_chat_webhook_subscribed", False),
+                )
+            )
+        ),
+        None,
+    )
+    response = await disconnect_stream_account(
+        stream,
+        unsubscribe_kick_webhooks=shared_stream is None,
+    )
+    response["shared_broadcaster_subscription_kept"] = shared_stream is not None
+    await db.execute(
+        delete(KickWebhookEvent).where(KickWebhookEvent.stream_id == stream.id)
+    )
     await db.commit()
     return response
 

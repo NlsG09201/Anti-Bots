@@ -20,26 +20,18 @@ from app.events.schemas import PipelineEvent
 from app.integrations.twitch.eventsub import TwitchEventSubClient
 from app.infrastructure.database.models import KickWebhookEvent, Platform, Stream
 from app.infrastructure.database.session import get_db
+from app.integrations.kick.oauth import KICK_WEBHOOK_EVENTS
 
 logger = get_logger(__name__)
 settings = get_settings()
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 _kick_public_key = None
 _kick_public_key_loaded_at = 0.0
-KICK_EVENT_TYPES = {
-    "chat.message.sent",
-    "channel.followed",
-    "channel.subscription.new",
-    "channel.subscription.renewal",
-    "channel.subscription.gifts",
-    "livestream.status.updated",
-    "livestream.metadata.updated",
-    "moderation.banned",
-    "channel.reward.redemption.updated",
-    "kicks.gifted",
-}
+KICK_EVENT_TYPES = frozenset(KICK_WEBHOOK_EVENTS)
 _ULID_PATTERN = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
-_KICK_TIMESTAMP_TOLERANCE_SECONDS = 300
+_KICK_FUTURE_TOLERANCE_SECONDS = 300
+_KICK_MAX_DELIVERY_AGE_SECONDS = 86_400
+_KICK_MAX_BODY_BYTES = 1_048_576
 
 EVENTSUB_TO_INGEST = {
     "channel.follow": "follow",
@@ -208,7 +200,18 @@ async def _verify_kick_signature(event_id: str, timestamp: str, signature: str, 
         except InvalidSignature:
             if refresh:
                 return False
+            if time.monotonic() - _kick_public_key_loaded_at < 30:
+                return False
     return False
+
+
+async def _read_limited_body(request: Request, max_bytes: int) -> bytes | None:
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > max_bytes:
+            return None
+    return bytes(body)
 
 
 @router.post("/kick")
@@ -222,27 +225,26 @@ async def kick_webhook(
     event_version: str = Header("", alias="Kick-Event-Version"),
     subscription_id: str = Header("", alias="Kick-Event-Subscription-Id"),
 ):
-    body = await request.body()
+    body = await _read_limited_body(request, _KICK_MAX_BODY_BYTES)
+    if body is None:
+        return Response(status_code=413)
     if (
         not _ULID_PATTERN.fullmatch(event_id)
         or not timestamp
         or not signature
         or not event_type
         or not event_version
+        or (subscription_id and not _ULID_PATTERN.fullmatch(subscription_id))
     ):
         return Response(status_code=400)
     try:
         sent_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         if sent_at.tzinfo is None:
             return Response(status_code=400)
-        age = abs((datetime.now(timezone.utc) - sent_at.astimezone(timezone.utc)).total_seconds())
-        if age > _KICK_TIMESTAMP_TOLERANCE_SECONDS:
+        age = (datetime.now(timezone.utc) - sent_at.astimezone(timezone.utc)).total_seconds()
+        if age < -_KICK_FUTURE_TOLERANCE_SECONDS or age > _KICK_MAX_DELIVERY_AGE_SECONDS:
             logger.warning("kick_webhook_rejected", reason="timestamp_outside_tolerance", event_id=event_id)
             return Response(status_code=403)
-        if event_type not in KICK_EVENT_TYPES or event_version != "1":
-            return Response(status_code=400)
-        if len(body) > 1_048_576:
-            return Response(status_code=413)
         if not await _verify_kick_signature(event_id, timestamp, signature, body):
             logger.warning("kick_webhook_rejected", reason="invalid_signature", event_id=event_id)
             return Response(status_code=403)
@@ -252,10 +254,24 @@ async def kick_webhook(
         logger.error("kick_webhook_key_unavailable", error_type=type(exc).__name__)
         return Response(status_code=503)
 
+    if event_type not in KICK_EVENT_TYPES or event_version != "1":
+        logger.warning(
+            "kick_webhook_unsupported_event",
+            event_id=event_id,
+            event_type=event_type,
+            event_version=event_version,
+        )
+        # Acknowledge signed, future event types to avoid a retry loop that can
+        # cause Kick to disable delivery for currently supported subscriptions.
+        return Response(status_code=204)
+
     try:
         import json
 
-        payload = json.loads(body)
+        try:
+            payload = json.loads(body)
+        except (ValueError, UnicodeDecodeError):
+            return Response(status_code=400)
         if not isinstance(payload, dict):
             return Response(status_code=400)
         broadcaster = payload.get("broadcaster") or {}
@@ -266,46 +282,91 @@ async def kick_webhook(
             select(Stream).where(
                 Stream.platform == Platform.KICK,
                 Stream.external_id == broadcaster_id,
-            ).limit(1)
+            )
         )
-        stream = result.scalar_one_or_none()
-        stored = KickWebhookEvent(
-            message_id=event_id,
-            subscription_id=subscription_id or None,
-            stream_id=stream.id if stream else None,
-            broadcaster_user_id=broadcaster_id,
-            event_type=event_type,
-            event_version=event_version,
-            message_timestamp=sent_at.astimezone(timezone.utc),
-            raw_payload=payload,
-            processing_status="pending" if stream else "ignored",
-        )
-        db.add(stored)
+        streams = list(result.scalars().all())
+        pending_events = []
+        if not streams:
+            db.add(
+                KickWebhookEvent(
+                    message_id=event_id,
+                    subscription_id=subscription_id or None,
+                    stream_id=None,
+                    broadcaster_user_id=broadcaster_id,
+                    event_type=event_type,
+                    event_version=event_version,
+                    message_timestamp=sent_at.astimezone(timezone.utc),
+                    raw_payload=payload,
+                    processing_status="ignored",
+                )
+            )
+        else:
+            for stream in streams:
+                existing = await db.scalar(
+                    select(KickWebhookEvent).where(
+                        KickWebhookEvent.message_id == event_id,
+                        KickWebhookEvent.stream_id == stream.id,
+                    )
+                )
+                if existing:
+                    if existing.processing_status == "pending":
+                        pending_events.append(existing)
+                    continue
+                stream_settings = dict(stream.settings or {})
+                webhook_enabled = bool(
+                    stream_settings.get(
+                        "kick_webhook_enabled",
+                        stream_settings.get("kick_chat_webhook_subscribed", False),
+                    )
+                )
+                stored = KickWebhookEvent(
+                    message_id=event_id,
+                    subscription_id=subscription_id or None,
+                    stream_id=stream.id,
+                    broadcaster_user_id=broadcaster_id,
+                    event_type=event_type,
+                    event_version=event_version,
+                    message_timestamp=sent_at.astimezone(timezone.utc),
+                    raw_payload=payload,
+                    processing_status="pending" if webhook_enabled else "ignored",
+                )
+                db.add(stored)
+                if webhook_enabled:
+                    pending_events.append(stored)
         try:
             await db.commit()
         except IntegrityError:
             await db.rollback()
-            existing = await db.scalar(
+            existing_rows = await db.scalars(
                 select(KickWebhookEvent).where(KickWebhookEvent.message_id == event_id)
             )
-            if not existing or existing.processing_status in ("processed", "ignored"):
+            pending_events = [
+                row for row in existing_rows.all()
+                if row.processing_status == "pending"
+            ]
+            if not pending_events:
                 return Response(status_code=204)
-            stored = existing
-        if not stream:
+        if not pending_events:
             logger.info("kick_webhook_untracked_broadcaster", event_id=event_id, event_type=event_type)
             return Response(status_code=204)
 
         from app.events.queue import enqueue_kick_webhook_job
 
-        job_id = await enqueue_kick_webhook_job(str(stored.id))
-        if not job_id:
-            logger.error("kick_webhook_enqueue_failed", event_id=event_id, event_type=event_type)
-            return Response(status_code=503)
+        for stored in pending_events:
+            job_id = await enqueue_kick_webhook_job(str(stored.id))
+            if not job_id:
+                logger.error(
+                    "kick_webhook_enqueue_failed",
+                    event_id=event_id,
+                    event_type=event_type,
+                    stream_id=str(stored.stream_id),
+                )
+                return Response(status_code=503)
         logger.info(
             "kick_webhook_accepted",
             event_id=event_id,
             event_type=event_type,
-            stream_id=str(stream.id),
+            stream_count=len(pending_events),
         )
     except Exception as exc:
         await db.rollback()

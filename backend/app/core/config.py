@@ -102,6 +102,7 @@ class Settings(BaseSettings):
     kick_client_secret: str = ""
     kick_redirect_uri: str = ""
     kick_webhook_callback_url: str = "https://anti-bots.onrender.com/api/v1/webhooks/kick"
+    kick_webhook_payload_retention_hours: int = Field(default=24, ge=1, le=24)
 
     youtube_client_id: str = ""
     youtube_client_secret: str = ""

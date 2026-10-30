@@ -168,17 +168,47 @@ async def _watch_channel_impl(
         stream = await sync_stream_live_status(db, stream)
         if data.platform == Platform.KICK:
             meta = dict(stream.settings or {})
+            meta["kick_mitigation_default_reviewed"] = True
+            meta.setdefault("auto_mitigate", False)
             if not meta.get("kick_chat_webhook_subscribed") and stream.external_id.isdigit():
                 try:
                     from app.integrations.kick.oauth import KickOAuth
 
                     app_token = await KickOAuth().get_app_access_token()
-                    await KickOAuth().subscribe_chat_events(app_token, stream.external_id)
-                    meta["kick_chat_webhook_subscribed"] = True
+                    subscription_result = await KickOAuth().reconcile_event_subscriptions(
+                        app_token,
+                        stream.external_id,
+                        previously_requested=meta.get("kick_webhook_subscriptions", []),
+                        requested_at=meta.get("kick_webhook_subscriptions_requested_at"),
+                    )
+                    meta["kick_webhook_subscriptions"] = (
+                        subscription_result.get("subscribed", [])
+                        + subscription_result.get("created", [])
+                        + subscription_result.get("assumed", [])
+                    )
+                    if subscription_result.get("created"):
+                        from datetime import datetime, timezone
+                        meta["kick_webhook_subscriptions_requested_at"] = datetime.now(timezone.utc).isoformat()
+                    meta["kick_webhook_subscriptions_verified"] = bool(
+                        subscription_result.get("verified_by_api")
+                    )
+                    meta["kick_chat_webhook_subscribed"] = (
+                        "chat.message.sent" in meta["kick_webhook_subscriptions"]
+                    )
+                    meta["kick_webhook_enabled"] = bool(meta["kick_webhook_subscriptions"])
+                    from datetime import datetime, timezone
+                    meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
+                    meta["kick_webhook_subscription_error"] = (
+                        ",".join(subscription_result.get("failed", [])) or None
+                    )
                     meta["kick_webhook_callback_url"] = settings.kick_webhook_callback_url
                     stream.settings = meta
                     await db.flush()
                 except Exception as exc:
+                    meta["kick_webhook_subscription_error"] = type(exc).__name__
+                    from datetime import datetime, timezone
+                    meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
+                    stream.settings = meta
                     logger.warning(
                         "kick_watched_channel_subscription_failed",
                         stream_id=str(stream.id),

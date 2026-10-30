@@ -6,7 +6,10 @@ Reviewed the provider adapters, live monitors, health probes, webhook ingestion,
 OAuth callbacks, and viewer synchronization paths for Kick and TikTok.
 
 - Kick live status uses the documented Kick Public API and OAuth. Chat messages
-  are received through Kick's signed Events API webhook.
+  and the nine other documented Kick event types are received through the
+  signed Events API webhook. Durable idempotency, queued processing,
+  subscription reconciliation, delivery monitoring, and 24-hour raw payload
+  retention are documented in [KICK_WEBHOOKS.md](KICK_WEBHOOKS.md).
 - The previous Kick chat roster sync called website API endpoints and fetched
   chat history that is not part of the documented Public API. Those calls have
   been removed. Kick Events API messages identify chat participants who speak;

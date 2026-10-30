@@ -1,6 +1,7 @@
 import pytest
 
 from app.integrations.tiktok.webcast import UNAVAILABLE_REASON, fetch_tiktok_room
+from app.integrations.kick.oauth import DEFAULT_SCOPES, KICK_WEBHOOK_EVENTS
 from app.services.platforms.kick_adapter import KickPlatformAdapter
 from app.services.platforms.tiktok_adapter import TikTokPlatformAdapter
 
@@ -24,3 +25,19 @@ async def test_tiktok_room_lookup_does_not_fall_back_to_web_scraping():
         await fetch_tiktok_room("creator")
 
     assert "TikTok LIVE status and chat are unavailable" in UNAVAILABLE_REASON
+
+
+def test_kick_webhook_catalog_and_oauth_scope_match_documented_contract():
+    assert set(KICK_WEBHOOK_EVENTS) == {
+        "chat.message.sent",
+        "channel.followed",
+        "channel.subscription.new",
+        "channel.subscription.renewal",
+        "channel.subscription.gifts",
+        "livestream.status.updated",
+        "livestream.metadata.updated",
+        "moderation.banned",
+        "channel.reward.redemption.updated",
+        "kicks.gifted",
+    }
+    assert "events:subscribe" in DEFAULT_SCOPES.split()

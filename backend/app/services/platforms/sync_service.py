@@ -28,9 +28,12 @@ class PlatformSyncService:
         stream.viewer_count = live.viewer_count
         if stream.platform == Platform.KICK:
             meta = dict(stream.settings or {})
+            should_subscribe_kick = not (
+                meta.get("is_owned") and not stream.oauth_token_encrypted
+            )
             if meta.get("kick_chat_webhook_subscribed"):
                 kick_subscription_status = "configured"
-            else:
+            elif should_subscribe_kick:
                 try:
                     from app.integrations.kick.oauth import KickOAuth
                     from app.services.platforms.oauth_tokens import get_stream_access_token
@@ -39,16 +42,43 @@ class PlatformSyncService:
                     token = await get_stream_access_token(stream)
                     app_token = token is None
                     token = token or await oauth.get_app_access_token()
-                    await oauth.subscribe_chat_events(
+                    subscription_result = await oauth.reconcile_event_subscriptions(
                         token,
                         stream.external_id if app_token else None,
+                        previously_requested=meta.get("kick_webhook_subscriptions", []),
+                        requested_at=meta.get("kick_webhook_subscriptions_requested_at"),
                     )
-                    meta["kick_chat_webhook_subscribed"] = True
+                    meta["kick_webhook_subscriptions"] = (
+                        subscription_result.get("subscribed", [])
+                        + subscription_result.get("created", [])
+                        + subscription_result.get("assumed", [])
+                    )
+                    if subscription_result.get("created"):
+                        from datetime import datetime, timezone
+                        meta["kick_webhook_subscriptions_requested_at"] = datetime.now(timezone.utc).isoformat()
+                    meta["kick_webhook_subscriptions_verified"] = bool(
+                        subscription_result.get("verified_by_api")
+                    )
+                    meta["kick_chat_webhook_subscribed"] = (
+                        "chat.message.sent" in meta["kick_webhook_subscriptions"]
+                    )
+                    meta["kick_webhook_enabled"] = bool(meta["kick_webhook_subscriptions"])
+                    meta["kick_webhook_subscription_error"] = (
+                        ",".join(subscription_result.get("failed", [])) or None
+                    )
+                    from datetime import datetime, timezone
+                    meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
                     meta["kick_webhook_callback_url"] = get_settings().kick_webhook_callback_url
                     stream.settings = meta
-                    kick_subscription_status = "configured"
+                    kick_subscription_status = (
+                        "partial" if subscription_result.get("failed") else "configured"
+                    )
                 except Exception as exc:
                     kick_subscription_status = "failed"
+                    meta["kick_webhook_subscription_error"] = type(exc).__name__
+                    from datetime import datetime, timezone
+                    meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
+                    stream.settings = meta
                     logger.warning(
                         "kick_chat_event_subscription_failed",
                         stream_id=str(stream.id),

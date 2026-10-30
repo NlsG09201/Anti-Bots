@@ -82,7 +82,11 @@ async def revoke_provider_grant(
     return any_revoked
 
 
-async def disconnect_stream_account(stream: Stream) -> dict[str, object]:
+async def disconnect_stream_account(
+    stream: Stream,
+    *,
+    unsubscribe_kick_webhooks: bool = True,
+) -> dict[str, object]:
     """Revoke provider credentials if possible and always remove them locally."""
     metadata = dict(stream.settings or {})
     access_token = None
@@ -107,6 +111,31 @@ async def disconnect_stream_account(stream: Stream) -> dict[str, object]:
             error_type=type(exc).__name__,
         )
 
+    if (
+        stream.platform == Platform.KICK
+        and unsubscribe_kick_webhooks
+        and str(stream.external_id).isdigit()
+    ):
+        try:
+            from app.integrations.kick.oauth import KickOAuth
+
+            kick_oauth = KickOAuth()
+            subscription_token = await kick_oauth.get_app_access_token()
+            removed = await kick_oauth.unsubscribe_event_subscriptions(
+                subscription_token, str(stream.external_id)
+            )
+            logger.info(
+                "kick_webhook_subscriptions_removed",
+                stream_id=str(stream.id),
+                subscription_count=removed,
+            )
+        except Exception as exc:
+            logger.warning(
+                "kick_webhook_unsubscribe_failed",
+                stream_id=str(stream.id),
+                error_type=type(exc).__name__,
+            )
+
     provider_revoked = await revoke_provider_grant(
         stream.platform,
         access_token,
@@ -119,8 +148,17 @@ async def disconnect_stream_account(stream: Stream) -> dict[str, object]:
     if stream.platform == Platform.TWITCH:
         metadata.pop("eventsub_subscriptions", None)
     if stream.platform == Platform.KICK:
-        metadata.pop("kick_chat_webhook_subscribed", None)
-        metadata.pop("kick_webhook_callback_url", None)
+        for key in (
+            "kick_chat_webhook_subscribed",
+            "kick_webhook_callback_url",
+            "kick_webhook_subscriptions",
+            "kick_webhook_subscriptions_verified",
+            "kick_webhook_subscriptions_checked_at",
+            "kick_webhook_subscriptions_requested_at",
+            "kick_webhook_subscription_error",
+        ):
+            metadata.pop(key, None)
+        metadata["kick_webhook_enabled"] = False
     stream.settings = metadata
 
     return {"disconnected": True, "provider_revoked": provider_revoked}
