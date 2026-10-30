@@ -10,6 +10,13 @@ async def test_health(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_readiness_checks_database(client: AsyncClient):
+    response = await client.get("/readyz")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready"}
+
+
+@pytest.mark.asyncio
 async def test_api_cors_preflight_allows_configured_frontend(client: AsyncClient):
     from app.core.config import get_settings
 

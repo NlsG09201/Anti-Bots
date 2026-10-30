@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, ORJSONResponse
 from prometheus_client import Counter, Histogram, generate_latest
+from sqlalchemy import text
 from starlette.responses import Response
 
 from app.api.v1 import (
@@ -300,6 +301,34 @@ async def streamshield_exception_handler(request: Request, exc: StreamShieldErro
 @app.get("/health")
 async def health():
     return {"status": "healthy", "service": settings.app_name, "version": "1.0.0"}
+
+
+@app.get("/readyz")
+async def readiness():
+    """Check the database and configured Redis TCP dependency without exposing errors."""
+    from app.infrastructure.cache.redis_client import get_redis, redis_is_configured
+
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+    except Exception:
+        logger.warning("readiness_check_failed", dependency="database")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "dependency": "database"},
+        )
+
+    if redis_is_configured():
+        try:
+            await (await get_redis()).ping()
+        except Exception:
+            logger.warning("readiness_check_failed", dependency="redis_tcp")
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "dependency": "redis_tcp"},
+            )
+
+    return {"status": "ready"}
 
 
 @app.get("/metrics")
