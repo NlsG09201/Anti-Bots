@@ -31,7 +31,7 @@ npm ci
 npm run build
 ```
 
-Los pasos completos de CI están en `.github/workflows/ci.yml`. La API expone `/health`; este endpoint comprueba que el proceso responde, no certifica por sí solo la disponibilidad de PostgreSQL, Redis ni proveedores externos.
+Los pasos de CI están en `.github/workflows/ci.yml`; el análisis estático de seguridad multilenguaje está en `.github/workflows/codeql.yml` y publica hallazgos en GitHub Code Scanning cuando esa función está habilitada en el repositorio. La API expone `/health`; este endpoint comprueba que el proceso responde, no certifica por sí solo la disponibilidad de PostgreSQL, Redis ni proveedores externos.
 
 Para levantar el stack local con PostgreSQL, Redis, API y worker (sin cargar variables de Render):
 
@@ -46,5 +46,6 @@ La API queda en `http://localhost:8000`; `/health` es liveness y `/readyz` compr
 - Render: consulte `render.yaml` y `docs/OPENAI_SETUP.md`; los secretos se configuran en el panel de Render o en el flujo de importación protegido.
 - VPS: siga [`deploy/vps/README.md`](deploy/vps/README.md).
 - Integraciones de plataforma: [`docs/KICK_WEBHOOKS.md`](docs/KICK_WEBHOOKS.md) y [`docs/PLATFORM_INTEGRATION_AUDIT.md`](docs/PLATFORM_INTEGRATION_AUDIT.md).
+- Esquema PostgreSQL y límites actuales de Alembic: [`docs/DATABASE_MIGRATIONS.md`](docs/DATABASE_MIGRATIONS.md).
 
 Revise [`docs/ENGINEERING_PROGRESS.md`](docs/ENGINEERING_PROGRESS.md) para el estado de arquitectura, prioridades y verificaciones pendientes.

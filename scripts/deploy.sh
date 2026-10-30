@@ -18,7 +18,11 @@ echo "Waiting for database..."
 sleep 10
 
 echo "Running migrations..."
-docker compose run --rm api alembic upgrade head || true
+if ! docker compose run --rm api alembic upgrade head; then
+    echo "Migration failed; application services will not be started." >&2
+    echo "Review docs/DATABASE_MIGRATIONS.md and verify the database backup/schema before retrying." >&2
+    exit 1
+fi
 
 echo "Starting application services..."
 docker compose up -d api celery-worker celery-beat frontend nginx

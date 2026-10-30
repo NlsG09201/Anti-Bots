@@ -36,8 +36,8 @@ from app.infrastructure.database.models import (
     ViewerSession,
 )
 from app.infrastructure.database.session import get_db
+from app.infrastructure.repositories.stream_repository import StreamRepository
 from app.infrastructure.cache.redis_client import RedisCache
-from app.integrations.twitch.helix import TwitchHelixClient
 from app.services.ai.service import AIService
 from app.services.correlation.service import CorrelationService
 from app.services.dashboard.metrics import (
@@ -52,6 +52,7 @@ from app.services.realtime.notify import push_dashboard_realtime
 from app.services.reputation.service import ReputationService
 from app.events.bus import ingest_event
 from app.services.monitoring.channel_monitor import ChannelMonitorService
+from app.services.streams.watch import StreamWatchService
 from app.services.streams.helpers import (
     stream_auto_mitigate,
     stream_monitor_mode,
@@ -108,168 +109,25 @@ async def watch_channel(
         raise ValidationError("login requerido")
 
     try:
-        return await _watch_channel_impl(data, current_user, db, login)
+        stream = await StreamWatchService(db).watch(
+            platform=data.platform,
+            login=login,
+            tenant_id=current_user.tenant_id,
+            owner_id=current_user.id,
+        )
     except (ValidationError, NotFoundError):
         raise
     except Exception as exc:
-        logger.exception(
+        logger.error(
             "watch_channel_failed",
             platform=data.platform.value,
             login=login,
-            error=str(exc)[:200],
+            error_type=type(exc).__name__,
         )
         raise ValidationError(
-            f"No se pudo añadir el canal ({data.platform.value}): "
-            f"{str(exc)[:120]}"
+            f"No se pudo añadir el canal ({data.platform.value})."
         ) from exc
 
-
-async def _watch_channel_impl(
-    data: StreamWatchRequest,
-    current_user: CurrentUser,
-    db: AsyncSession,
-    login: str,
-) -> StreamResponse:
-    if data.platform != Platform.TWITCH:
-        slug = login.lower()
-        result = await db.execute(
-            select(Stream).where(
-                Stream.tenant_id == current_user.tenant_id,
-                Stream.platform == data.platform,
-                Stream.channel_name.ilike(slug),
-            )
-        )
-        stream = result.scalar_one_or_none()
-        meta_base = {
-            "monitor_mode": True,
-            "soc_monitor": True,
-            "competitive_intel": True,
-            "auto_mitigate": False,
-            "login": slug,
-            "is_owned": False,
-            "force_monitor": True,
-        }
-        if stream:
-            meta = dict(stream.settings or {})
-            meta.update(meta_base)
-            stream.settings = meta
-            stream.channel_name = login
-        else:
-            stream = Stream(
-                tenant_id=current_user.tenant_id,
-                owner_id=current_user.id,
-                platform=data.platform,
-                external_id=slug,
-                channel_name=login,
-                settings=meta_base,
-            )
-            db.add(stream)
-        await db.flush()
-        stream = await sync_stream_live_status(db, stream)
-        if data.platform == Platform.KICK:
-            meta = dict(stream.settings or {})
-            meta["kick_mitigation_default_reviewed"] = True
-            meta.setdefault("auto_mitigate", False)
-            if not meta.get("kick_chat_webhook_subscribed") and stream.external_id.isdigit():
-                try:
-                    from app.integrations.kick.oauth import KickOAuth
-
-                    app_token = await KickOAuth().get_app_access_token()
-                    subscription_result = await KickOAuth().reconcile_event_subscriptions(
-                        app_token,
-                        stream.external_id,
-                        previously_requested=meta.get("kick_webhook_subscriptions", []),
-                        requested_at=meta.get("kick_webhook_subscriptions_requested_at"),
-                    )
-                    meta["kick_webhook_subscriptions"] = (
-                        subscription_result.get("subscribed", [])
-                        + subscription_result.get("created", [])
-                        + subscription_result.get("assumed", [])
-                    )
-                    if subscription_result.get("created"):
-                        from datetime import datetime, timezone
-                        meta["kick_webhook_subscriptions_requested_at"] = datetime.now(timezone.utc).isoformat()
-                    meta["kick_webhook_subscriptions_verified"] = bool(
-                        subscription_result.get("verified_by_api")
-                    )
-                    meta["kick_chat_webhook_subscribed"] = (
-                        "chat.message.sent" in meta["kick_webhook_subscriptions"]
-                    )
-                    meta["kick_webhook_enabled"] = bool(meta["kick_webhook_subscriptions"])
-                    from datetime import datetime, timezone
-                    meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
-                    meta["kick_webhook_subscription_error"] = (
-                        ",".join(subscription_result.get("failed", [])) or None
-                    )
-                    meta["kick_webhook_callback_url"] = settings.kick_webhook_callback_url
-                    stream.settings = meta
-                    await db.flush()
-                except Exception as exc:
-                    meta["kick_webhook_subscription_error"] = type(exc).__name__
-                    from datetime import datetime, timezone
-                    meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
-                    stream.settings = meta
-                    logger.warning(
-                        "kick_watched_channel_subscription_failed",
-                        stream_id=str(stream.id),
-                        error_type=type(exc).__name__,
-                    )
-        return _as_stream_response(stream, current_user)
-
-    helix = TwitchHelixClient()
-    if not helix.configured:
-        raise ValidationError("Credenciales Twitch no configuradas en el servidor")
-
-    user = await helix.get_user_by_login(login)
-    if not user:
-        raise NotFoundError("Canal de Twitch")
-
-    broadcaster_id = user["id"]
-    login = user["login"]
-    display_name = user.get("display_name", login)
-
-    result = await db.execute(
-        select(Stream).where(
-            Stream.tenant_id == current_user.tenant_id,
-            Stream.platform == Platform.TWITCH,
-            Stream.external_id == broadcaster_id,
-        )
-    )
-    stream = result.scalar_one_or_none()
-    if stream:
-        meta = dict(stream.settings or {})
-        meta.update({
-            "monitor_mode": True,
-            "soc_monitor": True,
-            "competitive_intel": True,
-            "auto_mitigate": False,
-            "login": login,
-            "is_owned": False,
-            "force_monitor": True,
-        })
-        stream.settings = meta
-        stream.channel_name = display_name
-    else:
-        stream = Stream(
-            tenant_id=current_user.tenant_id,
-            owner_id=current_user.id,
-            platform=Platform.TWITCH,
-            external_id=broadcaster_id,
-            channel_name=display_name,
-            settings={
-                "monitor_mode": True,
-                "soc_monitor": True,
-                "competitive_intel": True,
-                "auto_mitigate": False,
-                "login": login,
-                "is_owned": False,
-                "force_monitor": True,
-            },
-        )
-        db.add(stream)
-
-    await db.flush()
-    stream = await sync_stream_live_status(db, stream)
     return _as_stream_response(stream, current_user)
 
 
@@ -784,10 +642,7 @@ async def list_streams(
     db: AsyncSession = Depends(get_db),
 ):
     """Devuelve los canales guardados; los estados live se actualizan en el monitor."""
-    result = await db.execute(
-        select(Stream).where(Stream.tenant_id == current_user.tenant_id)
-    )
-    streams = list(result.scalars().all())
+    streams = await StreamRepository(db).list_for_tenant(current_user.tenant_id)
     return [_as_stream_response(s, current_user) for s in streams]
 
 
@@ -1247,10 +1102,7 @@ async def dashboard_charts(
 
 
 async def _get_stream(db: AsyncSession, stream_id: UUID, tenant_id: UUID) -> Stream:
-    result = await db.execute(
-        select(Stream).where(Stream.id == stream_id, Stream.tenant_id == tenant_id)
-    )
-    stream = result.scalar_one_or_none()
+    stream = await StreamRepository(db).get_by_id_for_tenant(stream_id, tenant_id)
     if not stream:
         raise NotFoundError("Stream")
     return stream

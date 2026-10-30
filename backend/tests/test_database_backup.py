@@ -70,9 +70,35 @@ def test_backup_verification_rejects_tampering(tmp_path, monkeypatch):
         "_run",
         lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0),
     )
-    dump_path.write_bytes(b"tampered file")
+    dump_path.write_bytes(b"tampered file with a different size")
 
     with pytest.raises(backup.BackupError, match="size does not match"):
+        backup.verify_backup(dump_path)
+
+
+def test_backup_verification_rejects_same_size_tampering(tmp_path, monkeypatch):
+    dump_path = tmp_path / "backup.dump"
+    original = b"valid archive"
+    dump_path.write_bytes(original)
+    backup._manifest_path(dump_path).write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "file": dump_path.name,
+                "size_bytes": len(original),
+                "sha256": backup._hash_file(dump_path),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        backup,
+        "_run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0),
+    )
+    dump_path.write_bytes(b"valid archivE")
+
+    with pytest.raises(backup.BackupError, match="checksum does not match"):
         backup.verify_backup(dump_path)
 
 

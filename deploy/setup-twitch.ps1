@@ -58,7 +58,7 @@ if (-not (Test-Path $keyFile)) {
 
 & (Join-Path $deploy "prepare-render-import.ps1")
 $env:RENDER_API_KEY = [IO.File]::ReadAllText($keyFile).Trim()
-$env:RENDER_SERVICE_NAME = "Anti-Bots"
+$env:RENDER_SERVICE_NAME = "anti-bots-api"
 python (Join-Path $deploy "push_render_env.py")
 
 Write-Host ""

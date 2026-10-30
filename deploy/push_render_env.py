@@ -15,7 +15,7 @@ from pathlib import Path
 DEPLOY_DIR = Path(__file__).resolve().parent
 IMPORT_FILE = DEPLOY_DIR / "render.import.env"
 API_KEY_FILE = DEPLOY_DIR / "render.api.key"
-SERVICE_NAME = os.environ.get("RENDER_SERVICE_NAME", "Anti-Bots")
+SERVICE_NAME = os.environ.get("RENDER_SERVICE_NAME", "anti-bots-api")
 API_BASE = "https://api.render.com/v1"
 
 EXTRA_VARS = {
@@ -41,12 +41,59 @@ def _api_key() -> str:
         sys.exit(1)
     if not key.startswith("rnd_"):
         print(
-            f"ERROR: La API key no es valida (debe empezar con rnd_, recibido: {key[:12]}...).\n"
+            "ERROR: La API key no es válida (debe empezar con rnd_).\n"
             "  Borra deploy/render.api.key y vuelve a ejecutar push-render-env.ps1",
             file=sys.stderr,
         )
         sys.exit(1)
     return key
+
+
+def _validate_production_env(env: dict[str, str]) -> None:
+    """Fail before contacting Render when known startup blockers are present."""
+    if env.get("APP_ENV", "").strip().lower() != "production":
+        return
+
+    errors: list[str] = []
+    for name in ("DATABASE_URL", "APP_SECRET_KEY", "JWT_SECRET_KEY", "AES_ENCRYPTION_KEY"):
+        if not env.get(name, "").strip():
+            errors.append(f"{name} falta o está vacío")
+
+    hosts = [host.strip().lower() for host in env.get("TRUSTED_HOSTS", "").split(",")]
+    loopback = {"localhost", "127.0.0.1", "::1", "*"}
+    if not hosts or any(not host for host in hosts):
+        errors.append("TRUSTED_HOSTS debe contener hosts públicos explícitos")
+    elif any(host in loopback for host in hosts):
+        errors.append("TRUSTED_HOSTS no puede incluir loopback ni wildcard")
+
+    redis_required = any(
+        env.get(name, "true").strip().lower() in {"1", "true", "yes", "on"}
+        for name in (
+            "EVENT_PIPELINE_ENABLED",
+            "EVENT_QUEUE_ENABLED",
+            "EVENT_REALTIME_PUBSUB_ENABLED",
+        )
+    )
+    redis_url = env.get("REDIS_URL", "").strip()
+    if redis_required:
+        parsed = urllib.parse.urlsplit(redis_url)
+        invalid_port = False
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
+            invalid_port = True
+        if (
+            parsed.scheme not in {"redis", "rediss"}
+            or not parsed.hostname
+            or parsed.hostname.lower() in {"localhost", "127.0.0.1", "::1"}
+            or port == 0
+            or invalid_port
+        ):
+            errors.append("REDIS_URL requiere una URL Redis TCP redis:// o rediss:// válida")
+
+    if errors:
+        raise ValueError("Configuración Render inválida: " + "; ".join(errors))
 
 
 def _request(method: str, path: str, key: str, body: dict | None = None) -> object:
@@ -67,8 +114,8 @@ def _request(method: str, path: str, key: str, body: dict | None = None) -> obje
             raw = resp.read().decode()
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
-        err_body = e.read().decode()
-        print(f"HTTP {e.code} {method} {path}\n{err_body}", file=sys.stderr)
+        # Render's error body can echo submitted configuration; never print it.
+        print(f"HTTP {e.code} {method} {path}", file=sys.stderr)
         raise
 
 
@@ -149,8 +196,9 @@ def main() -> None:
         if not import_path.exists():
             sys.exit("Falta deploy/render.import.env")
 
-    api_key = _api_key()
     env = _parse_env_file(import_path)
+    _validate_production_env(env)
+    api_key = _api_key()
     print(f"Buscando {SERVICE_NAME}...")
     service = _find_service(api_key, SERVICE_NAME)
     sid = service["id"]

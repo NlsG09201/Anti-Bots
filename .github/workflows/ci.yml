@@ -10,6 +10,18 @@ permissions:
   contents: read
 
 jobs:
+  deployment-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test Render environment validation
+        run: python -m unittest discover -s deploy/tests -v
+      - name: Compile deployment scripts
+        run: python -m compileall -q deploy
+
   spring-backend:
     runs-on: ubuntu-latest
     defaults:

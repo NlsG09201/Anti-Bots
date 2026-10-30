@@ -244,3 +244,41 @@
 - Added `backend/.dockerignore` rules for local environment files, SQLite databases, tests, caches, and development dependencies so they are excluded from `COPY . .` image contexts. Tracked AI model artifacts remain included.
 - GitHub Actions now builds both backend image variants after the backend checks.
 - Local `docker build` could not reach the Docker Desktop Linux engine because its named pipe is absent. `git diff --check` is the local validation; image build verification is delegated to the new CI steps and has not yet run in this session.
+
+## Vercel skew protection and Render deploy safeguards (2026-10-30)
+
+- The frontend now passes Vercel's `VERCEL_DEPLOYMENT_ID` to Next.js so navigations and static assets can detect stale clients across deployments. The Vercel deployment guide now requires automatic system environment exposure for this setting.
+- The GitHub Render workflow now passes the environment-file secret via a process environment variable instead of interpolating it into shell source, and pins the service name to `anti-bots-api`.
+- The Render push script now defaults to the Blueprint's actual API service name, rejects known production startup blockers before any Render API request, and omits API error bodies and malformed API-key prefixes from logs. The Twitch setup helper uses the same service name.
+- Added five offline tests for valid production config, loopback hosts, missing/invalid native Redis, and the explicit all-dependent-features-disabled fallback. Added a CI job for these deployment-tool checks.
+- Verification: all five deployment-tool tests passed. Frontend production build passed after the deployment-ID change. The Render environment still needs a real native `REDIS_URL` and corrected dashboard `TRUSTED_HOSTS`; neither this workspace nor CI was used to change or deploy live services.
+
+## Stream persistence boundary and backup tamper coverage (2026-10-30)
+
+- Added `StreamRepository` for tenant-scoped get/list and platform/channel lookup operations. Stream API routes now delegate those queries to the repository; detail access continues returning 404 for another tenant's stream.
+- Added API tests for own-tenant detail access, cross-tenant detail hiding, and tenant-only stream listing.
+- The backend suite exposed an existing backup test fixture that replaced a dump with different bytes of the same length while expecting the size-mismatch error. Changed that fixture to different-length data and added a separate equal-length tamper test that verifies checksum rejection.
+- Verification: full backend suite passed (`147 passed, 1 skipped, 22 warnings`). Remaining warnings include scikit-learn model artifact version mismatches and FastAPI/Starlette deprecations. No database or live service was changed.
+
+## Stream watch use-case extraction (2026-10-30)
+
+- Moved Twitch, Kick, YouTube, and TikTok watch-channel lookup/persistence and Kick subscription reconciliation from the API module into `StreamWatchService`; the route now validates transport input, maps known errors, and serializes the response.
+- Unexpected provider errors are logged by type and return a generic client message instead of echoing exception text that may include provider response data.
+- Added an authenticated YouTube watch-route test that verifies monitor settings and response compatibility without calling the live provider.
+- Verification: full backend suite passed (`148 passed, 1 skipped, 23 warnings`). The same sklearn artifact and FastAPI/Starlette deprecations remain.
+
+## Static security analysis workflow (2026-10-30)
+
+- Added a scheduled and push/PR CodeQL workflow for GitHub Actions, Python, Java/Kotlin, and JavaScript/TypeScript. The Java analysis builds the existing Spring Maven module; interpreted languages use no-build mode.
+- Scoped workflow permissions to repository read access plus the code-scanning upload permission. README now points to the workflow and notes that GitHub Code Scanning must be enabled for results to publish.
+- Workflow uses CodeQL Action v4 and the documented language-specific build modes. Remote GitHub execution is not available in this workspace; the first workflow run must confirm repository settings and autobuild compatibility.
+
+## Database migration safety audit (2026-10-30)
+
+- Confirmed API and worker startup call `Base.metadata.create_all()` followed by two inline PostgreSQL updates; Alembic is not part of runtime startup.
+- Alembic currently has no `001_initial_schema` revision although 002 references it in its docstring, 003/004 require pre-existing core tables, and 002's legacy `alerts` schema conflicts with the active SQLAlchemy `Alert` model. An empty-database Alembic upgrade and an existing-production adoption are therefore not verified.
+- Added `docs/DATABASE_MIGRATIONS.md` with the observed behavior, safe baseline/adoption steps, backup/restore rollback, and future CI contract. Linked it from README.
+- No migration was applied or rewritten: the actual deployed schema and revision state could not be inspected from this workspace, and changing the baseline without that evidence risks data loss or startup failure.
+- Removed the unregistered legacy alert router, enhanced persistence engine, repository, and duplicate domain model after confirming no active imports; the authenticated tenant-scoped alert endpoints and current ORM model remain in place. Replaced `DATABASE_ALERTS_IMPLEMENTATION.md` with current API/schema guidance.
+- `scripts/deploy.sh` now aborts when Alembic upgrade fails instead of suppressing the failure and starting services. Updated the data-store guide to stop implying that the manual enterprise index script is automatically applied.
+- Verification after removing the unreachable alert subsystem: backend suite passed (`148 passed, 1 skipped, 23 warnings`).

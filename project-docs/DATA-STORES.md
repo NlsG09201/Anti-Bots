@@ -7,7 +7,7 @@
 | **PostgreSQL (Neon)** | OLTP: users, streams, sessions, attacks, audit | Primary source of truth |
 | **Redis (Upstash)** | Rate limits, event streams, baselines, pub/sub | Real-time layer |
 
-Indexes: run `backend/sql/enterprise_indexes.sql` on Neon after migrations.
+Indexes: `backend/sql/enterprise_indexes.sql` is a manual optimization script and is not guaranteed to have been applied in every environment. Alembic's current history is not verified for new or existing databases; review [`docs/DATABASE_MIGRATIONS.md`](../docs/DATABASE_MIGRATIONS.md) before applying schema changes.
 
 Redis keys: see `backend/app/infrastructure/cache/redis_schema.py`.
 

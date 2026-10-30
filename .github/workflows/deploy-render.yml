@@ -6,6 +6,8 @@ on:
 jobs:
   push-env:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -14,14 +16,17 @@ jobs:
           python-version: "3.11"
 
       - name: Write deploy/render.import.env from secret
+        env:
+          DEPLOY_RENDER_ENV: ${{ secrets.DEPLOY_RENDER_ENV }}
         run: |
-          if [ -z "${{ secrets.DEPLOY_RENDER_ENV }}" ]; then
+          if [ -z "$DEPLOY_RENDER_ENV" ]; then
             echo "Missing GitHub secret DEPLOY_RENDER_ENV (contents of render.import.env)"
             exit 1
           fi
-          printf '%s\n' "${{ secrets.DEPLOY_RENDER_ENV }}" > deploy/render.import.env
+          printf '%s\n' "$DEPLOY_RENDER_ENV" > deploy/render.import.env
 
       - name: Push variables to Render and trigger deploy
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_NAME: anti-bots-api
         run: python deploy/push_render_env.py
