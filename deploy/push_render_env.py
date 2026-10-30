@@ -171,6 +171,12 @@ def _trigger_deploy(service_id: str, key: str) -> None:
     _request("POST", f"/services/{service_id}/deploys", key, {"clearCache": "do_not_clear"})
 
 
+def _service_health_url(service: dict, name: str) -> str | None:
+    if service.get("type") != "web_service":
+        return None
+    return (service.get("serviceDetails") or {}).get("url") or f"https://{name}.onrender.com"
+
+
 def _wait_health(url: str, attempts: int = 36) -> bool:
     health = url.rstrip("/") + "/health"
     for i in range(1, attempts + 1):
@@ -210,10 +216,13 @@ def main() -> None:
     print("Deploy...")
     _trigger_deploy(sid, api_key)
 
-    base = (service.get("serviceDetails") or {}).get("url") or f"https://{SERVICE_NAME}.onrender.com"
-    print(f"Esperando {base} (hasta 6 min)...")
-    if not _wait_health(base):
-        sys.exit("Deploy enviado; /health no respondio a tiempo. Revisa logs en Render.")
+    health_url = _service_health_url(service, SERVICE_NAME)
+    if health_url:
+        print(f"Esperando {health_url} (hasta 6 min)...")
+        if not _wait_health(health_url):
+            sys.exit("Deploy enviado; /health no respondio a tiempo. Revisa logs en Render.")
+    else:
+        print("Deploy solicitado; el servicio no expone un endpoint HTTP para health check.")
     print("Listo.")
 
 

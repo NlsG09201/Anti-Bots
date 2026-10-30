@@ -11,6 +11,14 @@ services:
         value: "3.11.9"
       - key: APP_ENV
         value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_SECRET_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: AES_ENCRYPTION_KEY
+        sync: false
       - key: APP_DEBUG
         value: "false"
       - key: COOKIE_SECURE
@@ -75,12 +83,28 @@ services:
     rootDir: backend
     dockerfilePath: ./Dockerfile.worker
     dockerContext: .
-    plan: free
+    plan: starter
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
       - key: APP_ENV
         value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_SECRET_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: AES_ENCRYPTION_KEY
+        sync: false
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_CORS_ORIGINS
+        value: https://anti-bots.vercel.app,https://anti-bots-vhbo.vercel.app
+      - key: TRUSTED_HOSTS
+        value: anti-bots.onrender.com,anti-bots-api.onrender.com
+      - key: COOKIE_SECURE
+        value: "true"
       - key: RENDER
         value: "true"
       - key: PLATFORM_MONITOR_WORKER

@@ -1,6 +1,9 @@
+from typing import Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Body, Depends, Request
+from pydantic import IPvAnyAddress
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AnalystUser, CurrentUser
@@ -11,6 +14,8 @@ from app.api.v1.schemas import (
     FingerprintSubmit,
 )
 from app.infrastructure.database.session import get_db
+from app.infrastructure.database.models import Stream
+from app.core.exceptions import NotFoundError
 from app.services.detection.engine import BotDetectionEngine
 from app.services.detection.fingerprint_service import analyze_fingerprint_payload
 from app.infrastructure.security.client_ip import resolve_client_ip
@@ -92,27 +97,36 @@ async def submit_advanced_fingerprint(
 
 @router.post("/analyze-ip")
 async def analyze_ip(
-    ip_address: str,
-    current_user: CurrentUser,
+    ip_address: IPvAnyAddress,
+    current_user: AnalystUser,
     db: AsyncSession = Depends(get_db),
 ):
     from app.services.threat_intel import ThreatIntelAnalyzer
 
-    report = await ThreatIntelAnalyzer(db).analyze(ip_address)
+    report = await ThreatIntelAnalyzer(db).analyze(str(ip_address))
     return report.to_dict()
 
 
 @router.post("/analyze-batch")
 async def analyze_event_batch(
-    stream_id: str,
-    events: list,
-    event_type: str = "viewer_join",
-    current_user: CurrentUser = None,
+    stream_id: UUID,
+    current_user: AnalystUser,
+    events: list[dict[str, Any]] = Body(..., min_length=1, max_length=500),
+    event_type: Literal["viewer_join", "chat_message", "follow"] = "viewer_join",
     db: AsyncSession = Depends(get_db),
 ):
     from app.services.detection.engine import EventBatch
 
-    batch = EventBatch(events=events, stream_id=stream_id)
+    stream = await db.scalar(
+        select(Stream.id).where(
+            Stream.id == stream_id,
+            Stream.tenant_id == current_user.tenant_id,
+        )
+    )
+    if not stream:
+        raise NotFoundError("Stream")
+
+    batch = EventBatch(events=events, stream_id=str(stream_id))
     results = []
 
     if event_type == "viewer_join":

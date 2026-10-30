@@ -194,6 +194,36 @@ async def test_streamer_cannot_create_oauth_invite_for_another_owner(client: Asy
 
 
 @pytest.mark.asyncio
+async def test_batch_analysis_hides_stream_from_another_tenant(client: AsyncClient, db_session):
+    tenant = Tenant(id=uuid4(), name="Analysis tenant", slug=f"analysis-{uuid4().hex[:8]}")
+    analyst = User(
+        id=uuid4(), tenant_id=tenant.id, email=f"analyst-{uuid4().hex[:8]}@test.local",
+        username="analyst", hashed_password="unused", role=UserRole.ANALYST,
+    )
+    other_tenant = Tenant(id=uuid4(), name="Other analysis tenant", slug=f"other-analysis-{uuid4().hex[:8]}")
+    owner = User(
+        id=uuid4(), tenant_id=other_tenant.id, email=f"owner-{uuid4().hex[:8]}@test.local",
+        username="other-owner", hashed_password="unused", role=UserRole.STREAMER,
+    )
+    stream = Stream(
+        id=uuid4(), tenant_id=other_tenant.id, owner_id=owner.id, platform=Platform.TWITCH,
+        external_id="private-analysis-stream", channel_name="private-analysis-stream",
+    )
+    db_session.add_all([tenant, analyst, other_tenant, owner, stream])
+    await db_session.flush()
+    token = create_access_token(str(analyst.id), str(tenant.id), analyst.role.value)
+
+    response = await client.post(
+        "/api/v1/detection/analyze-batch",
+        params={"stream_id": str(stream.id)},
+        json=[{"platform_user_id": "sample-user"}],
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_watch_channel_uses_service_and_persists_monitor_settings(
     client: AsyncClient,
     db_session,

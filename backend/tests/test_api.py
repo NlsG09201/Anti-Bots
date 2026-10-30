@@ -110,6 +110,12 @@ async def test_viewer_cannot_change_or_trigger_stream_operations(client: AsyncCl
         await client.post(f"/api/v1/streams/{stream_id}/monitor"),
         await client.patch(f"/api/v1/alerts/{uuid4()}/acknowledge"),
         await client.patch(f"/api/v1/alerts/{uuid4()}/dismiss"),
+        await client.post("/api/v1/detection/analyze-ip", params={"ip_address": "203.0.113.10"}),
+        await client.post(
+            "/api/v1/detection/analyze-batch",
+            params={"stream_id": str(uuid4())},
+            json=[{"platform_user_id": "viewer-event"}],
+        ),
         await client.post(f"/api/v1/streams/{stream_id}/events", json={"event_type": "chat_message"}),
         await client.post(f"/api/v1/streams/{stream_id}/viewers/load-full"),
         await client.post(f"/api/v1/streams/{stream_id}/viewers/screen"),

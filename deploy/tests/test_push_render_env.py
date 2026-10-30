@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from push_render_env import _validate_production_env  # noqa: E402
+from push_render_env import _service_health_url, _validate_production_env  # noqa: E402
 
 
 class RenderEnvironmentValidationTests(unittest.TestCase):
@@ -46,6 +46,20 @@ class RenderEnvironmentValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "REDIS_URL") as caught:
             _validate_production_env(self.env)
         self.assertNotIn("private-token", str(caught.exception))
+
+    def test_worker_does_not_use_web_health_check(self):
+        service = {"type": "background_worker", "name": "anti-bots-platform-monitor"}
+        self.assertIsNone(_service_health_url(service, service["name"]))
+
+    def test_web_service_uses_render_health_url(self):
+        service = {
+            "type": "web_service",
+            "serviceDetails": {"url": "https://anti-bots-api.onrender.com"},
+        }
+        self.assertEqual(
+            _service_health_url(service, "anti-bots-api"),
+            "https://anti-bots-api.onrender.com",
+        )
 
 
 if __name__ == "__main__":

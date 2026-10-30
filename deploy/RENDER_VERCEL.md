@@ -2,8 +2,8 @@
 
 ## Checklist rapido
 
-- [ ] **1.** Importar env en Render (28 variables)
-- [ ] **2.** Manual Deploy en Render
+- [ ] **1.** Configurar env en Render para API y worker
+- [ ] **2.** Ejecutar `Deploy Render env` en GitHub Actions o hacer deploy manual
 - [ ] **3.** Log: `Preflight OK — starting uvicorn`
 - [ ] **4.** `curl https://anti-bots.onrender.com/health` → healthy
 - [ ] **5.** Variables en Vercel (`API_PROXY_TARGET`, `NEXT_PUBLIC_API_DIRECT_URL`, `NEXT_PUBLIC_WS_URL`)
@@ -29,11 +29,15 @@ O solo import manual:
 
 En [dashboard.render.com](https://dashboard.render.com):
 
-1. Servicio **anti-bots-api**
-2. **Environment** → **Add from .env** → Ctrl+V → **Save Changes**
+1. Servicios **anti-bots-api** y **anti-bots-platform-monitor**
+2. **Environment** → **Add from .env** → Ctrl+V → **Save Changes** en ambos servicios
 3. Verifica que existan (valor oculto): `DATABASE_URL`, `APP_SECRET_KEY`, `JWT_SECRET_KEY`, `AES_ENCRYPTION_KEY`
 
 Sin esto veras: `Variables NO definidas: DATABASE_URL` y **Exited with status 1**.
+
+El worker requiere un plan Render **Starter** (los servicios background worker no admiten el plan Free). El workflow `Deploy Render env`, al ejecutarse manualmente, sincroniza el archivo de variables y despliega ambos servicios. Configura los secretos `DEPLOY_RENDER_ENV` y `RENDER_API_KEY` en GitHub Actions.
+
+Al aplicar estos cambios por primera vez, sincroniza el Blueprint `render.yaml` en Render para que se aplique el plan del worker. El workflow actualiza variables y despliega servicios; no modifica los planes ni crea servicios que aún no existan.
 
 **MongoDB Atlas (opcional):** si `MONGODB_URI` falla con SSL (`TLSV1_ALERT_INTERNAL_ERROR`), la API **sigue arrancando** (sin persistencia Mongo). Corrige en Atlas: Network Access `0.0.0.0/0`, URI `mongodb+srv://...`, contraseña **URL-encoded**, usuario con permisos readWrite.
 

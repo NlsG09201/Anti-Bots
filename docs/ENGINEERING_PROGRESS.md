@@ -386,3 +386,9 @@
 - HMAC mode now requires and validates a signature before claiming the nonce. The public widget signs the exact serialized request body with Web Crypto; the API verifies the raw body bytes. Enabling widget HMAC also keeps replay validation active.
 - Added tests for atomic claims, missing and valid signatures, absent replay headers, and nonce TTL coverage.
 - Verification: `npm run lint` passed; full backend suite passed (`171 passed, 1 skipped, 23 warnings`); `git diff --check` passed.
+
+## Twitch OAuth invite ownership (2026-10-30)
+
+- OAuth invite creation now requires the stream owner or a tenant administrator, in addition to moderator-level role. This aligns invite issuance with the callback's existing broadcaster-to-target-channel check.
+- Added a same-tenant cross-owner regression test confirming another streamer cannot create an invite.
+- Verification: focused ownership test passed; full backend suite passed (`172 passed, 1 skipped, 23 warnings`); `git diff --check` passed.

@@ -25,8 +25,9 @@ jobs:
           fi
           printf '%s\n' "$DEPLOY_RENDER_ENV" > deploy/render.import.env
 
-      - name: Push variables to Render and trigger deploy
+      - name: Push variables to Render and deploy API and worker
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_NAME: anti-bots-api
-        run: python deploy/push_render_env.py
+        run: |
+          RENDER_SERVICE_NAME=anti-bots-api python deploy/push_render_env.py
+          RENDER_SERVICE_NAME=anti-bots-platform-monitor python deploy/push_render_env.py
