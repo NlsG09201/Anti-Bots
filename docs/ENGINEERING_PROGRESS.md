@@ -175,3 +175,17 @@
 - Pipeline processing now verifies that the tenant ID carried by a queued event matches the owner of the referenced stream before invoking ingest logic. Mismatches are logged and rejected without processing.
 - Added a regression test proving a cross-tenant event is rejected before the event handler runs.
 - Verification: full backend suite passed (`114 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
+
+## Render startup configuration incident (2026-10-30)
+
+- The supplied Render logs showed a successful image build followed by startup rejection because imported `TRUSTED_HOSTS` contained localhost and 127.0.0.1. Two identical error lines corresponded to the two loopback values.
+- Updated ignored local `deploy/render.env` and `deploy/render.import.env` values to the two explicit Render service hosts, added that setting to the tracked import example, and corrected the VPS environment generator to emit only its API host (no loopback or wildcard subdomains). The tracked `render.yaml` already contains the explicit Render hosts.
+- Added a production validator test for the explicit Render host pair. Full backend suite passed (`115 passed, 1 skipped, 20 warnings`); `git diff --check` passed.
+- The logs also show Redis is not configured. This is a warning rather than the startup blocker; Render environment must include native `REDIS_URL` for Redis Streams, arq queues, and WebSocket pub/sub to operate. No external Render settings were changed or deployment run from this workspace.
+
+## Production Redis dependency validation (2026-10-30)
+
+- Production startup now rejects missing native Redis TCP configuration when the event pipeline, arq queue, or realtime pub/sub is enabled. Upstash REST alone is not accepted for these features. Operators may run without Redis only after explicitly disabling all three features.
+- Added coverage for missing Redis, REST-only Redis, and the explicit all-features-disabled fallback.
+- Verification: full backend suite passed (`118 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
+- Render still requires a dashboard environment update and redeploy; no live service state was changed.

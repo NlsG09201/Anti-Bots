@@ -79,7 +79,16 @@ def validate_production_settings() -> list[str]:
         settings.upstash_redis_rest_url.startswith("https://")
         and settings.upstash_redis_rest_token
     )
-    if not redis_tcp_configured and not redis_rest_configured:
+    redis_stream_features_enabled = bool(
+        settings.event_pipeline_enabled
+        or settings.event_queue_enabled
+        or settings.event_realtime_pubsub_enabled
+    )
+    if settings.is_production and redis_stream_features_enabled and not redis_tcp_configured:
+        errors.append(
+            "REDIS_URL is required in production when event pipeline, queue, or realtime pub/sub is enabled; Upstash REST is cache-only"
+        )
+    elif not redis_tcp_configured and not redis_rest_configured:
         logger.warning(
             "redis_not_configured",
             hint="Set REDIS_URL or UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN",

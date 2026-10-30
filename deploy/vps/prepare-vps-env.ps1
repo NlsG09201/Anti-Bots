@@ -38,12 +38,7 @@ Get-Content $src -Encoding UTF8 | ForEach-Object {
         return
     }
     if ($line -match '^\s*TRUSTED_HOSTS\s*=') {
-        $base = ($ApiDomain -split '\.', 2)[1]
-        if ($base) {
-            $lines += "TRUSTED_HOSTS=${ApiDomain},.${base},localhost,127.0.0.1"
-        } else {
-            $lines += "TRUSTED_HOSTS=${ApiDomain},localhost,127.0.0.1"
-        }
+        $lines += "TRUSTED_HOSTS=${ApiDomain}"
         return
     }
 

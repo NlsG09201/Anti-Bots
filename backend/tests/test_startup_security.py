@@ -19,6 +19,9 @@ def _production_settings(**overrides):
         "redis_url": "redis://redis.example.com:6379/0",
         "upstash_redis_rest_url": "",
         "upstash_redis_rest_token": "",
+        "event_pipeline_enabled": True,
+        "event_queue_enabled": True,
+        "event_realtime_pubsub_enabled": True,
         "trusted_hosts_list": ["api.example.com"],
     }
     values.update(overrides)
@@ -27,6 +30,59 @@ def _production_settings(**overrides):
 
 def test_production_settings_accept_explicit_https_origins_and_hosts(monkeypatch):
     monkeypatch.setattr(startup, "get_settings", lambda: _production_settings())
+
+    assert startup.validate_production_settings() == []
+
+
+def test_production_settings_accept_explicit_render_service_hosts(monkeypatch):
+    monkeypatch.setattr(
+        startup,
+        "get_settings",
+        lambda: _production_settings(
+            trusted_hosts_list=["anti-bots.onrender.com", "anti-bots-api.onrender.com"]
+        ),
+    )
+
+    assert startup.validate_production_settings() == []
+
+
+@pytest.mark.parametrize(
+    ("redis_url", "rest_url", "rest_token"),
+    [
+        ("", "", ""),
+        ("", "https://cache.example.com", "configured-token"),
+    ],
+)
+def test_production_requires_native_redis_for_stream_features(
+    monkeypatch, redis_url, rest_url, rest_token
+):
+    monkeypatch.setattr(
+        startup,
+        "get_settings",
+        lambda: _production_settings(
+            redis_url=redis_url,
+            upstash_redis_rest_url=rest_url,
+            upstash_redis_rest_token=rest_token,
+        ),
+    )
+
+    assert any(
+        "REDIS_URL is required in production" in error
+        for error in startup.validate_production_settings()
+    )
+
+
+def test_production_can_disable_stream_features_without_redis(monkeypatch):
+    monkeypatch.setattr(
+        startup,
+        "get_settings",
+        lambda: _production_settings(
+            redis_url="",
+            event_pipeline_enabled=False,
+            event_queue_enabled=False,
+            event_realtime_pubsub_enabled=False,
+        ),
+    )
 
     assert startup.validate_production_settings() == []
 
