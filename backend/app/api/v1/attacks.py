@@ -180,7 +180,7 @@ async def list_alerts(
 @router.patch("/alerts/{alert_id}/acknowledge")
 async def acknowledge_alert(
     alert_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     from datetime import datetime, timezone
@@ -200,7 +200,7 @@ async def acknowledge_alert(
 @router.patch("/alerts/{alert_id}/dismiss")
 async def dismiss_alert(
     alert_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     from datetime import datetime, timezone

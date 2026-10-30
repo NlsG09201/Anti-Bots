@@ -75,6 +75,50 @@ async def test_viewer_cannot_execute_moderation_playbook(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_viewer_cannot_change_or_trigger_stream_operations(client: AsyncClient):
+    from uuid import uuid4
+
+    from app.api.dependencies import get_current_user
+    from app.infrastructure.database.models import User, UserRole
+    from app.main import app
+
+    viewer = User(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        email="viewer-stream@test.com",
+        username="viewer-stream",
+        hashed_password="unused-test-hash",
+        role=UserRole.VIEWER,
+    )
+
+    async def get_viewer():
+        return viewer
+
+    app.app.dependency_overrides[get_current_user] = get_viewer
+    stream_id = uuid4()
+    responses = [
+        await client.post(
+            "/api/v1/streams",
+            json={"platform": "twitch", "external_id": "viewer-target", "channel_name": "viewer-target"},
+        ),
+        await client.post("/api/v1/streams/watch", json={"login": "viewer-target", "platform": "twitch"}),
+        await client.post(f"/api/v1/streams/{stream_id}/channel-invite"),
+        await client.delete(f"/api/v1/streams/watch/{stream_id}"),
+        await client.post(f"/api/v1/streams/{stream_id}/sync"),
+        await client.post(f"/api/v1/streams/{stream_id}/sync/quick"),
+        await client.post(f"/api/v1/streams/{stream_id}/sync/platform"),
+        await client.post(f"/api/v1/streams/{stream_id}/monitor"),
+        await client.patch(f"/api/v1/alerts/{uuid4()}/acknowledge"),
+        await client.patch(f"/api/v1/alerts/{uuid4()}/dismiss"),
+        await client.post(f"/api/v1/streams/{stream_id}/events", json={"event_type": "chat_message"}),
+        await client.post(f"/api/v1/streams/{stream_id}/viewers/load-full"),
+        await client.post(f"/api/v1/streams/{stream_id}/viewers/screen"),
+    ]
+
+    assert [response.status_code for response in responses] == [403] * len(responses)
+
+
+@pytest.mark.asyncio
 async def test_api_cors_preflight_allows_configured_frontend(client: AsyncClient):
     from app.core.config import get_settings
 

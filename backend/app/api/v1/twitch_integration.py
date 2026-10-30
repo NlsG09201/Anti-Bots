@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import httpx
 
-from app.api.dependencies import CurrentUser
+from app.api.dependencies import CurrentUser, StreamModeratorUser
 from app.core.config import get_settings
 from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.core.logging import get_logger
@@ -507,7 +507,7 @@ async def disconnect_twitch_account(
 @router.post("/subscribe/{stream_id}")
 async def subscribe_events(
     stream_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -520,6 +520,11 @@ async def subscribe_events(
     stream = result.scalar_one_or_none()
     if not stream or not stream.oauth_token_encrypted:
         raise NotFoundError("Stream")
+    if stream.owner_id != current_user.id and current_user.role not in (
+        UserRole.ADMIN,
+        UserRole.SUPER_ADMIN,
+    ):
+        raise AuthorizationError("Only the account owner or a tenant administrator can manage subscriptions")
 
     from app.services.platforms.oauth_tokens import get_stream_access_token
 

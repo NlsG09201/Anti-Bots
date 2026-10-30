@@ -369,3 +369,13 @@
 - Fixed a runtime contract mismatch: playbook ban actions called `MitigationService.apply_mitigation` without its required `attack_id`, causing every such action to fail. The executor now parses and supplies an associated incident attack ID, and skips safely with a stable reason if none is associated.
 - Added regression tests for successful dispatch and the no-associated-attack case.
 - Verification: focused playbook tests passed (`5 passed`); full backend suite passed (`163 passed, 1 skipped, 23 warnings`); `git diff --check` passed.
+
+## Stream operation authorization (2026-10-30)
+
+- Restricted OAuth invite creation, removal of monitored channels, and live channel scans to stream moderators and higher. These operations can change integration state, delete tenant resources, or consume platform/API capacity.
+- Added an API regression test confirming viewers receive 403 for all three operations before stream lookup or side effects.
+- Verification: focused authorization test passed; full backend suite passed (`164 passed, 1 skipped, 23 warnings`); `git diff --check` passed.
+- Expanded the viewer denial test to cover stream creation and watch, all sync variants, event ingestion, full viewer loading, and AI screening. These write/compute operations now also require moderator-level access; read routes remain available to authenticated viewers. Verification: expanded RBAC test and full backend suite passed (`164 passed, 1 skipped, 23 warnings`).
+- Twitch EventSub subscription management now also requires moderator-level access and verifies stream ownership (or tenant administrator role), matching the existing disconnect and Kick/Youtube account ownership checks. Added a cross-owner tenant regression test. Full backend suite passed (`165 passed, 1 skipped, 23 warnings`); `git diff --check` passed.
+- Widget ingest-key rotation now requires moderator-level access and stream ownership (or tenant administrator role); denied rotations leave the existing key unchanged. Added a shared-tenant ownership regression test alongside the EventSub check. Full backend suite passed (`166 passed, 1 skipped, 23 warnings`); `git diff --check` passed.
+- Widget embed responses now apply the same role and owner/admin checks before returning the ingestion secret. Alert acknowledge/dismiss now require moderator-level access, preventing viewer-role changes to tenant-wide incident state. Added cross-owner embed secrecy and viewer alert-operation assertions. Full backend suite passed (`167 passed, 1 skipped, 23 warnings`); `git diff --check` passed.

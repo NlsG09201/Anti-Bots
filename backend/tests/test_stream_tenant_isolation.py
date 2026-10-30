@@ -79,6 +79,94 @@ async def test_stream_list_contains_only_authenticated_tenant(client: AsyncClien
 
 
 @pytest.mark.asyncio
+async def test_streamer_cannot_subscribe_eventsub_for_another_owner_stream(
+    client: AsyncClient,
+    db_session,
+):
+    tenant = Tenant(id=uuid4(), name="OAuth owner tenant", slug=f"oauth-owner-{uuid4().hex[:8]}")
+    owner = User(
+        id=uuid4(), tenant_id=tenant.id, email=f"owner-{uuid4().hex[:8]}@test.local",
+        username="stream-owner", hashed_password="unused", role=UserRole.STREAMER,
+    )
+    actor = User(
+        id=uuid4(), tenant_id=tenant.id, email=f"actor-{uuid4().hex[:8]}@test.local",
+        username="other-streamer", hashed_password="unused", role=UserRole.STREAMER,
+    )
+    stream = Stream(
+        id=uuid4(), tenant_id=tenant.id, owner_id=owner.id, platform=Platform.TWITCH,
+        external_id="twitch-channel", channel_name="channel", oauth_token_encrypted="ciphertext",
+    )
+    db_session.add_all([tenant, owner, actor, stream])
+    await db_session.flush()
+    token = create_access_token(str(actor.id), str(tenant.id), actor.role.value)
+
+    response = await client.post(
+        f"/api/v1/integrations/twitch/subscribe/{stream.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_streamer_cannot_rotate_another_owner_widget_key(client: AsyncClient, db_session):
+    tenant = Tenant(id=uuid4(), name="Widget tenant", slug=f"widget-{uuid4().hex[:8]}")
+    owner = User(
+        id=uuid4(), tenant_id=tenant.id, email=f"owner-{uuid4().hex[:8]}@test.local",
+        username="widget-owner", hashed_password="unused", role=UserRole.STREAMER,
+    )
+    actor = User(
+        id=uuid4(), tenant_id=tenant.id, email=f"actor-{uuid4().hex[:8]}@test.local",
+        username="other-streamer", hashed_password="unused", role=UserRole.STREAMER,
+    )
+    stream = Stream(
+        id=uuid4(), tenant_id=tenant.id, owner_id=owner.id, platform=Platform.TWITCH,
+        external_id="widget-channel", channel_name="widget-channel",
+        settings={"ingest_key": "existing-widget-ingest-key"},
+    )
+    db_session.add_all([tenant, owner, actor, stream])
+    await db_session.flush()
+    token = create_access_token(str(actor.id), str(tenant.id), actor.role.value)
+
+    response = await client.post(
+        f"/api/v1/streams/{stream.id}/widget/key",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+    assert stream.settings["ingest_key"] == "existing-widget-ingest-key"
+
+
+@pytest.mark.asyncio
+async def test_streamer_cannot_read_another_owner_widget_key(client: AsyncClient, db_session):
+    tenant = Tenant(id=uuid4(), name="Widget embed tenant", slug=f"widget-embed-{uuid4().hex[:8]}")
+    owner = User(
+        id=uuid4(), tenant_id=tenant.id, email=f"owner-{uuid4().hex[:8]}@test.local",
+        username="widget-owner", hashed_password="unused", role=UserRole.STREAMER,
+    )
+    actor = User(
+        id=uuid4(), tenant_id=tenant.id, email=f"actor-{uuid4().hex[:8]}@test.local",
+        username="other-streamer", hashed_password="unused", role=UserRole.STREAMER,
+    )
+    stream = Stream(
+        id=uuid4(), tenant_id=tenant.id, owner_id=owner.id, platform=Platform.TWITCH,
+        external_id="widget-embed-channel", channel_name="widget-embed-channel",
+        settings={"ingest_key": "sensitive-existing-widget-key"},
+    )
+    db_session.add_all([tenant, owner, actor, stream])
+    await db_session.flush()
+    token = create_access_token(str(actor.id), str(tenant.id), actor.role.value)
+
+    response = await client.get(
+        f"/api/v1/streams/{stream.id}/widget/embed",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+    assert "sensitive-existing-widget-key" not in response.text
+
+
+@pytest.mark.asyncio
 async def test_watch_channel_uses_service_and_persists_monitor_settings(
     client: AsyncClient,
     db_session,

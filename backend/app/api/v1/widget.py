@@ -7,11 +7,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import CurrentUser
+from app.api.dependencies import CurrentUser, StreamModeratorUser
 from app.api.v1.schemas import EventIngest
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError, ValidationError
-from app.infrastructure.database.models import Stream
+from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
+from app.infrastructure.database.models import Stream, UserRole
 from app.infrastructure.database.session import get_db
 from app.services.detection.engine import BotDetectionEngine
 from app.events.bus import ingest_event
@@ -253,12 +253,17 @@ async def widget_ping(
 @router.get("/streams/{stream_id}/widget/embed")
 async def get_widget_embed(
     stream_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     from app.api.v1.streams import _get_stream
 
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    if stream.owner_id != current_user.id and current_user.role not in (
+        UserRole.ADMIN,
+        UserRole.SUPER_ADMIN,
+    ):
+        raise AuthorizationError("Only the stream owner or a tenant administrator can access its widget key")
     ingest_key = _ensure_ingest_key(stream)
     await db.flush()
 
@@ -298,12 +303,17 @@ async def get_widget_embed(
 @router.post("/streams/{stream_id}/widget/key")
 async def regenerate_widget_key(
     stream_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     from app.api.v1.streams import _get_stream
 
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    if stream.owner_id != current_user.id and current_user.role not in (
+        UserRole.ADMIN,
+        UserRole.SUPER_ADMIN,
+    ):
+        raise AuthorizationError("Only the stream owner or a tenant administrator can rotate its widget key")
     meta = dict(stream.settings or {})
     meta["ingest_key"] = secrets.token_urlsafe(24)
     stream.settings = meta

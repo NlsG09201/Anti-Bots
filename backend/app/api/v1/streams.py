@@ -81,7 +81,7 @@ def _as_stream_response(stream: Stream, current_user=None) -> StreamResponse:
 @router.post("", response_model=StreamResponse)
 async def create_stream(
     data: StreamCreate,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     stream = Stream(
@@ -100,7 +100,7 @@ async def create_stream(
 @router.post("/watch", response_model=StreamResponse)
 async def watch_channel(
     data: StreamWatchRequest,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     """Monitoreo de canal externo (Twitch, Kick, YouTube Live, TikTok Live)."""
@@ -134,7 +134,7 @@ async def watch_channel(
 @router.post("/{stream_id}/channel-invite")
 async def create_channel_invite(
     stream_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     """Genera enlace para que el streamer conecte OAuth y habilite chatters + ban en Twitch."""
@@ -163,7 +163,7 @@ async def create_channel_invite(
 @router.delete("/watch/{stream_id}")
 async def unwatch_channel(
     stream_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
@@ -184,7 +184,7 @@ async def unwatch_channel(
 @router.post("/{stream_id}/sync", response_model=StreamResponse)
 async def sync_stream(
     stream_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
     deep: bool = Query(False, description="Escaneo IRC/chatters + deteccion (~30s)"),
 ):
@@ -202,7 +202,7 @@ async def sync_stream(
 @router.post("/{stream_id}/sync/quick")
 async def quick_sync_stream(
     stream_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     """Sincroniza usuarios en chat (Helix rapido) sin escaneo IRC largo."""
@@ -308,7 +308,7 @@ async def quick_sync_stream(
 @router.post("/{stream_id}/sync/platform")
 async def sync_platform_chat(
     stream_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     """Sincroniza participantes del chat de Kick o YouTube para su análisis SOC."""
@@ -448,7 +448,7 @@ async def sync_platform_chat(
 @router.post("/{stream_id}/monitor")
 async def run_channel_monitor(
     stream_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     """Escaneo en vivo: Twitch IRC/Helix o sync multi-plataforma + deteccion."""
@@ -664,7 +664,7 @@ async def get_stream(
 async def ingest_event(
     stream_id: UUID,
     event: EventIngest,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
@@ -681,7 +681,7 @@ async def ingest_event(
 @router.post("/{stream_id}/viewers/load-full")
 async def load_full_viewer_list(
     stream_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -719,7 +719,7 @@ async def load_full_viewer_list(
 @router.post("/{stream_id}/viewers/screen")
 async def screen_viewers_with_ai(
     stream_id: UUID,
-    current_user: CurrentUser,
+    current_user: StreamModeratorUser,
     db: AsyncSession = Depends(get_db),
 ):
     """Cruza usuarios en chat con base local + IA y actualiza riesgo/descripcion."""
