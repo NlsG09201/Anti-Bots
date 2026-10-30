@@ -166,6 +166,23 @@ class RedisCache:
         client = await get_redis()
         await client.setex(full, ttl, serialized)
 
+    async def set_if_absent(self, key: str, value: Any, ttl: int = 60) -> bool:
+        """Atomically create a key only when it does not exist, with expiry."""
+        serialized = json.dumps(value) if not isinstance(value, str) else value
+        full = self._key(key)
+        if self._use_memory:
+            if _memory_get(full) is not None:
+                return False
+            _memory_set(full, serialized, ttl)
+            return True
+        if self._use_rest:
+            result = (await _upstash_pipeline([[
+                "SET", full, serialized, "NX", "EX", ttl,
+            ]]))[0]
+            return result == "OK"
+        client = await get_redis()
+        return bool(await client.set(full, serialized, ex=ttl, nx=True))
+
     async def delete(self, key: str) -> None:
         full = self._key(key)
         if self._use_memory:

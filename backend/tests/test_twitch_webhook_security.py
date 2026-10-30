@@ -1,6 +1,8 @@
 """Security checks for Twitch EventSub webhook verification."""
 
 from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
 from unittest.mock import patch
 
 import pytest
@@ -71,3 +73,23 @@ def test_twitch_signature_verification_fails_without_a_secret():
 
     with patch("app.integrations.twitch.eventsub.settings.twitch_webhook_secret", ""):
         assert not TwitchEventSubClient.verify_signature("id", "timestamp", b"body", "sha256=anything")
+
+
+def test_twitch_signature_verification_uses_message_id_timestamp_and_raw_body():
+    from app.integrations.twitch.eventsub import TwitchEventSubClient
+
+    message_id = "message-id"
+    timestamp = "2026-10-29T12:00:00Z"
+    body = b'{"event":"payload"}'
+    secret = "a-random-test-secret"
+    digest = hmac.new(
+        secret.encode(), message_id.encode() + timestamp.encode() + body, hashlib.sha256
+    ).hexdigest()
+
+    with patch("app.integrations.twitch.eventsub.settings.twitch_webhook_secret", secret):
+        assert TwitchEventSubClient.verify_signature(
+            message_id, timestamp, body, f"sha256={digest}"
+        )
+        assert not TwitchEventSubClient.verify_signature(
+            message_id, timestamp, body + b"x", f"sha256={digest}"
+        )

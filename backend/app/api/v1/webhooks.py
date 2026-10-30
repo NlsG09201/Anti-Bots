@@ -18,6 +18,7 @@ from app.core.logging import get_logger
 from app.events.bus import get_event_bus, ingest_event
 from app.events.schemas import PipelineEvent
 from app.integrations.twitch.eventsub import TwitchEventSubClient
+from app.infrastructure.cache.redis_client import RedisCache, redis_cache_is_configured
 from app.infrastructure.database.models import KickWebhookEvent, Platform, Stream
 from app.infrastructure.database.session import get_db
 from app.integrations.kick.oauth import KICK_WEBHOOK_EVENTS
@@ -100,97 +101,137 @@ async def twitch_webhook(
         return {"challenge": data["challenge"]}
 
     if twitch_eventsub_message_type == "notification":
-        payload = await request.json()
-        event = TwitchEventSubClient.parse_event(
-            {
-                "twitch-eventsub-subscription-type": request.headers.get(
-                    "Twitch-Eventsub-Subscription-Type", ""
-                ),
-                "twitch-eventsub-message-timestamp": twitch_eventsub_message_timestamp or "",
-            },
-            payload,
-        )
-        logger.info("twitch_event_received", event_type=event["type"])
-
-        broadcaster_id = event.get("broadcaster_id") or ""
-        if not broadcaster_id:
-            return Response(status_code=204)
-
-        result = await db.execute(
-            select(Stream).where(
-                Stream.external_id == str(broadcaster_id),
-                Stream.platform == Platform.TWITCH,
+        if settings.is_production and not redis_cache_is_configured():
+            logger.error("twitch_webhook_idempotency_unavailable")
+            return Response(status_code=503)
+        cache = RedisCache()
+        dedupe_key = "twitch:eventsub:" + twitch_eventsub_message_id
+        try:
+            claimed = await cache.set_if_absent(dedupe_key, "processing", ttl=30)
+            if not claimed:
+                state = await cache.get(dedupe_key)
+                if state == "completed":
+                    return Response(status_code=204)
+                return Response(status_code=503)
+            await _process_twitch_notification(
+                request,
+                db,
+                twitch_eventsub_message_timestamp,
             )
+            await cache.set(dedupe_key, "completed", ttl=86400)
+        except Exception as exc:
+            try:
+                await cache.delete(dedupe_key)
+            except Exception:
+                logger.exception(
+                    "twitch_webhook_dedupe_cleanup_failed",
+                    message_id=twitch_eventsub_message_id,
+                )
+            logger.exception(
+                "twitch_webhook_processing_failed",
+                message_id=twitch_eventsub_message_id,
+                error_type=type(exc).__name__,
+            )
+            return Response(status_code=503)
+
+    return Response(status_code=204)
+
+
+async def _process_twitch_notification(
+    request: Request,
+    db: AsyncSession,
+    twitch_eventsub_message_timestamp: str,
+) -> None:
+    payload = await request.json()
+    event = TwitchEventSubClient.parse_event(
+        {
+            "twitch-eventsub-subscription-type": request.headers.get(
+                "Twitch-Eventsub-Subscription-Type", ""
+            ),
+            "twitch-eventsub-message-timestamp": twitch_eventsub_message_timestamp or "",
+        },
+        payload,
+    )
+    logger.info("twitch_event_received", event_type=event["type"])
+
+    broadcaster_id = event.get("broadcaster_id") or ""
+    if not broadcaster_id:
+        return
+
+    result = await db.execute(
+        select(Stream).where(
+            Stream.external_id == str(broadcaster_id),
+            Stream.platform == Platform.TWITCH,
         )
-        candidate_streams = result.scalars().all()
-        subscription_user_id = str(event.get("chat_user_id") or "")
+    )
+    candidate_streams = result.scalars().all()
+    subscription_user_id = str(event.get("chat_user_id") or "")
+    stream = next(
+        (
+            item for item in candidate_streams
+            if subscription_user_id
+            and str((item.settings or {}).get("twitch_bot_user_id") or "") == subscription_user_id
+        ),
+        None,
+    )
+    if not stream:
         stream = next(
             (
                 item for item in candidate_streams
-                if subscription_user_id
-                and str((item.settings or {}).get("twitch_bot_user_id") or "") == subscription_user_id
+                if not (item.settings or {}).get("twitch_bot_access_token_encrypted")
             ),
-            None,
+            candidate_streams[0] if candidate_streams else None,
         )
-        if not stream:
-            stream = next(
-                (
-                    item for item in candidate_streams
-                    if not (item.settings or {}).get("twitch_bot_access_token_encrypted")
-                ),
-                candidate_streams[0] if candidate_streams else None,
-            )
-        if not stream:
-            logger.warning("twitch_webhook_stream_not_found", broadcaster_id=broadcaster_id)
-            return Response(status_code=204)
+    if not stream:
+        logger.warning("twitch_webhook_stream_not_found", broadcaster_id=broadcaster_id)
+        return
 
-        ingest_type = EVENTSUB_TO_INGEST.get(event["type"], event["type"])
-        event_ingest = EventIngest(
+    ingest_type = EVENTSUB_TO_INGEST.get(event["type"], event["type"])
+    event_ingest = EventIngest(
+        event_type=ingest_type,
+        platform_user_id=event.get("user_id"),
+        platform_username=event.get("username"),
+        metadata={
+            "timestamp": event.get("timestamp"),
+            "eventsub_type": event["type"],
+            **(event.get("event") or {}),
+        },
+    )
+
+    if settings.event_pipeline_enabled:
+        bus = get_event_bus()
+        pipeline_event = PipelineEvent.from_ingest(
+            stream_id=stream.id,
+            tenant_id=stream.tenant_id,
             event_type=ingest_type,
-            platform_user_id=event.get("user_id"),
-            platform_username=event.get("username"),
-            metadata={
-                "timestamp": event.get("timestamp"),
-                "eventsub_type": event["type"],
-                **(event.get("event") or {}),
-            },
+            platform_user_id=event_ingest.platform_user_id,
+            platform_username=event_ingest.platform_username,
+            metadata=event_ingest.metadata,
+            source="twitch_eventsub",
         )
+        await bus.publish(pipeline_event)
+    else:
+        await ingest_event(
+            db,
+            stream,
+            stream.tenant_id,
+            event_ingest,
+            source="twitch_eventsub",
+        )
+        await db.commit()
 
-        if settings.event_pipeline_enabled:
-            bus = get_event_bus()
-            pipeline_event = PipelineEvent.from_ingest(
-                stream_id=stream.id,
-                tenant_id=stream.tenant_id,
-                event_type=ingest_type,
-                platform_user_id=event_ingest.platform_user_id,
-                platform_username=event_ingest.platform_username,
-                metadata=event_ingest.metadata,
-                source="twitch_eventsub",
+    if event["type"] == "channel.chat.message":
+        try:
+            from app.services.twitch_chat_moderation import process_twitch_chat_message
+
+            await process_twitch_chat_message(db, stream, event.get("event") or {})
+        except Exception as exc:
+            logger.exception(
+                "twitch_chat_moderation_processing_failed",
+                stream_id=str(stream.id),
+                error_type=type(exc).__name__,
             )
-            await bus.publish(pipeline_event)
-        else:
-            await ingest_event(
-                db,
-                stream,
-                stream.tenant_id,
-                event_ingest,
-                source="twitch_eventsub",
-            )
-            await db.commit()
 
-        if event["type"] == "channel.chat.message":
-            try:
-                from app.services.twitch_chat_moderation import process_twitch_chat_message
-
-                await process_twitch_chat_message(db, stream, event.get("event") or {})
-            except Exception as exc:
-                logger.exception(
-                    "twitch_chat_moderation_processing_failed",
-                    stream_id=str(stream.id),
-                    error_type=type(exc).__name__,
-                )
-
-    return Response(status_code=204)
 
 
 async def _get_kick_public_key(*, force_refresh: bool = False):
