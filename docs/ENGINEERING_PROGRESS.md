@@ -379,3 +379,10 @@
 - Twitch EventSub subscription management now also requires moderator-level access and verifies stream ownership (or tenant administrator role), matching the existing disconnect and Kick/Youtube account ownership checks. Added a cross-owner tenant regression test. Full backend suite passed (`165 passed, 1 skipped, 23 warnings`); `git diff --check` passed.
 - Widget ingest-key rotation now requires moderator-level access and stream ownership (or tenant administrator role); denied rotations leave the existing key unchanged. Added a shared-tenant ownership regression test alongside the EventSub check. Full backend suite passed (`166 passed, 1 skipped, 23 warnings`); `git diff --check` passed.
 - Widget embed responses now apply the same role and owner/admin checks before returning the ingestion secret. Alert acknowledge/dismiss now require moderator-level access, preventing viewer-role changes to tenant-wide incident state. Added cross-owner embed secrecy and viewer alert-operation assertions. Full backend suite passed (`167 passed, 1 skipped, 23 warnings`); `git diff --check` passed.
+
+## Widget anti-replay and request signing (2026-10-30)
+
+- Replaced the replay nonce `GET`/`SET` race with atomic `SET NX` claims, rejected missing nonce/timestamp whenever replay defense is enabled, and retained nonces for at least the full timestamp acceptance window (twice maximum skew plus one second).
+- HMAC mode now requires and validates a signature before claiming the nonce. The public widget signs the exact serialized request body with Web Crypto; the API verifies the raw body bytes. Enabling widget HMAC also keeps replay validation active.
+- Added tests for atomic claims, missing and valid signatures, absent replay headers, and nonce TTL coverage.
+- Verification: `npm run lint` passed; full backend suite passed (`171 passed, 1 skipped, 23 warnings`); `git diff --check` passed.

@@ -26,25 +26,20 @@ class ReplayProtection:
         body: bytes = b"",
         secret: Optional[str] = None,
     ) -> None:
-        if not settings.security_replay_protection_enabled:
+        if not settings.security_replay_protection_enabled and not settings.security_widget_hmac_enabled:
             return
 
         if not nonce or timestamp_ms is None:
-            if settings.security_replay_strict:
-                raise ValidationError("Missing X-SS-Nonce or X-SS-Timestamp")
-            return
+            raise ValidationError("Missing X-SS-Nonce or X-SS-Timestamp")
 
         now_ms = int(time.time() * 1000)
         skew_ms = settings.security_replay_max_skew_seconds * 1000
         if abs(now_ms - int(timestamp_ms)) > skew_ms:
             raise ValidationError("Request timestamp outside allowed window")
 
-        nonce_key = f"{scope}:{nonce}"
-        existing = await self._cache.get(nonce_key)
-        if existing:
-            raise ValidationError("Replay detected: nonce already used")
-
-        if secret and signature and settings.security_widget_hmac_enabled:
+        if settings.security_widget_hmac_enabled:
+            if not secret or not signature:
+                raise ValidationError("Missing X-SS-Signature")
             expected = hmac.new(
                 secret.encode("utf-8"),
                 f"{timestamp_ms}.{nonce}.".encode("utf-8") + body,
@@ -53,5 +48,12 @@ class ReplayProtection:
             if not hmac.compare_digest(expected, signature.strip()):
                 raise ValidationError("Invalid request signature")
 
-        ttl = settings.security_replay_nonce_ttl_seconds
-        await self._cache.set(nonce_key, "1", ttl=ttl)
+        # A timestamp accepted at the future-skew boundary remains valid for
+        # almost twice the configured skew window. Retain its nonce beyond that.
+        ttl = max(
+            settings.security_replay_nonce_ttl_seconds,
+            2 * settings.security_replay_max_skew_seconds + 1,
+        )
+        claimed = await self._cache.set_if_absent(f"{scope}:{nonce}", "1", ttl=ttl)
+        if not claimed:
+            raise ValidationError("Replay detected: nonce already used")

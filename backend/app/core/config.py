@@ -244,6 +244,7 @@ class Settings(BaseSettings):
     security_strict_browser_headers: bool = False
     security_header_block_threshold: float = 80.0
     security_replay_protection_enabled: bool = True
+    # Retained for environment compatibility; widget replay headers are always required when enabled.
     security_replay_strict: bool = False
     security_replay_max_skew_seconds: int = 120
     security_replay_nonce_ttl_seconds: int = 300

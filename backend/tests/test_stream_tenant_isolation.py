@@ -167,6 +167,33 @@ async def test_streamer_cannot_read_another_owner_widget_key(client: AsyncClient
 
 
 @pytest.mark.asyncio
+async def test_streamer_cannot_create_oauth_invite_for_another_owner(client: AsyncClient, db_session):
+    tenant = Tenant(id=uuid4(), name="Invite tenant", slug=f"invite-{uuid4().hex[:8]}")
+    owner = User(
+        id=uuid4(), tenant_id=tenant.id, email=f"owner-{uuid4().hex[:8]}@test.local",
+        username="invite-owner", hashed_password="unused", role=UserRole.STREAMER,
+    )
+    actor = User(
+        id=uuid4(), tenant_id=tenant.id, email=f"actor-{uuid4().hex[:8]}@test.local",
+        username="other-streamer", hashed_password="unused", role=UserRole.STREAMER,
+    )
+    stream = Stream(
+        id=uuid4(), tenant_id=tenant.id, owner_id=owner.id, platform=Platform.TWITCH,
+        external_id="invite-channel", channel_name="invite-channel",
+    )
+    db_session.add_all([tenant, owner, actor, stream])
+    await db_session.flush()
+    token = create_access_token(str(actor.id), str(tenant.id), actor.role.value)
+
+    response = await client.post(
+        f"/api/v1/streams/{stream.id}/channel-invite",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_watch_channel_uses_service_and_persists_monitor_settings(
     client: AsyncClient,
     db_session,

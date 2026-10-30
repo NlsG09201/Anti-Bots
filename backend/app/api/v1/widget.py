@@ -137,13 +137,14 @@ async def widget_ping(
 
     ts_header = request.headers.get("X-SS-Timestamp")
     timestamp_ms = int(ts_header) if ts_header and ts_header.isdigit() else None
+    raw_body = await request.body()
     try:
         await ReplayProtection().validate_request(
             scope=f"widget:{stream.id}",
             nonce=request.headers.get("X-SS-Nonce"),
             timestamp_ms=timestamp_ms,
             signature=request.headers.get("X-SS-Signature"),
-            body=body.model_dump_json().encode("utf-8"),
+            body=raw_body,
             secret=body.stream_key.strip() if settings.security_widget_hmac_enabled else None,
         )
     except ValidationError as exc:

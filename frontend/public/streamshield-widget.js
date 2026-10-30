@@ -78,6 +78,23 @@
     }).join("");
   }
 
+  function signRequest(secret, message) {
+    if (!window.crypto || !window.crypto.subtle || typeof TextEncoder === "undefined") {
+      return Promise.resolve(null);
+    }
+    var encoder = new TextEncoder();
+    return window.crypto.subtle
+      .importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"])
+      .then(function (key) {
+        return window.crypto.subtle.sign("HMAC", key, encoder.encode(message));
+      })
+      .then(function (signature) {
+        return Array.from(new Uint8Array(signature), function (byte) {
+          return byte.toString(16).padStart(2, "0");
+        }).join("");
+      });
+  }
+
   function collectFingerprintBasic() {
     return {
       screen: window.screen ? window.screen.width + "x" + window.screen.height : "",
@@ -115,18 +132,23 @@
     };
 
     var payload = JSON.stringify(body);
+    var timestamp = String(Date.now());
+    var nonce = randomNonce();
     var headers = {
       "Content-Type": "application/json",
-      "X-SS-Nonce": randomNonce(),
-      "X-SS-Timestamp": String(Date.now()),
+      "X-SS-Nonce": nonce,
+      "X-SS-Timestamp": timestamp,
     };
 
-    return fetch(apiUrl + "/api/v1/widget/ping", {
-      method: "POST",
-      headers: headers,
-      body: payload,
-      mode: "cors",
-      keepalive: true,
+    return signRequest(streamKey, timestamp + "." + nonce + "." + payload).then(function (signature) {
+      if (signature) headers["X-SS-Signature"] = signature;
+      return fetch(apiUrl + "/api/v1/widget/ping", {
+        method: "POST",
+        headers: headers,
+        body: payload,
+        mode: "cors",
+        keepalive: true,
+      });
     })
       .then(function (r) {
         return r.json();

@@ -72,8 +72,7 @@ def test_headers_detect_automation_ua():
 @pytest.mark.asyncio
 async def test_replay_rejects_duplicate_nonce():
     cache = AsyncMock()
-    cache.get = AsyncMock(return_value="1")
-    cache.set = AsyncMock()
+    cache.set_if_absent = AsyncMock(return_value=False)
     rp = ReplayProtection(cache=cache)
     with pytest.raises(Exception) as exc:
         await rp.validate_request(
@@ -87,15 +86,101 @@ async def test_replay_rejects_duplicate_nonce():
 @pytest.mark.asyncio
 async def test_replay_accepts_fresh_nonce():
     cache = AsyncMock()
-    cache.get = AsyncMock(return_value=None)
-    cache.set = AsyncMock()
+    cache.set_if_absent = AsyncMock(return_value=True)
     rp = ReplayProtection(cache=cache)
     await rp.validate_request(
         scope="test",
         nonce="fresh-nonce-xyz",
         timestamp_ms=int(time.time() * 1000),
     )
-    cache.set.assert_called_once()
+    cache.set_if_absent.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_widget_hmac_mode_requires_signature_before_nonce_claim(monkeypatch):
+    from app.infrastructure.security import replay
+
+    monkeypatch.setattr(replay.settings, "security_widget_hmac_enabled", True)
+    monkeypatch.setattr(replay.settings, "security_replay_protection_enabled", False)
+    cache = AsyncMock()
+    cache.set_if_absent = AsyncMock(return_value=True)
+    protection = ReplayProtection(cache=cache)
+
+    with pytest.raises(Exception, match="Missing X-SS-Signature"):
+        await protection.validate_request(
+            scope="widget:test",
+            nonce="nonce-without-signature",
+            timestamp_ms=int(time.time() * 1000),
+            secret="test-widget-key",
+        )
+    cache.set_if_absent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_widget_hmac_validates_exact_request_body(monkeypatch):
+    import hashlib
+    import hmac
+
+    from app.infrastructure.security import replay
+
+    monkeypatch.setattr(replay.settings, "security_widget_hmac_enabled", True)
+    timestamp_ms = int(time.time() * 1000)
+    nonce = "signed-widget-nonce"
+    body = b'{"stream_key":"test-key","event_type":"viewer_pulse"}'
+    secret = "test-widget-key"
+    signature = hmac.new(
+        secret.encode(), f"{timestamp_ms}.{nonce}.".encode() + body, hashlib.sha256
+    ).hexdigest()
+    cache = AsyncMock()
+    cache.set_if_absent = AsyncMock(return_value=True)
+
+    await ReplayProtection(cache=cache).validate_request(
+        scope="widget:test",
+        nonce=nonce,
+        timestamp_ms=timestamp_ms,
+        signature=signature,
+        body=body,
+        secret=secret,
+    )
+
+    cache.set_if_absent.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_replay_nonce_ttl_covers_full_accepted_timestamp_window(monkeypatch):
+    from app.infrastructure.security import replay
+
+    monkeypatch.setattr(replay.settings, "security_replay_protection_enabled", True)
+    monkeypatch.setattr(replay.settings, "security_replay_max_skew_seconds", 120)
+    monkeypatch.setattr(replay.settings, "security_replay_nonce_ttl_seconds", 30)
+    cache = AsyncMock()
+    cache.set_if_absent = AsyncMock(return_value=True)
+
+    await ReplayProtection(cache=cache).validate_request(
+        scope="widget:test",
+        nonce="future-boundary-nonce",
+        timestamp_ms=int(time.time() * 1000),
+    )
+
+    assert cache.set_if_absent.await_args.kwargs["ttl"] == 241
+
+
+@pytest.mark.asyncio
+async def test_replay_enabled_rejects_requests_missing_nonce_or_timestamp(monkeypatch):
+    from app.infrastructure.security import replay
+
+    monkeypatch.setattr(replay.settings, "security_replay_protection_enabled", True)
+    monkeypatch.setattr(replay.settings, "security_replay_strict", False)
+    cache = AsyncMock()
+    cache.set_if_absent = AsyncMock(return_value=True)
+
+    with pytest.raises(Exception, match="Missing X-SS-Nonce or X-SS-Timestamp"):
+        await ReplayProtection(cache=cache).validate_request(
+            scope="widget:test",
+            nonce=None,
+            timestamp_ms=None,
+        )
+    cache.set_if_absent.assert_not_awaited()
 
 
 @pytest.mark.asyncio

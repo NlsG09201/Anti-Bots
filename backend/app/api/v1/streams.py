@@ -23,7 +23,7 @@ from app.api.v1.schemas import (
     StreamWatchRequest,
     ViewerSessionResponse,
 )
-from app.core.exceptions import NotFoundError, StreamShieldError, ValidationError
+from app.core.exceptions import AuthorizationError, NotFoundError, StreamShieldError, ValidationError
 from app.core.logging import get_logger
 from app.infrastructure.database.models import (
     Attack,
@@ -139,6 +139,11 @@ async def create_channel_invite(
 ):
     """Genera enlace para que el streamer conecte OAuth y habilite chatters + ban en Twitch."""
     stream = await _get_stream(db, stream_id, current_user.tenant_id)
+    if stream.owner_id != current_user.id and current_user.role not in (
+        UserRole.ADMIN,
+        UserRole.SUPER_ADMIN,
+    ):
+        raise AuthorizationError("Only the stream owner or a tenant administrator can create its OAuth invite")
     invite = secrets.token_urlsafe(24)
     cache = RedisCache(prefix="oauth")
     login = (stream.settings or {}).get("login", stream.channel_name)
