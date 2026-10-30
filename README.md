@@ -18,25 +18,26 @@ Los eventos de Kick se verifican y persisten antes de procesarse; Redis/arq prop
 
 Requisitos: Python 3.11 para el backend, Java 21 para Spring, Node.js 20 para el frontend, PostgreSQL y (para las funciones de cola en tiempo real) Redis TCP. Configure las variables desde `.env.example` en un archivo local ignorado por Git; reemplace todas las claves de ejemplo y no comparta archivos de entorno.
 
+Desde la raíz, los comandos de npm evitan cambiar de carpeta para las tareas habituales. Instale primero las dependencias del frontend con `npm ci --prefix frontend`; instale las del backend con `python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt`.
+
 ```bash
-# Backend (desde backend/)
-pip install -r requirements.txt -r requirements-dev.txt
-pytest tests/ -q
-
-# Spring (desde backend-spring/)
-mvn --batch-mode verify
-
-# Frontend (desde frontend/)
-npm ci
-npm run build
+npm run dev            # Frontend
+npm run lint           # ESLint del frontend
+npm run typecheck      # TypeScript del frontend
+npm run build          # Build del frontend
+npm run test:backend   # Suite backend
+npm run stack:up       # PostgreSQL, Redis, API y worker locales
+npm run stack:down     # Detener el stack sin borrar sus datos
 ```
+
+Para Spring, ejecute `mvn --batch-mode verify` desde `backend-spring/`. El build de Vercel instala el frontend con `npm ci`, usando su lockfile.
 
 Los pasos de CI están en `.github/workflows/ci.yml`; el análisis estático multilenguaje usa `.github/workflows/codeql.yml`, y el análisis de dependencias OSV corre en PR/merge queue y semanalmente en `.github/workflows/dependency-scan.yml`. Ambos publican resultados en GitHub Code Scanning cuando está habilitado en el repositorio. La API expone `/health`; este endpoint comprueba que el proceso responde, no certifica por sí solo la disponibilidad de PostgreSQL, Redis ni proveedores externos.
 
 Para levantar el stack local con PostgreSQL, Redis, API y worker (sin cargar variables de Render):
 
 ```bash
-docker compose -f deploy/local/docker-compose.dev.yml up --build
+npm run stack:up
 ```
 
 La API queda en `http://localhost:8000`; `/health` es liveness y `/readyz` comprueba PostgreSQL y Redis TCP. Las credenciales del Compose son exclusivamente locales y deben reemplazarse antes de compartir o exponer esos servicios.
