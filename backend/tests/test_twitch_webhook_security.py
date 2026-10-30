@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -66,6 +66,76 @@ async def test_twitch_webhook_rejects_stale_signed_message(client: AsyncClient):
 
     assert response.status_code == 403
     verify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_twitch_webhook_suppresses_completed_duplicate(client: AsyncClient):
+    timestamp = datetime.now(timezone.utc).isoformat()
+    headers = _headers(timestamp)
+    headers["Twitch-Eventsub-Message-Type"] = "notification"
+    headers["Twitch-Eventsub-Subscription-Type"] = "channel.follow"
+
+    with (
+        patch(
+            "app.api.v1.webhooks.TwitchEventSubClient.verify_signature",
+            return_value=True,
+        ),
+        patch(
+            "app.api.v1.webhooks.RedisCache.set_if_absent",
+            new_callable=AsyncMock,
+            side_effect=[True, False],
+        ),
+        patch(
+            "app.api.v1.webhooks.RedisCache.get",
+            new_callable=AsyncMock,
+            return_value="completed",
+        ),
+        patch("app.api.v1.webhooks.RedisCache.set", new_callable=AsyncMock),
+        patch(
+            "app.api.v1.webhooks._process_twitch_notification",
+            new_callable=AsyncMock,
+        ) as process,
+    ):
+        first = await client.post("/api/v1/webhooks/twitch", content=b"{}", headers=headers)
+        duplicate = await client.post("/api/v1/webhooks/twitch", content=b"{}", headers=headers)
+
+    assert first.status_code == 204
+    assert duplicate.status_code == 204
+    process.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_twitch_webhook_releases_failed_claim_for_retry(client: AsyncClient):
+    timestamp = datetime.now(timezone.utc).isoformat()
+    headers = _headers(timestamp)
+    headers["Twitch-Eventsub-Message-Type"] = "notification"
+    headers["Twitch-Eventsub-Subscription-Type"] = "channel.follow"
+
+    with (
+        patch(
+            "app.api.v1.webhooks.TwitchEventSubClient.verify_signature",
+            return_value=True,
+        ),
+        patch(
+            "app.api.v1.webhooks.RedisCache.set_if_absent",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch("app.api.v1.webhooks.RedisCache.delete", new_callable=AsyncMock) as delete,
+        patch("app.api.v1.webhooks.RedisCache.set", new_callable=AsyncMock),
+        patch(
+            "app.api.v1.webhooks._process_twitch_notification",
+            new_callable=AsyncMock,
+            side_effect=[RuntimeError("queue unavailable"), None],
+        ) as process,
+    ):
+        failed = await client.post("/api/v1/webhooks/twitch", content=b"{}", headers=headers)
+        retried = await client.post("/api/v1/webhooks/twitch", content=b"{}", headers=headers)
+
+    assert failed.status_code == 503
+    assert retried.status_code == 204
+    delete.assert_awaited_once()
+    assert process.await_count == 2
 
 
 def test_twitch_signature_verification_fails_without_a_secret():

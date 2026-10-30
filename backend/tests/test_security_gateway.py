@@ -98,6 +98,19 @@ async def test_replay_accepts_fresh_nonce():
     cache.set.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_redis_cache_set_if_absent_is_atomic_for_memory_backend(monkeypatch):
+    from app.infrastructure.cache import redis_client
+
+    monkeypatch.setattr(redis_client, "redis_cache_is_configured", lambda: False)
+    cache = redis_client.RedisCache(prefix=f"test-{time.time_ns()}")
+
+    assert await cache.set_if_absent("delivery", "processing", ttl=30)
+    assert not await cache.set_if_absent("delivery", "processing", ttl=30)
+    await cache.set("delivery", "completed", ttl=30)
+    assert await cache.get("delivery") == "completed"
+
+
 def test_security_gateway_blocks_scanner_paths():
     from app.infrastructure.security.gateway import SecurityGatewayMiddleware
 

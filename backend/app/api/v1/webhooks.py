@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 import re
 
 from fastapi import APIRouter, Depends, Header, Request, Response
@@ -28,6 +29,7 @@ settings = get_settings()
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 _TWITCH_MAX_MESSAGE_AGE_SECONDS = 600
 _TWITCH_FUTURE_TOLERANCE_SECONDS = 30
+_TWITCH_MAX_BODY_BYTES = 1_048_576
 _kick_public_key = None
 _kick_public_key_loaded_at = 0.0
 KICK_EVENT_TYPES = frozenset(KICK_WEBHOOK_EVENTS)
@@ -54,13 +56,15 @@ async def twitch_webhook(
     twitch_eventsub_message_signature: str = Header(None, alias="Twitch-Eventsub-Message-Signature"),
     twitch_eventsub_message_type: str = Header(None, alias="Twitch-Eventsub-Message-Type"),
 ):
-    body = await request.body()
+    body = await _read_limited_body(request, _TWITCH_MAX_BODY_BYTES)
+    if body is None:
+        return Response(status_code=413)
     if not all((
         twitch_eventsub_message_id,
         twitch_eventsub_message_timestamp,
         twitch_eventsub_message_signature,
         twitch_eventsub_message_type,
-    )):
+    )) or len(twitch_eventsub_message_id) > 256:
         return Response(status_code=403)
 
     try:
@@ -93,7 +97,7 @@ async def twitch_webhook(
 
     if twitch_eventsub_message_type == "webhook_callback_verification":
         try:
-            data = await request.json()
+            data = json.loads(body)
         except (ValueError, UnicodeDecodeError):
             return Response(status_code=400)
         if not isinstance(data, dict) or not isinstance(data.get("challenge"), str):
@@ -117,6 +121,7 @@ async def twitch_webhook(
                 request,
                 db,
                 twitch_eventsub_message_timestamp,
+                body,
             )
             await cache.set(dedupe_key, "completed", ttl=86400)
         except Exception as exc:
@@ -141,8 +146,9 @@ async def _process_twitch_notification(
     request: Request,
     db: AsyncSession,
     twitch_eventsub_message_timestamp: str,
+    body: bytes,
 ) -> None:
-    payload = await request.json()
+    payload = json.loads(body)
     event = TwitchEventSubClient.parse_event(
         {
             "twitch-eventsub-subscription-type": request.headers.get(
