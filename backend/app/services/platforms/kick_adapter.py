@@ -55,30 +55,6 @@ class KickPlatformAdapter(PlatformAdapter):
         )
 
     async def fetch_viewers(self, stream: Stream) -> List[ViewerSnapshot]:
-        slug = (stream.settings or {}).get("login") or stream.channel_name.lower()
-        client = await self._client(stream)
-        channel = await client.get_channel(slug)
-
-        chatroom_id = channel.get("chatroom", {}).get("id")
-        if not chatroom_id:
-            return []
-
-        messages = await client.get_chat_messages(int(chatroom_id), limit=100)
-        seen: set[str] = set()
-        viewers: List[ViewerSnapshot] = []
-        for msg in messages:
-            user = msg.get("sender") or msg.get("user") or {}
-            uid = str(user.get("id") or user.get("username") or "")
-            username = user.get("username") or user.get("slug")
-            if not uid or uid in seen:
-                continue
-            seen.add(uid)
-            viewers.append(
-                ViewerSnapshot(
-                    platform_user_id=uid,
-                    platform_username=username,
-                    is_in_chat=True,
-                    metadata={"source": "kick_chat"},
-                )
-            )
-        return viewers
+        # Kick's documented Events API sends chat messages, not a complete
+        # participant roster. Verified chat webhooks populate active sessions.
+        return []

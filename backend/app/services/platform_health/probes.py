@@ -9,7 +9,6 @@ import httpx
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.integrations.tiktok.webcast import fetch_tiktok_room
 from app.services.platform_health.circuit_breaker import get_circuit_breaker
 from app.services.platform_health.schemas import IntegrationProbeResult
 
@@ -30,11 +29,11 @@ async def probe_kick_api() -> IntegrationProbeResult:
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             r = await client.get(
-                "https://kick.com/api/v2/channels/xqc",
+                "https://api.kick.com/swagger/index.html",
                 headers={"Accept": "application/json"},
             )
         ms = (time.perf_counter() - t0) * 1000.0
-        ok = r.status_code in (200, 404)
+        ok = r.status_code == 200
         if ok:
             cb.record_success()
         else:
@@ -99,37 +98,12 @@ async def probe_youtube_api() -> IntegrationProbeResult:
 
 async def probe_tiktok_api() -> IntegrationProbeResult:
     cb = get_circuit_breaker("tiktok")
-    if not cb.allow_request():
-        return IntegrationProbeResult(
-            platform="tiktok",
-            ok=False,
-            circuit_state=cb.state,
-            message="circuit open",
-        )
-    t0 = time.perf_counter()
-    try:
-        room = await fetch_tiktok_room("tiktok")
-        ms = (time.perf_counter() - t0) * 1000.0
-        ok = room is not None
-        if ok:
-            cb.record_success()
-        else:
-            cb.record_failure()
-        return IntegrationProbeResult(
-            platform="tiktok",
-            ok=ok,
-            latency_ms=round(ms, 2),
-            circuit_state=cb.state,
-            message="room_fetch_ok" if ok else "room_fetch_empty",
-        )
-    except Exception as exc:
-        cb.record_failure()
-        return IntegrationProbeResult(
-            platform="tiktok",
-            ok=False,
-            circuit_state=cb.state,
-            message=str(exc)[:120],
-        )
+    return IntegrationProbeResult(
+        platform="tiktok",
+        ok=False,
+        circuit_state=cb.state,
+        message="official_live_api_unavailable",
+    )
 
 
 async def run_all_integration_probes() -> List[IntegrationProbeResult]:

@@ -316,7 +316,7 @@ async def _fetch_kick_profile_public(access_token: str) -> dict:
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
-                "https://kick.com/api/v2/user",
+                "https://api.kick.com/public/v1/users",
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "Accept": "application/json",
@@ -324,6 +324,6 @@ async def _fetch_kick_profile_public(access_token: str) -> dict:
             )
             if response.status_code == 200:
                 return response.json()
-    except Exception:
+    except httpx.HTTPError:
         pass
     return {}

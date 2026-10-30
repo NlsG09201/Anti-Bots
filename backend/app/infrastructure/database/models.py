@@ -175,6 +175,31 @@ class StreamEvent(UUIDMixin, TimestampMixin, Base):
     stream: Mapped["Stream"] = relationship(back_populates="events")
 
 
+class KickWebhookEvent(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "kick_webhook_events"
+    __table_args__ = (
+        UniqueConstraint("message_id", name="uq_kick_webhook_message_id"),
+        Index("ix_kick_webhook_events_status_received", "processing_status", "received_at"),
+        Index("ix_kick_webhook_events_stream_received", "stream_id", "received_at"),
+    )
+
+    message_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    subscription_id: Mapped[Optional[str]] = mapped_column(String(64))
+    stream_id: Mapped[Optional[UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("streams.id", ondelete="SET NULL")
+    )
+    broadcaster_user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    event_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    message_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    raw_payload: Mapped[dict] = mapped_column(JsonType, nullable=False)
+    processing_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    processing_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[Optional[str]] = mapped_column(Text)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
 class Fingerprint(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "fingerprints"
     __table_args__ = (

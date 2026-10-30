@@ -63,22 +63,8 @@ class PlatformSyncService:
                 meta.pop("live_video_id", None)
             stream.settings = meta
 
-        chat_history_error = None
         if live.is_live:
-            try:
-                snapshots = await adapter.fetch_viewers(stream)
-            except Exception as exc:
-                if stream.platform != Platform.KICK:
-                    raise
-                # Kick's history endpoint is best-effort; verified webhooks
-                # continue to populate sessions if this endpoint is unavailable.
-                snapshots = []
-                chat_history_error = type(exc).__name__
-                logger.warning(
-                    "kick_chat_history_fetch_failed",
-                    stream_id=str(stream.id),
-                    error_type=chat_history_error,
-                )
+            snapshots = await adapter.fetch_viewers(stream)
             chatters = [
                 {
                     "username": snap.platform_username or snap.platform_user_id,
@@ -95,8 +81,8 @@ class PlatformSyncService:
         sync_stats = await self.viewers.sync_chat_presence(
             stream.id,
             chatters,
-            # Kick history contains only recent speakers, not a complete roster.
-            # Never mark existing participants absent based on that partial page.
+            # Kick events include message authors only, not a complete roster.
+            # Never mark existing chatters absent based on incomplete Kick events.
             full_resync=stream.platform != Platform.KICK,
             clear_if_empty=not live.is_live,
         )
@@ -111,14 +97,13 @@ class PlatformSyncService:
             "viewer_count": live.viewer_count,
             "chatters_synced": synced,
             "source": (
-                "kick_chat_history+webhook"
+                "kick_webhook"
                 if stream.platform == Platform.KICK
                 else stream.platform.value
             ),
             **(
                 {
                     "chat_subscription": kick_subscription_status,
-                    **({"chat_history_error": chat_history_error} if chat_history_error else {}),
                 }
                 if stream.platform == Platform.KICK
                 else {}

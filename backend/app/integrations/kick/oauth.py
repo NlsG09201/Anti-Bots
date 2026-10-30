@@ -20,6 +20,18 @@ _app_access_token_expires_at = 0.0
 DEFAULT_SCOPES = (
     "user:read channel:read chat:write events:subscribe moderation:ban"
 )
+KICK_WEBHOOK_EVENTS = (
+    "chat.message.sent",
+    "channel.followed",
+    "channel.subscription.new",
+    "channel.subscription.renewal",
+    "channel.subscription.gifts",
+    "livestream.status.updated",
+    "livestream.metadata.updated",
+    "moderation.banned",
+    "channel.reward.redemption.updated",
+    "kicks.gifted",
+)
 
 
 def kick_credentials_valid() -> bool:
@@ -131,24 +143,63 @@ class KickOAuth:
                 return items[0] if items else {}
             return data if isinstance(data, dict) else {}
 
+    async def reconcile_event_subscriptions(
+        self, access_token: str, broadcaster_user_id: str | None = None
+    ) -> Dict[str, Any]:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+            params = {"broadcaster_user_id": broadcaster_user_id} if broadcaster_user_id else {}
+            current_response = await client.get(
+                f"{KICK_API_BASE}/events/subscriptions", headers=headers, params=params
+            )
+            current_response.raise_for_status()
+            current_payload = current_response.json()
+            current = current_payload.get("data", []) if isinstance(current_payload, dict) else []
+            subscribed = set()
+            for item in current if isinstance(current, list) else []:
+                if not isinstance(item, dict):
+                    continue
+                event = item.get("event") or item.get("name") or {}
+                name = event.get("name") if isinstance(event, dict) else event
+                version = event.get("version", item.get("version", 1)) if isinstance(event, dict) else item.get("version", 1)
+                if name and str(version) == "1":
+                    subscribed.add(str(name))
+
+            missing = [name for name in KICK_WEBHOOK_EVENTS if name not in subscribed]
+            if not missing:
+                return {"subscribed": sorted(subscribed), "created": [], "verified_by_api": True}
+
+            payload: Dict[str, Any] = {
+                "events": [{"name": name, "version": 1} for name in missing],
+                "method": "webhook",
+            }
+            if broadcaster_user_id:
+                payload["broadcaster_user_id"] = int(broadcaster_user_id)
+            response = await client.post(
+                f"{KICK_API_BASE}/events/subscriptions", headers=headers, json=payload
+            )
+            response.raise_for_status()
+            created_payload = response.json()
+            results = created_payload.get("data", []) if isinstance(created_payload, dict) else []
+            failed = [
+                item for item in (results if isinstance(results, list) else [])
+                if isinstance(item, dict) and (item.get("error") or item.get("status") == "failed")
+            ]
+            if failed:
+                raise RuntimeError(f"Kick rejected {len(failed)} event subscription(s).")
+            return {
+                "subscribed": sorted(subscribed),
+                "created": missing,
+                "provider_response": created_payload,
+                "verified_by_api": False,
+            }
+
     async def subscribe_chat_events(
         self, access_token: str, broadcaster_user_id: str | None = None
     ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
-            "events": [{"name": "chat.message.sent", "version": 1}],
-            "method": "webhook",
-        }
-        if broadcaster_user_id:
-            payload["broadcaster_user_id"] = int(broadcaster_user_id)
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.post(
-                f"{KICK_API_BASE}/events/subscriptions",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-            response.raise_for_status()
-            return response.json()
+        """Compatibility wrapper; subscriptions now include every supported event."""
+        return await self.reconcile_event_subscriptions(access_token, broadcaster_user_id)

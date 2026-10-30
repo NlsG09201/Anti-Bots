@@ -14,14 +14,13 @@ from app.infrastructure.database.models import Platform, Stream
 from app.infrastructure.database.session import AsyncSessionLocal
 from app.services.platform_health.registry import drop_tracker
 from app.services.monitoring.kick_live import KickLiveMonitor
-from app.services.monitoring.tiktok_live import TikTokLiveMonitor
 from app.services.monitoring.youtube_live import YouTubeLiveMonitor
 from app.services.streams.helpers import stream_monitor_mode
 
 logger = get_logger(__name__)
 settings = get_settings()
 
-MonitorHandle = Union[KickLiveMonitor, YouTubeLiveMonitor, TikTokLiveMonitor]
+MonitorHandle = Union[KickLiveMonitor, YouTubeLiveMonitor]
 
 
 class PlatformMonitorOrchestrator:
@@ -34,7 +33,7 @@ class PlatformMonitorOrchestrator:
     def _should_monitor(self, stream: Stream) -> bool:
         if stream.platform == Platform.TWITCH:
             return False
-        if stream.platform not in (Platform.KICK, Platform.YOUTUBE, Platform.TIKTOK):
+        if stream.platform not in (Platform.KICK, Platform.YOUTUBE):
             return False
         meta = stream.settings or {}
         if not stream_monitor_mode(stream) and not meta.get("soc_monitor"):
@@ -63,8 +62,6 @@ class PlatformMonitorOrchestrator:
                     stream.channel_name,
                     video_id=stream.external_id or None,
                 )
-            elif stream.platform == Platform.TIKTOK:
-                monitor = TikTokLiveMonitor(sid, slug)
             else:
                 return
 
@@ -100,7 +97,7 @@ class PlatformMonitorOrchestrator:
             result = await db.execute(
                 select(Stream).where(
                     Stream.platform.in_(
-                        [Platform.KICK, Platform.YOUTUBE, Platform.TIKTOK]
+                        [Platform.KICK, Platform.YOUTUBE]
                     )
                 )
             )
