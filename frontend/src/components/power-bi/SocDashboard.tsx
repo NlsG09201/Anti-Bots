@@ -161,11 +161,11 @@ export function SocDashboard() {
   const streamRows = streams?.streams ?? [];
   const attackTimeline = attacks?.timeline ?? [];
   const metadataTables = metadata?.tables ?? [];
-  const threatRows = live?.top_streams ?? overview?.kpis.streams_mas_sospechosos ?? [];
+  const threatRows = live?.top_streams ?? overview?.kpis.streams_mas_sospechosos;
 
   const threatSeries = useMemo(
     () =>
-      threatRows.slice(0, 10).map((row) => ({
+      (threatRows ?? []).slice(0, 10).map((row) => ({
         channel: row.channel_name,
         threat: row.threat_score,
         suspicious: Math.round(row.suspicious_ratio * 100),

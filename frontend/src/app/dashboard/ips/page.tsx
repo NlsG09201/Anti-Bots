@@ -15,7 +15,7 @@ import {
 import { StatCard } from "@/components/StatCard";
 import { ThreatIntelPanel } from "@/components/ThreatIntelPanel";
 import { api, type SuspiciousIP, type ThreatIntelReport } from "@/lib/api";
-import { useApiToken, useAuthStore } from "@/stores/authStore";
+import { useApiToken } from "@/stores/authStore";
 
 function riskClass(score: number): string {
   if (score >= 75) return "text-cyber-danger";

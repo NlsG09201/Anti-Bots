@@ -22,11 +22,6 @@ export interface SecurityTimelinePoint {
   proxy?: number;
 }
 
-interface Props {
-  gateway: SecurityTimelinePoint[];
-  events: SecurityTimelinePoint[];
-}
-
 export function SecurityBlocksChart({ gateway }: { gateway: SecurityTimelinePoint[] }) {
   const data = useMemo(() => gateway, [gateway]);
 

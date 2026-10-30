@@ -4,14 +4,13 @@
 
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { useWebSocket, type WSMessage } from "@/hooks/useWebSocket";
 import ThreatViewer from "./ThreatViewer";
 import ThreatMetrics from "./ThreatMetrics";
 import AttackTimeline from "./AttackTimeline";
 import AlertPanel from "./AlertPanel";
-import ThreatMap from "./ThreatMap";
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 interface StreamThreatData {
   stream_id: string;

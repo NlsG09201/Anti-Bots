@@ -25,7 +25,7 @@
         "ss-" + Date.now() + "-" + Math.random().toString(16).slice(2);
       sessionStorage.setItem(SESSION_KEY, id);
       return id;
-    } catch (e) {
+    } catch {
       return "ss-anon-" + Date.now();
     }
   }
@@ -50,7 +50,7 @@
       ctx.fillText("probe-2", 8, 24);
       var b = simpleHash(c.toDataURL());
       return { hash: a, duplicate: b, noise_detected: a !== b };
-    } catch (e) {
+    } catch {
       return { hash: "", duplicate: "", noise_detected: false };
     }
   }
@@ -68,7 +68,7 @@
         vendor: String(vendor),
         renderer: String(renderer),
       };
-    } catch (e) {
+    } catch {
       return { hash: "", vendor: "", renderer: "" };
     }
   }
@@ -96,11 +96,11 @@
             var sum = 0;
             for (var i = 0; i < buf.length; i++) sum += Math.abs(buf[i]);
             resolve(simpleHash(String(sum)));
-          } catch (e2) {
+          } catch {
             resolve("");
           }
         };
-      } catch (e) {
+      } catch {
         resolve("");
       }
     });
@@ -120,7 +120,7 @@
           })
           .catch(function () {});
       }
-    } catch (e) {}
+    } catch {}
     return {
       webdriver: !!navigator.webdriver,
       selenium: !!global._selenium || !!global.callSelenium || !!document.__selenium_unwrapped,
@@ -169,7 +169,7 @@
         pc.createOffer().then(function (offer) {
           return pc.setLocalDescription(offer);
         });
-      } catch (e) {
+      } catch {
         result.failed = true;
         finish();
       }

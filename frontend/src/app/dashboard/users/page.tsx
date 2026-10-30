@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Users, Shield, ShieldOff } from "lucide-react";
 import clsx from "clsx";
-import { api, TenantUser } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useApiToken, useAuthStore } from "@/stores/authStore";
 
 const ROLES = [

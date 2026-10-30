@@ -1,17 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
-  type Alert,
-  type Attack,
   type DashboardCharts,
   type DashboardStats,
   type SocOverview,
   type SocLiveFeedEvent,
   type SecurityDashboard,
-  type SuspiciousIP,
 } from "@/lib/api";
 import { useApiToken } from "@/stores/authStore";
 import { useWebSocket } from "@/hooks/useWebSocket";

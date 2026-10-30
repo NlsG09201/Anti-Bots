@@ -47,7 +47,7 @@
       ctx.fillStyle = "#069";
       ctx.fillText("StreamShield", 2, 15);
       return simpleHash(c.toDataURL());
-    } catch (e) {
+    } catch {
       return "";
     }
   }
@@ -61,7 +61,7 @@
       var vendor = dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : "";
       var renderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "";
       return simpleHash(String(vendor) + "|" + String(renderer));
-    } catch (e) {
+    } catch {
       return "";
     }
   }

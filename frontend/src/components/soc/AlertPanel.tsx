@@ -8,7 +8,7 @@ import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { AlertCircle, CheckCircle, X } from "lucide-react";
-import { api, type Alert } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useApiToken } from "@/stores/authStore";
 
 type AlertSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";

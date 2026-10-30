@@ -5,7 +5,7 @@
 "use client";
 
 import React from "react";
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
 interface ThreatMetricsProps {
   threatData: {
@@ -68,7 +68,7 @@ export default function ThreatMetrics({ threatData }: ThreatMetricsProps) {
   // Detected patterns with confidence
   const patterns = threat_components.behavioral.patterns_detail || {};
   const patternData = Object.entries(patterns)
-    .filter(([_, data]) => data.detected)
+    .filter(([, data]) => data.detected)
     .map(([name, data]) => ({
       name: name.replace(/_/g, " ").toUpperCase(),
       confidence: Math.round((data.confidence || 0) * 100),

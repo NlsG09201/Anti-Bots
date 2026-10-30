@@ -259,7 +259,6 @@ function ViewersContent() {
     mutationFn: () => api.streams.screenViewers(token, streamId),
     onSuccess: (res) => {
       const ti = res.twitch_insights_matched ?? 0;
-      const db = res.twitch_insights_db_size ?? 0;
       setMessage(
           `${res.screened} usuarios analizados · ${res.flagged} coincidencias conocidas · ` +
             `${res.review_required ?? 0} requieren revisión` +

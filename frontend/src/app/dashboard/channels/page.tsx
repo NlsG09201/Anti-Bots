@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, Link2, Plus, RefreshCw, Trash2, Users, Tv, Radio } from "lucide-react";
+import { Eye, Link2, Plus, Trash2, Users, Tv, Radio } from "lucide-react";
 import Link from "next/link";
 import { api, type Stream } from "@/lib/api";
 import { PlatformBadge } from "@/components/PlatformBadge";

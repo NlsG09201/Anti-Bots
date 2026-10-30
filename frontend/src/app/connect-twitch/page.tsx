@@ -12,6 +12,8 @@ function ConnectContent() {
   useEffect(() => {
     if (!invite) return;
     const api = resolveApiBaseUrl();
+    // This API endpoint starts OAuth and redirects to Twitch; a full navigation is required.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = `${api}/api/v1/integrations/twitch/invite/${encodeURIComponent(invite)}/start`;
   }, [invite]);
 
