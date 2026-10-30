@@ -200,6 +200,13 @@ async def lifespan(app: FastAPI):
 
         await start_pipeline_consumer()
         await start_realtime_subscriber()
+        if _cfg.prometheus_enabled:
+            from app.events.metrics import event_pipeline_metrics_loop
+
+            background_tasks.create(
+                event_pipeline_metrics_loop(_cfg.event_metrics_refresh_seconds),
+                name="event_pipeline_metrics",
+            )
         live_intel_task = None
         if _cfg.live_intel_enabled and not _cfg.platform_monitor_worker_mode_resolved:
             from app.live_intel import get_live_intel_engine

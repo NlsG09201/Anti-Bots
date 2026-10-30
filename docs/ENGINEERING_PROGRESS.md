@@ -195,3 +195,38 @@
 - Startup and Redis client now share one native Redis URL validator, avoiding a false-ready state where a malformed `REDIS_URL` passed startup checks but was rejected by the client.
 - Validation checks supported schemes, host, port syntax/range, placeholder credentials, and loopback addresses. Added production tests for malformed ports, HTTP URLs, and IPv4/IPv6 loopback targets.
 - Verification: full backend suite passed (`122 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
+
+## arq duplicate enqueue handling (2026-10-30)
+
+- `enqueue_event_job` now treats arq's `None` response for an already-existing deterministic job ID as an accepted duplicate. The stream consumer therefore acknowledges the already-queued event instead of processing it inline a second time.
+- The Redis pool is closed in a `finally` block, and close errors are logged without converting an accepted enqueue into an inline fallback.
+- Added tests for duplicate job IDs and close failures after enqueue.
+- Verification: full backend suite passed (`125 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
+
+## arq queue depth observability (2026-10-30)
+
+- Queue status now reads the actual arq sorted-set depth with `ZCARD`, reports every event category on the shared queue, and reflects the queue feature flag accurately.
+- Queue-stat failures report only the exception type; the Redis pool is closed on all paths.
+- Added tests for real-depth reporting, shared category labels, disabled state, safe failure reporting, and pool cleanup.
+- Verification: full backend suite passed (`128 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
+
+## Prometheus event-pipeline gauges (2026-10-30)
+
+- Added bounded-cardinality gauges for arq queue depth/availability, Redis Stream length/pending/consumer count, and dead-letter length/availability.
+- A tracked API-lifespan task refreshes those gauges at the configured `EVENT_METRICS_REFRESH_SECONDS` interval, independent of authenticated status endpoint traffic; task cancellation follows the existing lifespan registry.
+- Added tests for metric refresh and unavailable-source markers.
+- Verification: full backend suite passed (`130 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
+
+## Enterprise Compose monitoring services (2026-10-30)
+
+- Added Prometheus, PostgreSQL exporter, and Redis exporter to the enterprise Compose stack. Their service names match the existing scrape configuration, and Prometheus data is persisted in a named volume.
+- Prometheus UI binds to host loopback only; exporters have no published host ports. The postgres exporter uses the documented datasource URI, username, and password settings.
+- `git diff --check` passed. Compose rendering could not be verified because this Docker CLI has no usable Compose subcommand in the sandbox; no containers were started.
+- Corrected the API and worker `env_file` paths to load the `deploy/enterprise/.env` file named in the stack's setup instructions, instead of bypassing that local copy and loading `deploy/render.import.env` directly.
+
+## Backend container build and context hardening (2026-10-30)
+
+- Split API and platform-worker Dockerfiles into dependency-build and runtime stages. Compiler and PostgreSQL development packages are confined to build stages; the API runtime retains Java 21 for Weka, while the platform worker retains its existing Java-free runtime.
+- Added `backend/.dockerignore` rules for local environment files, SQLite databases, tests, caches, and development dependencies so they are excluded from `COPY . .` image contexts. Tracked AI model artifacts remain included.
+- GitHub Actions now builds both backend image variants after the backend checks.
+- Local `docker build` could not reach the Docker Desktop Linux engine because its named pipe is absent. `git diff --check` is the local validation; image build verification is delegated to the new CI steps and has not yet run in this session.

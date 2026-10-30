@@ -1,19 +1,28 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS build-deps
+
+WORKDIR /build
+
+# Compilers and headers are only needed when pip builds a wheel.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Java 21 (Debian trixie; openjdk-17 ya no está en repos)
+# Weka requires a JVM. Keep only runtime libraries in the production image.
 ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev curl \
-    openjdk-21-jre-headless \
+    curl libgomp1 libpq5 openjdk-21-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+COPY --from=build-deps /install/ /usr/local/
 COPY . .
 
 RUN adduser --disabled-password --gecos '' appuser && chown -R appuser:appuser /app

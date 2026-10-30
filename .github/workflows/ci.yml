@@ -59,6 +59,10 @@ jobs:
           REDIS_URL: ""
           JWT_SECRET_KEY: ci-test-secret-min-32-chars-long
           AES_ENCRYPTION_KEY: ci-test-encryption-key-32b!!
+      - name: Build API container image
+        run: docker build --tag streamshield-backend-api:ci --file Dockerfile .
+      - name: Build worker container image
+        run: docker build --tag streamshield-backend-worker:ci --file Dockerfile.worker .
 
   frontend:
     runs-on: ubuntu-latest

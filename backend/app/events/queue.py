@@ -98,18 +98,47 @@ async def enqueue_kick_webhook_job(webhook_event_id: str) -> Optional[str]:
 
 
 async def get_queue_stats() -> Dict[str, Any]:
-    if not redis_is_configured():
-        return {"enabled": False}
+    configured = redis_is_configured()
+    if not settings.event_queue_enabled or not configured:
+        return {
+            "enabled": False,
+            "configured": configured,
+            "queues": {},
+        }
+    pool = None
     try:
         from arq import create_pool
         from arq.connections import RedisSettings
 
         redis_settings = RedisSettings.from_dsn(settings.redis_url)
         pool = await create_pool(redis_settings)
-        stats: Dict[str, Any] = {"enabled": True, "queues": {}}
-        for cat, qname in QUEUE_BY_CATEGORY.items():
-            stats["queues"][qname] = {"category": cat.value}
-        await pool.close()
-        return stats
+        queued_count = await pool.zcard(UNIFIED_QUEUE)
+        return {
+            "enabled": True,
+            "configured": True,
+            "available": True,
+            "queues": {
+                UNIFIED_QUEUE: {
+                    "queued_count": queued_count,
+                    "categories": [category.value for category in QUEUE_BY_CATEGORY],
+                }
+            },
+        }
     except Exception as exc:
-        return {"enabled": True, "error": str(exc)}
+        logger.warning("event_queue_stats_failed", error_type=type(exc).__name__)
+        return {
+            "enabled": True,
+            "configured": True,
+            "available": False,
+            "error_type": type(exc).__name__,
+            "queues": {},
+        }
+    finally:
+        if pool is not None:
+            try:
+                await pool.close()
+            except Exception as exc:
+                logger.warning(
+                    "event_queue_stats_pool_close_failed",
+                    error_type=type(exc).__name__,
+                )
