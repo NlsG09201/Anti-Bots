@@ -1,6 +1,6 @@
 # StreamShield Enterprise — full local stack
 # Usage:
-#   cp deploy/render.import.env deploy/enterprise/.env
+#   cp deploy/enterprise/.env.example deploy/enterprise/.env
 #   docker compose -f deploy/enterprise/docker-compose.enterprise.yml up --build
 #   Prometheus is available at http://127.0.0.1:9090 (local machine only).
 
@@ -15,6 +15,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U streamshield"]
       interval: 5s
@@ -26,6 +27,7 @@ services:
     ports:
       - "6379:6379"
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -43,6 +45,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://streamshield:streamshield_dev@postgres:5432/streamshield
       REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
       EVENT_PIPELINE_ENABLED: "true"
       EVENT_QUEUE_ENABLED: "true"
       EVENT_REALTIME_PUBSUB_ENABLED: "true"
@@ -53,6 +57,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
       interval: 15s
@@ -70,11 +75,14 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://streamshield:streamshield_dev@postgres:5432/streamshield
       REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
       EVENT_PIPELINE_ENABLED: "true"
       EVENT_QUEUE_ENABLED: "true"
     depends_on:
       api:
         condition: service_healthy
+    restart: unless-stopped
 
   celery-worker:
     build:
@@ -86,9 +94,29 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://streamshield:streamshield_dev@postgres:5432/streamshield
       REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
     depends_on:
       api:
         condition: service_healthy
+    restart: unless-stopped
+
+  celery-beat:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: celery -A app.workers.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://streamshield:streamshield_dev@postgres:5432/streamshield
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:v3.15.1

@@ -29,6 +29,9 @@ settings = get_settings()
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 _TWITCH_MAX_MESSAGE_AGE_SECONDS = 600
 _TWITCH_FUTURE_TOLERANCE_SECONDS = 30
+_TWITCH_IDEMPOTENCY_PROCESSING_TTL_SECONDS = (
+    _TWITCH_MAX_MESSAGE_AGE_SECONDS + _TWITCH_FUTURE_TOLERANCE_SECONDS + 60
+)
 _TWITCH_MAX_BODY_BYTES = 1_048_576
 _kick_public_key = None
 _kick_public_key_loaded_at = 0.0
@@ -111,7 +114,13 @@ async def twitch_webhook(
         cache = RedisCache()
         dedupe_key = "twitch:eventsub:" + twitch_eventsub_message_id
         try:
-            claimed = await cache.set_if_absent(dedupe_key, "processing", ttl=30)
+            # Keep the claim beyond the whole signature timestamp acceptance
+            # window so a valid captured delivery cannot become processable again.
+            claimed = await cache.set_if_absent(
+                dedupe_key,
+                "processing",
+                ttl=_TWITCH_IDEMPOTENCY_PROCESSING_TTL_SECONDS,
+            )
             if not claimed:
                 state = await cache.get(dedupe_key)
                 if state == "completed":

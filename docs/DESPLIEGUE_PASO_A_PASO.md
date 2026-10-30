@@ -119,6 +119,8 @@ TRUSTED_HOSTS=anti-bots.onrender.com,anti-bots-api.onrender.com
 
 `REDIS_URL` debe ser una URL Redis TCP (`redis://` o `rediss://`): el endpoint REST de Upstash no sirve para arq, Redis Streams ni pub/sub. No agregues `localhost` ni direcciones loopback a `TRUSTED_HOSTS`. El Blueprint actual usa el servicio Docker `anti-bots-api`; sigue `render.yaml` para crear o actualizarlo y configura en Render los secretos marcados `sync: false`.
 
+En el servicio API de Render, `REDIS_URL` cubre el pipeline de eventos con arq. `CELERY_BROKER_URL` y `CELERY_RESULT_BACKEND` solo hacen falta si despliegas aparte el worker Celery opcional; no sustituyen `REDIS_URL`.
+
 Deja `APP_CORS_ORIGINS` y `APP_FRONTEND_URL` vacíos por ahora (las añades después de Vercel).
 
 5. **Create Web Service** → espera el deploy.

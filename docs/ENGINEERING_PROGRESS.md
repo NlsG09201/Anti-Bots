@@ -289,10 +289,30 @@
 - Stabilized the SOC threat-series fallback so its `useMemo` dependency does not become a new empty array on every render.
 - Kept the full-page navigation for Twitch OAuth because that API endpoint starts an external authorization flow; documented the targeted lint exception at the call site.
 - Verification: `frontend/npm run lint` passed with zero warnings and zero errors; the optimized Next.js production build passed and generated all 28 static routes.
-- Updated the deployment guide to match the current Render Docker Blueprint and arq-based Redis requirements; removed obsolete Celery environment variables and documented the public trusted-host values.
+- Updated the deployment guide to match the current Render Docker Blueprint and distinguish the API's arq Redis requirement from the optional Celery worker settings; documented the public trusted-host values.
 
 ## Dependency vulnerability coverage (2026-10-30)
 
 - CI already audits Python and npm dependencies, while Dependabot updates Python, npm, Maven, and GitHub Actions. Added OSV-Scanner's official reusable workflows for PR/merge-queue delta checks and full scheduled/push scans, covering the unscanned Maven and transitive dependency trees.
 - The workflow uses read-only repository permissions plus the code-scanning upload permission required by the upstream workflows. GitHub Code Scanning must be enabled for uploaded findings to appear there.
 - The first GitHub workflow run remains the authoritative vulnerability result; it was not executable from this local workspace.
+
+## Sensitive outbound-error logging (2026-10-30)
+
+- Alert webhook and Discord failure logs no longer include webhook URLs or raw HTTP exception messages, which can contain the URL's embedded bearer token. Database connection retry logs now record only the exception type rather than the driver message.
+- Wired the documented `ALERT_WEBHOOK_URLS` environment value into centralized settings as a comma-separated list; the alert engine previously referenced a setting that did not exist, so configured custom webhook notifications could fail before sending.
+- Added regression tests asserting alert, Discord, and database connection failure logs omit injected secret strings.
+- Verification: full backend suite passed (`151 passed, 1 skipped, 23 warnings`). Existing scikit-learn artifact-version and FastAPI/Starlette deprecation warnings remain.
+
+## Twitch EventSub replay-window idempotency (2026-10-30)
+
+- Increased the in-progress Redis idempotency claim to outlive Twitch's entire accepted timestamp window, including future-clock tolerance and a safety margin. Previously the 30-second claim expired while a signed message could still pass the 10-minute timestamp check, allowing a replay to be processed twice.
+- Extended the duplicate-delivery regression test to verify the claim TTL covers the accepted replay window. Failed processing still releases the claim so Twitch retries can proceed.
+- Verification: full backend suite passed (`151 passed, 1 skipped, 23 warnings`); existing model-artifact and framework deprecation warnings remain.
+
+## Enterprise background worker scheduling (2026-10-30)
+
+- The enterprise Compose stack had a Celery worker but no Celery Beat process, so the configured periodic reputation, cleanup, and correlation tasks were never scheduled. Added a single Beat service using the registered schedule.
+- Explicitly separated Redis logical databases for arq (0), Celery broker (1), and Celery results (2) in the API/worker containers, and added restart policies to core data, API, and worker services.
+- Clarified that Render's API needs `REDIS_URL` for arq regardless of whether the optional Celery worker is deployed; Celery variables do not replace it.
+- Added a local-only environment example and changed the Compose instructions to stop copying the production Render import file into the enterprise development stack. Runtime Compose validation found the documented `deploy/enterprise/.env` had not been created, so validation remains pending until the safe example is copied there.

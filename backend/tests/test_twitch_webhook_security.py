@@ -74,17 +74,14 @@ async def test_twitch_webhook_suppresses_completed_duplicate(client: AsyncClient
     headers = _headers(timestamp)
     headers["Twitch-Eventsub-Message-Type"] = "notification"
     headers["Twitch-Eventsub-Subscription-Type"] = "channel.follow"
+    claim = AsyncMock(side_effect=[True, False])
 
     with (
         patch(
             "app.api.v1.webhooks.TwitchEventSubClient.verify_signature",
             return_value=True,
         ),
-        patch(
-            "app.api.v1.webhooks.RedisCache.set_if_absent",
-            new_callable=AsyncMock,
-            side_effect=[True, False],
-        ),
+        patch("app.api.v1.webhooks.RedisCache.set_if_absent", new=claim),
         patch(
             "app.api.v1.webhooks.RedisCache.get",
             new_callable=AsyncMock,
@@ -102,6 +99,7 @@ async def test_twitch_webhook_suppresses_completed_duplicate(client: AsyncClient
     assert first.status_code == 204
     assert duplicate.status_code == 204
     process.assert_awaited_once()
+    assert claim.await_args_list[0].kwargs["ttl"] >= 600 + 30
 
 
 @pytest.mark.asyncio

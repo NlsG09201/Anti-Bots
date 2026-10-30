@@ -4,6 +4,7 @@
 deploy/render.env
 deploy/render.import.env
 deploy/render.api.key
+/deploy/enterprise/.env
 deploy/vps/.env
 deploy/vps/config.ps1
 deploy/.twitch-secret.tmp
