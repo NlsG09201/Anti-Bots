@@ -24,6 +24,7 @@ class EventStreamService:
 
     def __init__(self) -> None:
         self._group_ready: set[str] = set()
+        self._claim_cursors: Dict[str, str] = {}
 
     def _stream_for_category(self, category: EventCategory) -> str:
         if category == EventCategory.SUSPICIOUS:
@@ -93,6 +94,21 @@ class EventStreamService:
 
         for stream_key in (STREAM_PRIORITY, STREAM_MAIN):
             await self.ensure_consumer_group(stream_key)
+            min_idle_ms = max(
+                settings.event_consumer_claim_idle_ms,
+                settings.event_queue_job_timeout_seconds * 1000 + 30_000,
+            )
+            claimed = await client.xautoclaim(
+                stream_key,
+                CONSUMER_GROUP,
+                consumer_name,
+                min_idle_time=min_idle_ms,
+                start_id=self._claim_cursors.get(stream_key, "0-0"),
+                count=count,
+            )
+            self._claim_cursors[stream_key] = claimed[0] or "0-0"
+            reclaimed = claimed[1] if len(claimed) > 1 else []
+            await self._append_parsed_messages(stream_key, reclaimed, out)
             raw = await client.xreadgroup(
                 groupname=CONSUMER_GROUP,
                 consumername=consumer_name,
@@ -103,24 +119,32 @@ class EventStreamService:
             if not raw:
                 continue
             for _sname, messages in raw:
-                for entry_id, fields in messages:
-                    try:
-                        event = PipelineEvent.from_stream_fields(fields)
-                        out.append((stream_key, entry_id, event))
-                    except Exception as exc:
-                        await self.dead_letter(
-                            stream_key=stream_key,
-                            entry_id=entry_id,
-                            fields=fields,
-                            error_type=type(exc).__name__,
-                        )
-                        await self.ack(stream_key, entry_id)
-                        logger.warning(
-                            "event_stream_entry_dead_lettered",
-                            error_type=type(exc).__name__,
-                            entry_id=entry_id,
-                        )
+                await self._append_parsed_messages(stream_key, messages, out)
         return out
+
+    async def _append_parsed_messages(
+        self,
+        stream_key: str,
+        messages: List[Tuple[str, Dict[str, Any]]],
+        out: List[Tuple[str, str, PipelineEvent]],
+    ) -> None:
+        for entry_id, fields in messages:
+            try:
+                event = PipelineEvent.from_stream_fields(fields)
+                out.append((stream_key, entry_id, event))
+            except Exception as exc:
+                await self.dead_letter(
+                    stream_key=stream_key,
+                    entry_id=entry_id,
+                    fields=fields,
+                    error_type=type(exc).__name__,
+                )
+                await self.ack(stream_key, entry_id)
+                logger.warning(
+                    "event_stream_entry_dead_lettered",
+                    error_type=type(exc).__name__,
+                    entry_id=entry_id,
+                )
 
     async def dead_letter(
         self,

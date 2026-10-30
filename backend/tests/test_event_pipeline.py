@@ -56,10 +56,28 @@ async def test_malformed_stream_entry_is_dead_lettered_before_ack(monkeypatch):
         async def xgroup_create(self, *args, **kwargs):
             return None
 
+        async def xautoclaim(self, *args, **kwargs):
+            return ("0-0", [], [])
+
         async def xreadgroup(self, *, streams, **kwargs):
             stream_key = next(iter(streams))
             if stream_key == STREAM_PRIORITY:
-                return [(stream_key, [("123-0", {"category": "invalid"})])]
+                return [
+                    (
+                        stream_key,
+                        [
+                            (
+                                "123-0",
+                                {
+                                    "stream_id": "stream",
+                                    "tenant_id": "tenant",
+                                    "event_type": "suspicious",
+                                    "category": "invalid",
+                                },
+                            )
+                        ],
+                    )
+                ]
             return []
 
         async def xadd(self, stream_key, fields, **kwargs):
@@ -84,3 +102,48 @@ async def test_malformed_stream_entry_is_dead_lettered_before_ack(monkeypatch):
     assert fake.dead_letters[0][1]["source_entry_id"] == "123-0"
     assert fake.dead_letters[0][1]["error_type"] == "ValueError"
     assert fake.acks == [(STREAM_PRIORITY, "ss-processors", "123-0")]
+
+
+@pytest.mark.asyncio
+async def test_stale_pending_stream_entry_is_reclaimed(monkeypatch):
+    event = PipelineEvent.from_ingest(
+        stream_id=uuid4(),
+        tenant_id=uuid4(),
+        event_type="chat_message",
+        metadata={"content": "hello"},
+    )
+
+    class FakeRedis:
+        def __init__(self):
+            self.claim_calls = []
+
+        async def xgroup_create(self, *args, **kwargs):
+            return None
+
+        async def xautoclaim(self, *args, **kwargs):
+            self.claim_calls.append((args, kwargs))
+            stream_key = args[0]
+            if stream_key == STREAM_PRIORITY:
+                return ("0-0", [("456-0", event.to_stream_fields())], [])
+            return ("0-0", [], [])
+
+        async def xreadgroup(self, **kwargs):
+            return []
+
+    fake = FakeRedis()
+    monkeypatch.setattr(streams_module, "redis_is_configured", lambda: True)
+
+    async def get_fake_redis():
+        return fake
+
+    monkeypatch.setattr(streams_module, "get_redis", get_fake_redis)
+    service = EventStreamService()
+
+    events = await service.read_batch("replacement-consumer")
+
+    assert len(events) == 1
+    assert events[0][0:2] == (STREAM_PRIORITY, "456-0")
+    assert events[0][2].metadata == {"content": "hello"}
+    assert fake.claim_calls[0][1]["min_idle_time"] >= (
+        streams_module.settings.event_queue_job_timeout_seconds * 1000 + 30_000
+    )

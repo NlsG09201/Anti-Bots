@@ -141,3 +141,18 @@
 - Twitch Insights loading, the channel monitor, and API-started monitoring/health/viewer-flow engine tasks now use the registry. Existing service-specific stop methods remain responsible for their internal loops.
 - Added focused tests for failure logging and shutdown cancellation.
 - Verification: full backend suite passed (`109 passed, 1 skipped, 20 warnings`); Python compile check and `git diff --check` passed. Existing sklearn artifact-version, FastAPI response, and Starlette test-client deprecation warnings remain.
+
+## Event pipeline malformed-entry handling (2026-10-30)
+
+- Redis Stream entries that fail schema/metadata parsing are now written to a bounded `ss:events:dead-letter` stream with source stream, source entry ID, exception type, and original fields. The source entry is acknowledged only after the dead-letter write succeeds, avoiding permanent pending poison messages while retaining a diagnostic copy.
+- Invalid JSON metadata and non-object metadata now fail parsing explicitly instead of silently becoming empty metadata.
+- Added a Redis-client fake test that verifies dead-letter persistence precedes source acknowledgement.
+- Verification: full backend suite passed (`110 passed, 1 skipped, 20 warnings`); `python -m compileall -q app scripts tests` and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.
+
+## Event pipeline pending-entry recovery (2026-10-30)
+
+- The Redis Stream consumer now reclaims idle pending entries with `XAUTOCLAIM` before reading new entries, allowing another consumer to retry work after a process crash or handler failure. Claim idle time is configurable and is never shorter than the arq job timeout plus 30 seconds to reduce duplicate processing while a job is active.
+- Reclaimed entries use the same parsing and dead-letter path as new entries.
+- Added coverage for reclaiming a stale pending event and the minimum claim idle interval.
+- Operational compatibility: `XAUTOCLAIM` requires Redis 6.2 or newer; the local/development Compose definitions use the Redis 7 image family. Verify managed Redis compatibility before enabling this code in older production environments.
+- Verification: full backend suite passed (`111 passed, 1 skipped, 20 warnings`); `python -m compileall -q app scripts tests` and `git diff --check` passed. Existing sklearn artifact-version and framework deprecation warnings remain.

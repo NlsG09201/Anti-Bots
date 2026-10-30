@@ -224,6 +224,7 @@ class Settings(BaseSettings):
     event_stream_max_len: int = 200_000
     event_consumer_batch_size: int = 100
     event_consumer_block_ms: int = 2000
+    event_consumer_claim_idle_ms: int = 180_000
     event_realtime_pubsub_enabled: bool = True
     event_queue_max_jobs: int = 500
     event_queue_job_timeout_seconds: int = 120
