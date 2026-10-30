@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -22,28 +22,25 @@ function ChannelsContent() {
   const normalizedLogin = login.trim().replace(/^@+/, "");
 
   useEffect(() => {
-    if (searchParams.get("twitch") === "connected") {
-      setMessage("Twitch del canal conectado. Ya puedes usar Helix chatters y ban en Twitch.");
-      queryClient.invalidateQueries({ queryKey: ["streams"] });
-    }
-    if (searchParams.get("kick") === "connected") {
-      setMessage("Kick conectado. Ya puedes sincronizar este canal desde aquí.");
-      queryClient.invalidateQueries({ queryKey: ["streams"] });
-    }
-    const err = searchParams.get("twitch_error");
-    if (err) {
-      setMessage(searchParams.get("twitch_msg") || err);
-    }
-    const kickError = searchParams.get("kick_error");
-    if (kickError) {
-      const detail = searchParams.get("kick_msg") || kickError;
-      setMessage(
-        kickError === "token_exchange_failed" && detail.toLowerCase().includes("invalid_client")
-          ? "Kick rechazó las credenciales OAuth. Verifica KICK_CLIENT_ID y KICK_CLIENT_SECRET en Render (misma app), y que KICK_REDIRECT_URI coincida con la registrada. Si usas el workflow de GitHub, actualiza DEPLOY_RENDER_ENV y redepliega."
-          : detail,
-      );
-    }
+    if (searchParams.get("twitch") === "connected") void queryClient.invalidateQueries({ queryKey: ["streams"] });
+    if (searchParams.get("kick") === "connected") void queryClient.invalidateQueries({ queryKey: ["streams"] });
   }, [searchParams, queryClient]);
+
+  const twitchError = searchParams.get("twitch_error");
+  const kickError = searchParams.get("kick_error");
+  const kickDetail = searchParams.get("kick_msg") || kickError || "";
+  const callbackMessage = kickError
+    ? kickError === "token_exchange_failed" && kickDetail.toLowerCase().includes("invalid_client")
+      ? "Kick rechazó las credenciales OAuth. Verifica KICK_CLIENT_ID y KICK_CLIENT_SECRET en Render (misma app), y que KICK_REDIRECT_URI coincida con la registrada. Si usas el workflow de GitHub, actualiza DEPLOY_RENDER_ENV y redepliega."
+      : kickDetail
+    : twitchError
+      ? searchParams.get("twitch_msg") || twitchError
+      : searchParams.get("kick") === "connected"
+        ? "Kick conectado. Ya puedes sincronizar este canal desde aquí."
+        : searchParams.get("twitch") === "connected"
+          ? "Twitch del canal conectado. Ya puedes usar Helix chatters y ban en Twitch."
+          : "";
+  const displayedMessage = message || callbackMessage;
 
   const { data: streams = [], isLoading } = useQuery({
     queryKey: ["streams"],
@@ -138,9 +135,9 @@ function ChannelsContent() {
         </p>
       </div>
 
-      {message && (
+      {displayedMessage && (
         <p className="text-sm text-cyber-accent border border-cyber-accent/30 rounded-lg px-4 py-2">
-          {message}
+          {displayedMessage}
         </p>
       )}
       {inviteUrl && (

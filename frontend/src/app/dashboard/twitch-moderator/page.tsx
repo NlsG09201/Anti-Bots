@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { Suspense, useId, useMemo, useState, type SetStateAction } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Check, ExternalLink, Loader2, Radio, Shield, Unplug } from "lucide-react";
 import { api, type Stream, type TwitchChatModerationConfig } from "@/lib/api";
@@ -16,11 +17,15 @@ const defaults: TwitchChatModerationConfig = {
 const fieldClass = "w-full rounded-lg border border-cyber-border bg-cyber-bg px-3 py-2 text-white";
 const labelClass = "block space-y-1 text-sm text-cyber-muted";
 
-export default function TwitchModeratorPage() {
+function TwitchModeratorContent() {
+  const searchParams = useSearchParams();
   const token = useApiToken();
   const queryClient = useQueryClient();
-  const [streamId, setStreamId] = useState("");
-  const [config, setConfig] = useState<TwitchChatModerationConfig>(defaults);
+  const [streamId, setStreamId] = useState(searchParams.get("stream") ?? "");
+  const [configOverride, setConfigOverride] = useState<{
+    streamId: string;
+    config: TwitchChatModerationConfig;
+  } | null>(null);
   const [notice, setNotice] = useState("");
 
   const streamsQuery = useQuery({ queryKey: ["streams"], queryFn: () => api.streams.list(token!), enabled: !!token });
@@ -33,9 +38,8 @@ export default function TwitchModeratorPage() {
     enabled: !!token && !!activeId,
   });
 
-  useEffect(() => {
-    if (query.data) {
-      const saved: TwitchChatModerationConfig = {
+  const serverConfig: TwitchChatModerationConfig = query.data
+    ? {
         enabled: query.data.enabled,
         observe_only: query.data.observe_only,
         links_enabled: query.data.links_enabled,
@@ -48,20 +52,27 @@ export default function TwitchModeratorPage() {
         blocked_words: query.data.blocked_words,
         word_action: query.data.word_action,
         timeout_seconds: query.data.timeout_seconds,
-      };
-      setConfig(saved);
-    }
-  }, [query.data]);
+      }
+    : defaults;
+  const config = configOverride?.streamId === activeId ? configOverride.config : serverConfig;
+  const setConfig = (nextConfig: SetStateAction<TwitchChatModerationConfig>) => {
+    setConfigOverride((current) => ({
+      streamId: activeId,
+      config: typeof nextConfig === "function"
+        ? nextConfig(current?.streamId === activeId ? current.config : serverConfig)
+        : nextConfig,
+    }));
+  };
+  const botError = searchParams.get("bot_error");
+  const callbackNotice = botError
+    ? searchParams.get("bot_msg") || `No se pudo conectar la cuenta bot (${botError}).`
+    : searchParams.get("bot") === "connected"
+      ? "Cuenta bot autorizada. Pulsa \u201cA\u00f1adir como moderador y activar chat\u201d para completar la configuraci\u00f3n."
+      : searchParams.get("twitch") === "connected"
+        ? "Permisos del canal actualizados. Pulsa \u201cA\u00f1adir como moderador y activar chat\u201d."
+        : "";
+  const displayedNotice = notice || callbackNotice;
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const stream = params.get("stream");
-    if (stream) setStreamId(stream);
-    if (params.get("twitch") === "connected") setNotice("Permisos del canal actualizados. Pulsa “Añadir como moderador y activar chat”.");
-    if (params.get("bot") === "connected") setNotice("Cuenta bot autorizada. Pulsa “Añadir como moderador y activar chat” para completar la configuración.");
-    const error = params.get("bot_error");
-    if (error) setNotice(params.get("bot_msg") || `No se pudo conectar la cuenta bot (${error}).`);
-  }, []);
 
   const save = useMutation({
     mutationFn: () => api.twitch.saveChatBotSettings(token!, activeId, config),
@@ -127,7 +138,7 @@ export default function TwitchModeratorPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <button disabled={authorize.isPending || !query.data.oauth_connected} onClick={() => authorize.mutate()} className="inline-flex items-center gap-2 rounded-lg bg-cyber-accent px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"><ExternalLink size={16} />{query.data.bot_connected ? "Reconectar cuenta bot" : "Conectar cuenta bot"}</button>
-            {notice.includes("channel:manage:moderators") && <button disabled={authorizeChannel.isPending} onClick={() => authorizeChannel.mutate()} className="inline-flex items-center gap-2 rounded-lg border border-yellow-500/40 px-4 py-2 text-sm text-yellow-100 disabled:opacity-50">{authorizeChannel.isPending && <Loader2 size={16} className="animate-spin" />}Actualizar permisos del canal</button>}
+            {displayedNotice.includes("channel:manage:moderators") && <button disabled={authorizeChannel.isPending} onClick={() => authorizeChannel.mutate()} className="inline-flex items-center gap-2 rounded-lg border border-yellow-500/40 px-4 py-2 text-sm text-yellow-100 disabled:opacity-50">{authorizeChannel.isPending && <Loader2 size={16} className="animate-spin" />}Actualizar permisos del canal</button>}
             {query.data.bot_connected && <button disabled={setupBot.isPending} onClick={() => setupBot.mutate()} className="inline-flex items-center gap-2 rounded-lg border border-cyber-border px-4 py-2 text-sm text-white disabled:opacity-50">{setupBot.isPending ? <Loader2 size={16} className="animate-spin" /> : <Radio size={16} />}Añadir como moderador y activar chat</button>}
             {query.data.bot_connected && <button disabled={disconnect.isPending} onClick={() => disconnect.mutate()} className="inline-flex items-center gap-2 rounded-lg border border-red-500/40 px-4 py-2 text-sm text-red-300 disabled:opacity-50"><Unplug size={16} />Desconectar bot</button>}
           </div>
@@ -163,8 +174,16 @@ export default function TwitchModeratorPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-cyber-border pt-4"><p className="flex items-center gap-2 text-xs text-cyber-muted"><Shield size={15} /> AutoMod de Twitch puede seguir habilitado en paralelo.</p><button disabled={save.isPending || !query.data.bot_connected} onClick={() => save.mutate()} className="inline-flex items-center gap-2 rounded-lg bg-cyber-accent px-4 py-2 font-semibold text-black disabled:opacity-50">{save.isPending ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}Guardar reglas</button></div>
         </section>
       </>}
-      {notice && <p role="status" className="rounded-lg border border-cyber-border bg-cyber-surface px-4 py-3 text-sm text-white">{notice}</p>}
+      {displayedNotice && <p role="status" className="rounded-lg border border-cyber-border bg-cyber-surface px-4 py-3 text-sm text-white">{displayedNotice}</p>}
     </main>
+  );
+}
+
+export default function TwitchModeratorPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-cyber-muted">Cargando...</div>}>
+      <TwitchModeratorContent />
+    </Suspense>
   );
 }
 

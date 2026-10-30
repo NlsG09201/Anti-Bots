@@ -97,3 +97,10 @@
 - The deployment checklist reads localStorage through `useSyncExternalStore`, with same-tab updates published through a storage event.
 - Verification: `npm run build` passed with TypeScript and all 28 routes. `npm run lint` now reports 9 errors and 31 warnings, down from 18 errors; remaining errors are in OAuth callback message state, Twitch moderator/viewer effects, ThemeContext, and one manual memoization rule.
 - The current frontend lint errors remain unfixed and lint is not yet a CI gate.
+
+## Frontend state synchronization follow-up (2026-10-29)
+
+- Theme preference now uses a `useSyncExternalStore` subscription to localStorage, matching the deployment checklist's external-store pattern and supporting same-tab and cross-tab updates.
+- Viewer-page automatic synchronization is scheduled and cancellable when the selected stream changes; OAuth query refresh no longer overwrites an explicit stream selection.
+- Corrected the Power BI threat-series memo dependency so React Compiler can preserve the memo.
+- Verification: `npm run build` passed with TypeScript and all 28 routes. `npm run lint` reports 5 errors and 32 warnings. Remaining errors are OAuth feedback state in Channels/Settings/Login and query/form synchronization in Twitch Moderator.

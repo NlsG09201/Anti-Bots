@@ -43,20 +43,14 @@ function LoginForm() {
     };
   }, [router, setTokens, setUser]);
 
-  useEffect(() => {
-    if (searchParams.get("session") === "expired") {
-      setError("Tu sesión expiró. Vuelve a iniciar sesión.");
-    } else if (searchParams.get("error") === "redirect_mismatch") {
-      setError(
-        `Twitch: añade esta Redirect URI en dev.twitch.tv → OAuth Redirect URLs: ${TWITCH_CALLBACK}`,
-      );
-    } else if (searchParams.get("error")) {
-      setError(
-        searchParams.get("error_description") ||
-          `OAuth: ${searchParams.get("error")}`,
-      );
-    }
-  }, [searchParams]);
+  const oauthError = searchParams.get("session") === "expired"
+    ? "Tu sesi\u00f3n expir\u00f3. Vuelve a iniciar sesi\u00f3n."
+    : searchParams.get("error") === "redirect_mismatch"
+      ? `Twitch: a\u00f1ade esta Redirect URI en dev.twitch.tv \u2192 OAuth Redirect URLs: ${TWITCH_CALLBACK}`
+      : searchParams.get("error")
+        ? searchParams.get("error_description") || `OAuth: ${searchParams.get("error")}`
+        : "";
+  const displayedError = error || oauthError;
 
   const finishLogin = async (accessToken: string) => {
     resetAuthSessionState();
@@ -129,9 +123,9 @@ function LoginForm() {
         </div>
 
         <form onSubmit={handleSubmit} className="cyber-card-glow space-y-4 border-cyber-accent/10">
-          {error && (
+          {displayedError && (
             <div className="p-3 rounded-lg bg-cyber-danger/10 border border-cyber-danger/40 text-red-400 text-sm">
-              {error}
+              {displayedError}
             </div>
           )}
 
