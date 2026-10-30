@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Check, Loader2, Plus, Radio, Send, ShieldCheck, Trash2 } from "lucide-react";
 import { api, type KickBotCommand, type KickBotSettings, type Stream } from "@/lib/api";
@@ -12,7 +12,10 @@ export default function KickBotPage() {
   const token = useApiToken();
   const queryClient = useQueryClient();
   const [streamId, setStreamId] = useState("");
-  const [settings, setSettings] = useState<KickBotSettings>(emptySettings);
+  const [settingsOverride, setSettingsOverride] = useState<{
+    streamId: string;
+    settings: KickBotSettings;
+  } | null>(null);
   const [commandName, setCommandName] = useState("");
   const [commandResponse, setCommandResponse] = useState("");
   const [message, setMessage] = useState("");
@@ -33,16 +36,24 @@ export default function KickBotPage() {
     enabled: !!token && !!activeStreamId,
   });
 
-  useEffect(() => {
-    if (botQuery.data) {
-      setSettings({ enabled: botQuery.data.enabled, commands: botQuery.data.commands });
-    }
-  }, [botQuery.data]);
+  const settings = settingsOverride?.streamId === activeStreamId
+    ? settingsOverride.settings
+    : botQuery.data ?? emptySettings;
+  const updateSettings = (updater: (current: KickBotSettings) => KickBotSettings) => {
+    setSettingsOverride((current) => ({
+      streamId: activeStreamId,
+      settings: updater(
+        current?.streamId === activeStreamId
+          ? current.settings
+          : botQuery.data ?? emptySettings,
+      ),
+    }));
+  };
 
   const saveMutation = useMutation({
     mutationFn: () => api.kick.saveBotSettings(token!, activeStreamId, settings),
     onSuccess: (saved) => {
-      setSettings({ enabled: saved.enabled, commands: saved.commands });
+      setSettingsOverride({ streamId: activeStreamId, settings: saved });
       setMessage("Configuración del bot guardada.");
       queryClient.invalidateQueries({ queryKey: ["kick-bot-settings", activeStreamId] });
     },
@@ -69,7 +80,7 @@ export default function KickBotPage() {
       return;
     }
     const command: KickBotCommand = { command: normalized, response: commandResponse.trim(), enabled: true };
-    setSettings((current) => ({ ...current, commands: [...current.commands, command] }));
+    updateSettings((current) => ({ ...current, commands: [...current.commands, command] }));
     setCommandName("");
     setCommandResponse("");
     setMessage("");
@@ -134,7 +145,7 @@ export default function KickBotPage() {
           <section className="space-y-5 rounded-xl border border-cyber-border bg-cyber-surface p-5">
             <div className="flex items-center justify-between gap-4">
               <div><h2 className="font-semibold text-white">Respuestas automáticas</h2><p className="mt-1 text-sm text-cyber-muted">Al activar el bot, responderá a los comandos guardados en los mensajes EventSub recibidos, usando la cuenta autorizada y con una pausa global de 5 segundos por comando.</p></div>
-              <button type="button" aria-pressed={settings.enabled} onClick={() => setSettings((current) => ({ ...current, enabled: !current.enabled }))} className={`rounded-full px-4 py-2 text-sm font-semibold ${settings.enabled ? "bg-cyber-accent text-black" : "bg-cyber-bg text-cyber-muted"}`}>{settings.enabled ? "Activado" : "Desactivado"}</button>
+              <button type="button" aria-pressed={settings.enabled} onClick={() => updateSettings((current) => ({ ...current, enabled: !current.enabled }))} className={`rounded-full px-4 py-2 text-sm font-semibold ${settings.enabled ? "bg-cyber-accent text-black" : "bg-cyber-bg text-cyber-muted"}`}>{settings.enabled ? "Activado" : "Desactivado"}</button>
             </div>
 
             <div className="grid gap-3 md:grid-cols-[1fr_2fr_auto]">
@@ -150,8 +161,8 @@ export default function KickBotPage() {
                 <div key={`${command.command}-${index}`} className="flex flex-wrap items-center gap-3 rounded-lg border border-cyber-border bg-cyber-bg p-3">
                   <code className="min-w-24 text-cyber-accent">{command.command}</code>
                   <span className="min-w-40 flex-1 text-sm text-white">{command.response}</span>
-                  <button onClick={() => setSettings((current) => ({ ...current, commands: current.commands.map((item, i) => i === index ? { ...item, enabled: !item.enabled } : item) }))} className="text-xs text-cyber-muted">{command.enabled ? "Activo" : "Pausado"}</button>
-                  <button aria-label={`Eliminar ${command.command}`} onClick={() => setSettings((current) => ({ ...current, commands: current.commands.filter((_, i) => i !== index) }))} className="rounded p-2 text-red-400 hover:bg-red-400/10"><Trash2 size={16} /></button>
+                  <button onClick={() => updateSettings((current) => ({ ...current, commands: current.commands.map((item, i) => i === index ? { ...item, enabled: !item.enabled } : item) }))} className="text-xs text-cyber-muted">{command.enabled ? "Activo" : "Pausado"}</button>
+                  <button aria-label={`Eliminar ${command.command}`} onClick={() => updateSettings((current) => ({ ...current, commands: current.commands.filter((_, i) => i !== index) }))} className="rounded p-2 text-red-400 hover:bg-red-400/10"><Trash2 size={16} /></button>
                 </div>
               ))}
               {settings.commands.length === 0 && <p className="rounded-lg border border-dashed border-cyber-border p-5 text-center text-sm text-cyber-muted">Aún no hay comandos. Añade uno y guarda la configuración.</p>}

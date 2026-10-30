@@ -1,12 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Loader2, Send, ShieldCheck, UserRound } from "lucide-react";
 import { api, type Stream } from "@/lib/api";
 import { useApiToken } from "@/stores/authStore";
 
 type Message = { role: "user" | "assistant"; content: string };
+type ModerationMode = "monitor" | "assisted" | "automatic";
 
 const INITIAL_MESSAGE: Message = {
   role: "assistant",
@@ -21,7 +22,7 @@ export default function AssistantPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [streamId, setStreamId] = useState("");
-  const [moderationMode, setModerationMode] = useState<"monitor" | "assisted" | "automatic">("monitor");
+  const [modeOverride, setModeOverride] = useState<{ streamId: string; mode: ModerationMode } | null>(null);
   const queryClient = useQueryClient();
   const streamsQuery = useQuery({
     queryKey: ["assistant-streams"],
@@ -39,9 +40,9 @@ export default function AssistantPage() {
     enabled: !!token && !!streamId,
   });
   const streams = (streamsQuery.data ?? []) as Stream[];
-  useEffect(() => {
-    if (modeQuery.data) setModerationMode(modeQuery.data.mode);
-  }, [modeQuery.data]);
+  const moderationMode = modeOverride?.streamId === streamId
+    ? modeOverride.mode
+    : modeQuery.data?.mode ?? "monitor";
   const modeMutation = useMutation({
     mutationFn: () => api.ai.setModerationMode(token!, streamId, moderationMode),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-moderation-mode", streamId] }),
@@ -107,7 +108,7 @@ export default function AssistantPage() {
               <select
                 id="ai-moderation-mode"
                 value={moderationMode}
-                onChange={(event) => setModerationMode(event.target.value as typeof moderationMode)}
+                onChange={(event) => setModeOverride({ streamId, mode: event.target.value as ModerationMode })}
                 className="rounded-lg border border-cyber-border bg-cyber-bg p-2 text-white"
               >
                 <option value="monitor">Monitoreo</option>

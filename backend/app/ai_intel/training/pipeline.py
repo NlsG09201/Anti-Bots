@@ -16,9 +16,14 @@ logger = get_logger(__name__)
 class TrainingPipeline:
     """Trains or refreshes models from feedback + synthetic bootstrap data."""
 
-    def __init__(self) -> None:
-        self._feedback = FeedbackStore()
-        self._registry = ModelRegistry.get()
+    def __init__(
+        self,
+        *,
+        feedback_store: Optional[FeedbackStore] = None,
+        model_registry: Optional[ModelRegistry] = None,
+    ) -> None:
+        self._feedback = feedback_store if feedback_store is not None else FeedbackStore()
+        self._registry = model_registry if model_registry is not None else ModelRegistry.get()
 
     async def run(self, *, min_samples: int = 30) -> Dict[str, Any]:
         samples = await self._feedback.get_training_samples()

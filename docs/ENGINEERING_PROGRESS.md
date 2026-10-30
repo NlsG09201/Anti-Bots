@@ -62,3 +62,38 @@
 - No se leyeron archivos de entorno/credenciales ni se modificaron datos, bases de datos o servicios desplegados.
 - Siguiente: comprobar despliegues Render/VPS con sus dominios reales; ejecutar CI; después separar tareas de ciclo de vida del proceso API de forma incremental y revisar aislamiento tenant en rutas/repositorios.
 - En una revisión anterior, `compileall` pasó con Python 3.14; esto no equivale a probar el runtime 3.11. Docker Compose tampoco se pudo validar en esa revisión.
+
+## Remediación de dependencias y verificación ampliada (2026-10-29)
+
+### Cambios
+
+- La auditoría npm encontró 18 advisories, incluido uno crítico en Next.js 14.1.3. Se actualizó Next.js a 16.4.3/React 19.2 y se subieron Lucide React y Recharts dentro de sus versiones compatibles con React 19. El lint usa la configuración flat oficial y ESLint CLI; `next lint` ya no existe en Next 16.
+- El frontend usa el transporte WebSocket con reconexión que se cancela al desmontar/cambiar token y cumple el tipo de `useRef` de React 19.
+- `pip-audit` encontró advisories en JWT, multipart, cryptography, orjson, scikit-learn, pytest, OpenTelemetry, protobuf, PyMongo y Starlette, además de ECDSA traído por `python-jose`. Se reemplazó `python-jose` por PyJWT con algoritmos explícitos; se actualizaron FastAPI/Starlette, Motor/PyMongo, las versiones vulnerables y el conjunto OpenTelemetry.
+- CI ahora limita el token a `contents: read` y ejecuta `npm audit --audit-level=high` y `pip-audit --vulnerability-service osv`.
+- La prueba de entrenamiento de modelos ahora inyecta un registry bajo `tmp_path`, para que la suite no sobrescriba los modelos versionados del repositorio.
+
+### Verificación
+
+- Frontend: `npm ci` pasó y encontró 0 vulnerabilidades; `npm audit --audit-level=high` pasó con 0; `npm run build` pasó con Next 16.4.3, compilación TypeScript y las 28 rutas.
+- Backend: `pip-audit --vulnerability-service osv -r requirements.txt -r requirements-dev.txt` informó `No known vulnerabilities found`.
+- Backend: con Python 3.11.15 y las nuevas dependencias, `python -m pytest tests/ -q --tb=short -x` pasó (`95 passed, 1 skipped`) y `python -m compileall -q app scripts tests` pasó.
+- La suite aún emite warnings de compatibilidad al cargar los modelos scikit-learn serializados con 1.4.1.post1 bajo 1.5.0, y deprecations de Starlette/FastAPI. Los artefactos originales se conservaron/restauraron y el test de entrenamiento quedó aislado.
+- `npm run lint` se ejecutó y actualmente falla con 18 errores y 31 warnings, en su mayoría reglas React Hooks nuevas sobre sincronización de estado en efectos. No se agregó como gate CI ni se desactivaron esas reglas; el refactor de los componentes queda como siguiente trabajo.
+- El estado actual del despliegue Render/VPS no fue verificado.
+
+### Próximos pasos
+
+1. Resolver las reglas de lint de forma estructural y añadir `npm run lint` al CI cuando pase.
+2. Migrar/verificar los artefactos scikit-learn conservando predicciones; quitar deprecations de FastAPI/Starlette con cambios compatibles.
+3. Separar ciclos de trabajo del proceso FastAPI, revisar aislamiento tenant y contratos Spring/FastAPI, y continuar el runbook operativo/rollback.
+
+## Frontend query polling refactor (2026-10-29)
+
+- Replaced component-local polling effects in the SOC alert, threat timeline, threat map, and suspicious viewer panels with TanStack Query polling. Query keys include stream and tenant identifiers where applicable; polling intervals remain 5, 10, or 15 seconds as before.
+- Alert dismissal now invalidates the stream alert query so refreshed data comes through the shared cache. Alert payload metadata is typed as `Record<string, unknown>`.
+- The Twitch invite error is derived from the URL during render instead of being copied into state from an effect.
+- Assistant moderation mode and Kick bot settings now use query data as defaults and keep edits scoped to the selected stream, without copying query results into state from effects.
+- The deployment checklist reads localStorage through `useSyncExternalStore`, with same-tab updates published through a storage event.
+- Verification: `npm run build` passed with TypeScript and all 28 routes. `npm run lint` now reports 9 errors and 31 warnings, down from 18 errors; remaining errors are in OAuth callback message state, Twitch moderator/viewer effects, ThemeContext, and one manual memoization rule.
+- The current frontend lint errors remain unfixed and lint is not yet a CI gate.

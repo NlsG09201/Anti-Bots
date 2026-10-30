@@ -4,7 +4,8 @@
 
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
+import { useQuery } from "@tanstack/react-query";
 
 interface GeoLocation {
   country: string;
@@ -20,38 +21,24 @@ interface ThreatMapProps {
 }
 
 export default function ThreatMap({ streamId }: ThreatMapProps) {
-  const [locations, setLocations] = useState<GeoLocation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [topCountries, setTopCountries] = useState<GeoLocation[]>([]);
-
-  const fetchLocations = useCallback(async () => {
-    try {
+  const locationsQuery = useQuery({
+    queryKey: ["threat-geolocation", streamId],
+    queryFn: async () => {
       const response = await fetch(
-        `/api/v1/threat-intelligence/threat-analysis/${streamId}`
+        `/api/v1/threat-intelligence/threat-analysis/${streamId}`,
       );
-      const data = await response.json();
-      const geoData = data.analysis?.geolocation || [];
-      setLocations(geoData);
-      
-      // Get top 10 countries
-      const top = geoData
-        .sort((a: GeoLocation, b: GeoLocation) => b.viewer_count - a.viewer_count)
-        .slice(0, 10);
-      setTopCountries(top);
-    } catch (error) {
-      console.error("Failed to fetch locations:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [streamId]);
+      if (!response.ok) throw new Error("Failed to fetch locations");
+      const data: { analysis?: { geolocation?: GeoLocation[] } } = await response.json();
+      return data.analysis?.geolocation ?? [];
+    },
+    refetchInterval: 15_000,
+  });
+  const locations = locationsQuery.data ?? [];
+  const topCountries = [...locations]
+    .sort((a, b) => b.viewer_count - a.viewer_count)
+    .slice(0, 10);
 
-  useEffect(() => {
-    void fetchLocations();
-    const interval = setInterval(() => void fetchLocations(), 15000); // Refresh every 15 seconds
-    return () => clearInterval(interval);
-  }, [fetchLocations]);
-
-  if (loading) {
+  if (locationsQuery.isPending) {
     return <div className="text-gray-400">Loading geolocation data...</div>;
   }
 

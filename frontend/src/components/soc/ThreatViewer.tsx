@@ -4,7 +4,8 @@
 
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 interface SuspiciousViewer {
   id: string;
@@ -24,29 +25,20 @@ interface ThreatViewerProps {
 }
 
 export default function ThreatViewer({ streamId, tenantId }: ThreatViewerProps) {
-  const [viewers, setViewers] = useState<SuspiciousViewer[]>([]);
-  const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<"threat_score" | "join_count">("threat_score");
-
-  const fetchViewers = useCallback(async () => {
-    try {
+  const viewersQuery = useQuery({
+    queryKey: ["threat-viewers", streamId, tenantId],
+    queryFn: async () => {
       const response = await fetch(
-        `/api/v1/threat-intelligence/stream-metrics/${streamId}?tenant_id=${tenantId}`
+        `/api/v1/threat-intelligence/stream-metrics/${streamId}?tenant_id=${encodeURIComponent(tenantId)}`,
       );
-      const data = await response.json();
-      setViewers(data.viewers || []);
-    } catch (error) {
-      console.error("Failed to fetch viewers:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [streamId, tenantId]);
-
-  useEffect(() => {
-    void fetchViewers();
-    const interval = setInterval(() => void fetchViewers(), 10000); // Refresh every 10 seconds
-    return () => clearInterval(interval);
-  }, [fetchViewers]);
+      if (!response.ok) throw new Error("Failed to fetch viewers");
+      const data: { viewers?: SuspiciousViewer[] } = await response.json();
+      return data.viewers ?? [];
+    },
+    refetchInterval: 10_000,
+  });
+  const viewers = viewersQuery.data ?? [];
 
   const getThreatColor = (score: number) => {
     if (score >= 0.8) return "text-red-500";
@@ -70,7 +62,7 @@ export default function ThreatViewer({ streamId, tenantId }: ThreatViewerProps) 
     }
   });
 
-  if (loading) {
+  if (viewersQuery.isPending) {
     return <div className="text-gray-400">Loading viewers...</div>;
   }
 

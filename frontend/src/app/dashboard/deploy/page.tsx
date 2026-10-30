@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { CheckCircle2, Circle, Rocket, ExternalLink } from "lucide-react";
 import clsx from "clsx";
 
@@ -62,19 +62,39 @@ const CHECKLIST: CheckItem[] = [
 ];
 
 const STORAGE_KEY = "streamshield-deploy-checklist";
+const STORAGE_EVENT = "streamshield-deploy-checklist-change";
+
+function subscribeToChecklist(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener(STORAGE_EVENT, onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener(STORAGE_EVENT, onStoreChange);
+  };
+}
+
+function getChecklistSnapshot() {
+  return localStorage.getItem(STORAGE_KEY) ?? "{}";
+}
 
 export default function DeployPage() {
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) setChecked(JSON.parse(saved));
-  }, []);
+  const serializedChecklist = useSyncExternalStore(
+    subscribeToChecklist,
+    getChecklistSnapshot,
+    () => "{}",
+  );
+  const checked = useMemo<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(serializedChecklist) as Record<string, boolean>;
+    } catch {
+      return {};
+    }
+  }, [serializedChecklist]);
 
   const toggle = (id: string) => {
     const next = { ...checked, [id]: !checked[id] };
-    setChecked(next);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    window.dispatchEvent(new Event(STORAGE_EVENT));
   };
 
   const done = Object.values(checked).filter(Boolean).length;
@@ -97,8 +117,8 @@ export default function DeployPage() {
         </div>
         <button
           onClick={() => {
-            setChecked({});
             localStorage.removeItem(STORAGE_KEY);
+            window.dispatchEvent(new Event(STORAGE_EVENT));
           }}
           className="text-xs text-cyber-muted hover:text-cyber-danger"
         >

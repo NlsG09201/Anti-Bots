@@ -4,7 +4,8 @@
 
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { AlertCircle, CheckCircle, X } from "lucide-react";
 
@@ -17,7 +18,7 @@ interface Alert {
   stream_id: string;
   dismissed: boolean;
   type: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
 }
 
 interface AlertPanelProps {
@@ -40,52 +41,30 @@ const SEVERITY_BADGE_COLORS = {
 };
 
 export default function AlertPanel({ streamId, refreshInterval = 5000 }: AlertPanelProps) {
-  const [activeAlerts, setActiveAlerts] = useState<Alert[]>([]);
-  const [dismissedAlerts, setDismissedAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showDismissed, setShowDismissed] = useState(false);
-
-  const fetchAlerts = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Fetch active alerts
-      const activeResponse = await fetch(
-        `/api/v1/alerts/stream/${streamId}/active?limit=20`
-      );
-      if (!activeResponse.ok) {
-        throw new Error("Failed to fetch active alerts");
-      }
-      const activeData = await activeResponse.json();
-
-      // Fetch dismissed alerts
-      const dismissedResponse = await fetch(
-        `/api/v1/alerts/${streamId}?dismissed=true&limit=10`
-      );
-      if (!dismissedResponse.ok) {
-        throw new Error("Failed to fetch dismissed alerts");
-      }
-      const dismissedData = await dismissedResponse.json();
-
-      setActiveAlerts(activeData.items || []);
-      setDismissedAlerts(dismissedData.items || []);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch alerts"
-      );
-      console.error("Alert fetch error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [streamId]);
-
-  useEffect(() => {
-    fetchAlerts();
-    const interval = setInterval(fetchAlerts, refreshInterval);
-    return () => clearInterval(interval);
-  }, [streamId, refreshInterval, fetchAlerts]);
+  const queryClient = useQueryClient();
+  const alertsQuery = useQuery({
+    queryKey: ["stream-alerts", streamId],
+    queryFn: async () => {
+      const [activeResponse, dismissedResponse] = await Promise.all([
+        fetch(`/api/v1/alerts/stream/${streamId}/active?limit=20`),
+        fetch(`/api/v1/alerts/${streamId}?dismissed=true&limit=10`),
+      ]);
+      if (!activeResponse.ok) throw new Error("Failed to fetch active alerts");
+      if (!dismissedResponse.ok) throw new Error("Failed to fetch dismissed alerts");
+      const [activeData, dismissedData]: [
+        { items?: Alert[] },
+        { items?: Alert[] },
+      ] = await Promise.all([activeResponse.json(), dismissedResponse.json()]);
+      return {
+        active: activeData.items ?? [],
+        dismissed: dismissedData.items ?? [],
+      };
+    },
+    refetchInterval: refreshInterval,
+  });
+  const activeAlerts = alertsQuery.data?.active ?? [];
+  const dismissedAlerts = alertsQuery.data?.dismissed ?? [];
 
   const dismissAlert = async (alertId: string) => {
     try {
@@ -97,14 +76,13 @@ export default function AlertPanel({ streamId, refreshInterval = 5000 }: AlertPa
       if (!response.ok) {
         throw new Error("Failed to dismiss alert");
       }
-      setActiveAlerts(activeAlerts.filter((a) => a.id !== alertId));
-      await fetchAlerts();
+      await queryClient.invalidateQueries({ queryKey: ["stream-alerts", streamId] });
     } catch (error) {
       console.error("Dismiss error:", error);
     }
   };
 
-  if (loading) {
+  if (alertsQuery.isPending) {
     return <div className="text-gray-400">Loading alerts...</div>;
   }
 
@@ -119,9 +97,11 @@ export default function AlertPanel({ streamId, refreshInterval = 5000 }: AlertPa
           </h3>
         </div>
 
-        {error && (
+        {alertsQuery.error && (
           <div className="p-4 text-sm text-red-600 bg-red-50">
-            {error}
+            {alertsQuery.error instanceof Error
+              ? alertsQuery.error.message
+              : "Failed to fetch alerts"}
           </div>
         )}
 

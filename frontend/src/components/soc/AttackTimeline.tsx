@@ -4,7 +4,8 @@
 
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 
 interface TimelineEvent {
@@ -30,30 +31,21 @@ const SEVERITY_ICON = {
 };
 
 export default function AttackTimeline({ streamId }: AttackTimelineProps) {
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchTimeline = useCallback(async () => {
-    try {
+  const timelineQuery = useQuery({
+    queryKey: ["threat-timeline", streamId],
+    queryFn: async () => {
       const response = await fetch(
-        `/api/v1/threat-intelligence/threat-timeline/${streamId}?limit=100`
+        `/api/v1/threat-intelligence/threat-timeline/${streamId}?limit=100`,
       );
-      const data = await response.json();
-      setEvents(data.events || []);
-    } catch (error) {
-      console.error("Failed to fetch timeline:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [streamId]);
+      if (!response.ok) throw new Error("Failed to fetch timeline");
+      const data: { events?: TimelineEvent[] } = await response.json();
+      return data.events ?? [];
+    },
+    refetchInterval: 10_000,
+  });
+  const events = timelineQuery.data ?? [];
 
-  useEffect(() => {
-    void fetchTimeline();
-    const interval = setInterval(() => void fetchTimeline(), 10000); // Refresh every 10 seconds
-    return () => clearInterval(interval);
-  }, [fetchTimeline]);
-
-  if (loading) {
+  if (timelineQuery.isPending) {
     return <div className="text-gray-400">Loading timeline...</div>;
   }
 

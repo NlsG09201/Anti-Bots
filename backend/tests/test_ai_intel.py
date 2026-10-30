@@ -55,9 +55,12 @@ def test_heuristic_anomaly():
 
 
 @pytest.mark.asyncio
-async def test_training_pipeline_bootstrap():
+async def test_training_pipeline_bootstrap(tmp_path):
     from app.ai_intel.training.pipeline import TrainingPipeline
+    from app.ai_intel.models.registry import MODEL_FILES, ModelRegistry
 
-    result = await TrainingPipeline().run(min_samples=40)
+    registry = ModelRegistry(tmp_path / "models")
+    result = await TrainingPipeline(model_registry=registry).run(min_samples=40)
     assert result["status"] == "ok"
     assert result["n_samples"] >= 40
+    assert all((registry.model_path / filename).is_file() for filename in MODEL_FILES.values())

@@ -1,19 +1,16 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { resolveApiBaseUrl } from "@/lib/runtime-urls";
 
 function ConnectContent() {
   const searchParams = useSearchParams();
   const invite = searchParams.get("invite");
-  const [error, setError] = useState("");
+  const error = invite ? "" : "Falta el token de invitacion.";
 
   useEffect(() => {
-    if (!invite) {
-      setError("Falta el token de invitacion.");
-      return;
-    }
+    if (!invite) return;
     const api = resolveApiBaseUrl();
     window.location.href = `${api}/api/v1/integrations/twitch/invite/${encodeURIComponent(invite)}/start`;
   }, [invite]);

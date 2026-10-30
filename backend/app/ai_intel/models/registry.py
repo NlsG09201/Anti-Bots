@@ -25,9 +25,9 @@ class ModelRegistry:
     _instance: Optional["ModelRegistry"] = None
     _models: Dict[str, Any]
 
-    def __init__(self) -> None:
+    def __init__(self, model_path: Optional[Path] = None) -> None:
         self._models = {}
-        self._path = Path(settings.ai_model_path)
+        self._path = Path(model_path or settings.ai_model_path)
         self._path.mkdir(parents=True, exist_ok=True)
         self._version = self._load_version()
 
@@ -82,3 +82,7 @@ class ModelRegistry:
     @property
     def version(self) -> str:
         return self._version
+
+    @property
+    def model_path(self) -> Path:
+        return self._path
