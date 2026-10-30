@@ -21,6 +21,13 @@ if (isVercel) {
 }
 
 const nextConfig = {
+  // Prevent clients holding chunks from an older Vercel deployment from
+  // requesting assets or RSC payloads against the newly promoted version.
+  // Vercel supplies this ID at build time when system environment variables
+  // are enabled for the project.
+  ...(process.env.VERCEL_DEPLOYMENT_ID
+    ? { deploymentId: process.env.VERCEL_DEPLOYMENT_ID }
+    : {}),
   async rewrites() {
     return [
       {

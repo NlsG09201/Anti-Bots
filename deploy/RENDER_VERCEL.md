@@ -182,6 +182,12 @@ Elimina `NEXT_PUBLIC_API_URL` si es `localhost`.
 
 **Deployments** → **Redeploy**.
 
+En **Settings → Environment Variables**, deja activada la exposición automática
+de variables de sistema de Vercel. El frontend usa `VERCEL_DEPLOYMENT_ID` para
+que Next.js detecte clientes con código de una versión anterior y fuerce una
+navegación completa; esto evita errores de chunks/RSC durante promociones de
+deploy. Aplica el cambio con un nuevo deployment de producción.
+
 ---
 
 ## Paso 6 — Neon
