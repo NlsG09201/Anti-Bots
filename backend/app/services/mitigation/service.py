@@ -322,8 +322,10 @@ class MitigationService:
         )
         return action
 
-    async def revoke_ban(self, ban_id: UUID) -> bool:
-        result = await self.db.execute(select(Ban).where(Ban.id == ban_id))
+    async def revoke_ban(self, ban_id: UUID, tenant_id: UUID) -> bool:
+        result = await self.db.execute(
+            select(Ban).where(Ban.id == ban_id, Ban.tenant_id == tenant_id)
+        )
         ban = result.scalar_one_or_none()
         if not ban:
             return False

@@ -208,6 +208,15 @@ async def create_ban(
     current_user: AnalystUser,
     db: AsyncSession = Depends(get_db),
 ):
+    stream_result = await db.execute(
+        select(Stream).where(
+            Stream.id == stream_id,
+            Stream.tenant_id == current_user.tenant_id,
+        )
+    )
+    if not stream_result.scalar_one_or_none():
+        raise NotFoundError("Stream")
+
     from datetime import datetime, timedelta, timezone
     expires_at = None
     if data.duration_hours:
@@ -235,7 +244,7 @@ async def revoke_ban(
     db: AsyncSession = Depends(get_db),
 ):
     mitigation = MitigationService(db)
-    success = await mitigation.revoke_ban(ban_id)
+    success = await mitigation.revoke_ban(ban_id, current_user.tenant_id)
     if not success:
         raise NotFoundError("Ban")
     return {"revoked": True}

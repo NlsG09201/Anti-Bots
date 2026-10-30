@@ -104,3 +104,11 @@
 - Viewer-page automatic synchronization is scheduled and cancellable when the selected stream changes; OAuth query refresh no longer overwrites an explicit stream selection.
 - Corrected the Power BI threat-series memo dependency so React Compiler can preserve the memo.
 - Verification: `npm run build` passed with TypeScript and all 28 routes. `npm run lint` reports 5 errors and 32 warnings. Remaining errors are OAuth feedback state in Channels/Settings/Login and query/form synchronization in Twitch Moderator.
+
+## Frontend lint gate enabled (2026-10-29)
+
+- Removed the remaining effect-driven OAuth feedback updates in Channels, Settings, Login, and Twitch Moderator. Provider status invalidation remains in effects; callback text and YouTube failure details are derived from URL parameters.
+- Twitch Moderator configuration now uses server query data as its default and scopes local edits to the active stream. Its OAuth stream parameter initializes the Suspense-wrapped client route.
+- Login retains the ability to clear a callback error when a new submission begins.
+- Added `npm run lint` to frontend CI after resolving all lint errors.
+- Verification: `npm run lint` passed with 0 errors and 32 existing warnings. `npm run build` passed TypeScript and all 28 routes. `git diff --check` passed.
