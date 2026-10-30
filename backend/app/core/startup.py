@@ -1,4 +1,5 @@
 import sys
+from urllib.parse import urlsplit
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -36,8 +37,26 @@ def validate_production_settings() -> list[str]:
         if value in INSECURE_DEFAULTS:
             errors.append(f"{name} uses an insecure default value")
 
-    if "localhost" in settings.app_cors_origins and settings.is_production:
-        logger.warning("cors_contains_localhost_in_production")
+    origins = settings.cors_origins_list
+    if not origins:
+        errors.append("APP_CORS_ORIGINS must contain at least one production origin")
+    for origin in origins:
+        parsed_origin = urlsplit(origin)
+        if origin == "*":
+            errors.append("APP_CORS_ORIGINS must not allow every origin in production")
+        elif parsed_origin.scheme != "https" or not parsed_origin.netloc:
+            errors.append(f"APP_CORS_ORIGINS must use HTTPS in production: {origin}")
+        elif parsed_origin.hostname in {"localhost", "127.0.0.1", "::1"}:
+            errors.append("APP_CORS_ORIGINS must not include loopback origins in production")
+
+    trusted_hosts = settings.trusted_hosts_list
+    if not trusted_hosts:
+        errors.append("TRUSTED_HOSTS must contain explicit production hosts")
+    for host in trusted_hosts:
+        if host == "*":
+            errors.append("TRUSTED_HOSTS must not allow every host in production")
+        elif host.lower() in {"localhost", "127.0.0.1", "::1"}:
+            errors.append("TRUSTED_HOSTS must not include loopback hosts in production")
 
     if not settings.cookie_secure and settings.is_production:
         errors.append("COOKIE_SECURE must be true in production (HTTPS required)")

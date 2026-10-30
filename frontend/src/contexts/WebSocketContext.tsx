@@ -37,14 +37,14 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const [lastMessage, setLastMessage] = useState<WSMessage | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const handlersRef = useRef<Set<MessageHandler>>(new Set());
-  const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const subscribe = useCallback((handler: MessageHandler) => {
     handlersRef.current.add(handler);
     return () => handlersRef.current.delete(handler);
   }, []);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(function connectWebSocket() {
     if (!accessToken) return;
     const wsUrl = resolveWsBaseUrl();
     if (!wsUrl) return;
@@ -83,8 +83,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     };
 
     ws.onclose = () => {
+      if (wsRef.current !== ws) return;
+      wsRef.current = null;
       setConnected(false);
-      reconnectTimeout.current = setTimeout(connect, 5000);
+      reconnectTimeout.current = setTimeout(connectWebSocket, 5000);
     };
 
     ws.onerror = () => ws.close();
@@ -100,8 +102,13 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
     return () => {
       clearInterval(interval);
-      clearTimeout(reconnectTimeout.current);
-      wsRef.current?.close();
+      if (reconnectTimeout.current !== null) {
+        clearTimeout(reconnectTimeout.current);
+        reconnectTimeout.current = null;
+      }
+      const socket = wsRef.current;
+      wsRef.current = null;
+      socket?.close();
     };
   }, [connect]);
 

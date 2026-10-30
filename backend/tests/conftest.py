@@ -1,4 +1,3 @@
-import asyncio
 import os
 from typing import AsyncGenerator
 
@@ -20,13 +19,6 @@ from app.infrastructure.database.session import get_db
 
 # La aplicación exportada envuelve FastAPI con CORS para cubrir también errores 500.
 fastapi_app = app.app
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest_asyncio.fixture

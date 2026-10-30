@@ -4,8 +4,15 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
 from cryptography.fernet import Fernet
-from jose import JWTError, jwt
-from jose.exceptions import ExpiredSignatureError, JWTClaimsError
+import jwt
+from jwt import (
+    ExpiredSignatureError,
+    InvalidAudienceError,
+    InvalidIssuedAtError,
+    InvalidIssuerError,
+    InvalidTokenError,
+    MissingRequiredClaimError,
+)
 from passlib.context import CryptContext
 
 from app.core.config import get_settings
@@ -76,9 +83,14 @@ def verify_token_with_reason(
         payload = decode_token(token)
     except ExpiredSignatureError:
         return None, "expired"
-    except JWTClaimsError:
+    except (
+        InvalidAudienceError,
+        InvalidIssuedAtError,
+        InvalidIssuerError,
+        MissingRequiredClaimError,
+    ):
         return None, "invalid_claims"
-    except JWTError:
+    except InvalidTokenError:
         return None, "invalid_signature_or_malformed"
 
     if payload.get("type") != expected_type:

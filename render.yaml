@@ -26,7 +26,7 @@ services:
       - key: TWITCH_EVENTSUB_CALLBACK_URL
         value: https://anti-bots.onrender.com/api/v1/webhooks/twitch
       - key: TRUSTED_HOSTS
-        value: anti-bots.onrender.com,anti-bots-api.onrender.com,.onrender.com,localhost,127.0.0.1
+        value: anti-bots.onrender.com,anti-bots-api.onrender.com
       - key: RENDER
         value: "true"
       - key: PLATFORM_MONITOR_RUN_IN_API
