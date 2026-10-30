@@ -271,6 +271,19 @@ def _assert_empty_target(database_url: str) -> None:
         JOIN pg_namespace AS namespace ON namespace.oid = extension.extnamespace
         WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema')
       )
+      OR EXISTS (
+        SELECT 1 FROM pg_type AS type
+        JOIN pg_namespace AS namespace ON namespace.oid = type.typnamespace
+        WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND namespace.nspname NOT LIKE 'pg_toast%'
+          AND namespace.nspname NOT LIKE 'pg_temp_%'
+      )
+      OR EXISTS (
+        SELECT 1 FROM pg_collation AS collation
+        JOIN pg_namespace AS namespace ON namespace.oid = collation.collnamespace
+        WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND namespace.nspname NOT LIKE 'pg_%'
+      )
     THEN 'not_empty' ELSE 'empty' END;
     """
     with tempfile.TemporaryDirectory(prefix="anti-bots-pg-restore-") as temp:
