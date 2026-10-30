@@ -42,6 +42,7 @@ from app.api.v1 import (
 from app.api.websocket import routes as ws_routes
 from app.core.config import get_settings, invalidate_settings_cache
 from app.core.exceptions import StreamShieldError
+from app.core.background_tasks import BackgroundTaskRegistry
 from app.core.logging import setup_logging, get_logger
 from app.core.startup import run_startup_checks
 from app.infrastructure.cache.redis_client import close_redis
@@ -115,6 +116,8 @@ async def lifespan(app: FastAPI):
     invalidate_settings_cache()
     run_startup_checks()
     logger.info("starting_application", env=get_settings().app_env)
+    background_tasks = BackgroundTaskRegistry(logger)
+    app.state.background_tasks = background_tasks
     monitor_task = None
     try:
         await init_database(engine)
@@ -140,7 +143,10 @@ async def lifespan(app: FastAPI):
             except Exception as exc:
                 logger.warning("twitchbots_info_warm_failed", error=str(exc)[:120])
         if _cfg.twitch_insights_enabled:
-            asyncio.create_task(get_twitch_insights_db().ensure_loaded())
+            background_tasks.create(
+                get_twitch_insights_db().ensure_loaded(),
+                name="twitch_insights_cache_load",
+            )
         if (
             _cfg.weka_j48_enabled
             and _cfg.weka_python_enabled
@@ -156,7 +162,9 @@ async def lifespan(app: FastAPI):
                     max_heap=_cfg.weka_jvm_max_heap,
                 ),
             )
-        monitor_task = asyncio.create_task(_background_channel_monitor())
+        monitor_task = background_tasks.create(
+            _background_channel_monitor(), name="background_channel_monitor"
+        )
         platform_monitor_task = None
         from app.core.config import get_settings as _gs2
 
@@ -168,8 +176,9 @@ async def lifespan(app: FastAPI):
         ):
             from app.services.monitoring.orchestrator import get_platform_monitor_orchestrator
 
-            platform_monitor_task = asyncio.create_task(
-                get_platform_monitor_orchestrator().start()
+            background_tasks.create(
+                get_platform_monitor_orchestrator().start(),
+                name="platform_monitor_orchestrator_start",
             )
             logger.info("platform_monitors_in_api_process")
         elif cfg_mon.platform_monitor_worker_mode_resolved:
@@ -179,12 +188,14 @@ async def lifespan(app: FastAPI):
 
             _ph = get_platform_health_engine()
             _ph.set_process_label("api")
-            asyncio.create_task(_ph.start())
+            background_tasks.create(_ph.start(), name="platform_health_engine_start")
             logger.info("platform_health_engine_in_api")
         if _cfg.viewer_flow_enabled:
             from app.viewer_flow import get_viewer_flow_engine
 
-            asyncio.create_task(get_viewer_flow_engine().start())
+            background_tasks.create(
+                get_viewer_flow_engine().start(), name="viewer_flow_engine_start"
+            )
             logger.info("viewer_flow_engine_in_api")
         from app.workers.pipeline_consumer import start_pipeline_consumer
         from app.workers.realtime_subscriber import start_realtime_subscriber
@@ -205,12 +216,7 @@ async def lifespan(app: FastAPI):
         )
         raise
     yield
-    if monitor_task:
-        monitor_task.cancel()
-        try:
-            await monitor_task
-        except asyncio.CancelledError:
-            pass
+    await background_tasks.close()
     if _cfg.platform_health_enabled:
         from app.services.platform_health.engine import get_platform_health_engine
 

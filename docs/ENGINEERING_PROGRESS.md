@@ -127,3 +127,10 @@
 - Added a tenant-scoped dismiss endpoint; cross-tenant alert IDs return not found. Alert rows retain the existing `open`/`dismissed` lifecycle used by the panel.
 - Added tests for tenant-filtered alert listing, stream-filtered listing, and cross-tenant dismiss rejection.
 - Verification: full backend suite passed (`100 passed, 1 skipped, 19 warnings`); frontend lint passed (`0 errors, 33 warnings`); production build passed TypeScript and all 28 routes.
+
+## Twitch EventSub webhook security (2026-10-29)
+
+- Twitch EventSub callbacks now require a valid HMAC signature before challenge responses or notifications are handled. Message timestamps are limited to a 10-minute replay window with a 30-second future tolerance, and request bodies are capped at 1 MiB.
+- Notification IDs are claimed atomically in the cache. Completed duplicates return 204; concurrent/in-progress duplicates request a retry, and failed processing releases its claim for retry. Production rejects notifications when the shared cache is not configured.
+- Added coverage for signed callback verification, stale-message rejection, duplicate suppression, retry after processing failure, and atomic in-memory cache claims.
+- Verification: full backend suite passed (`107 passed, 1 skipped, 20 warnings`); `python -m compileall -q app scripts tests` and `git diff --check` passed. Existing sklearn artifact-version and FastAPI/Starlette deprecation warnings remain.
