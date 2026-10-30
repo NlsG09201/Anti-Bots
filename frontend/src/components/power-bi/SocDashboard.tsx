@@ -161,18 +161,17 @@ export function SocDashboard() {
   const streamRows = streams?.streams ?? [];
   const attackTimeline = attacks?.timeline ?? [];
   const metadataTables = metadata?.tables ?? [];
+  const threatRows = live?.top_streams ?? overview?.kpis.streams_mas_sospechosos ?? [];
 
   const threatSeries = useMemo(
-    () => {
-      const rows = live?.top_streams ?? overview?.kpis.streams_mas_sospechosos ?? [];
-      return rows.slice(0, 10).map((row) => ({
+    () =>
+      threatRows.slice(0, 10).map((row) => ({
         channel: row.channel_name,
         threat: row.threat_score,
         suspicious: Math.round(row.suspicious_ratio * 100),
         viewers: row.viewer_count,
-      }));
-    },
-    [live?.top_streams, overview?.kpis.streams_mas_sospechosos],
+      })),
+    [threatRows],
   );
 
   const platformChart = useMemo(

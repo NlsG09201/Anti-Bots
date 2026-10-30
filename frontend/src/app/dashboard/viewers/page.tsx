@@ -103,8 +103,6 @@ function ViewersContent() {
   const currentStream = streams.find((s) => s.id === streamId);
 
   useEffect(() => {
-    const q = searchParams.get("stream");
-    if (q) setSelectedStream(q);
     if (searchParams.get("twitch") === "connected") {
       lastFullLoadStream.current = null;
       queryClient.invalidateQueries({ queryKey: ["streams"] });
@@ -249,7 +247,11 @@ function ViewersContent() {
 
   useEffect(() => {
     if (!streamId || !token) return;
-    void triggerFullLoad(streamId);
+    const streamToLoad = streamId;
+    const timeout = window.setTimeout(() => {
+      void triggerFullLoad(streamToLoad);
+    }, 0);
+    return () => window.clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when channel changes, not on token refresh
   }, [streamId, currentStream?.platform]);
 
