@@ -3,7 +3,7 @@ import {
   Activity, ArrowDownRight, ArrowRight, Eye, Fingerprint, RadioTower, ShieldCheck,
 } from "lucide-react";
 
-const platforms = ["Twitch", "Kick", "YouTube Live", "TikTok Live"];
+const platforms = ["Twitch", "Kick", "YouTube Live"];
 
 const capabilities = [
   {
@@ -114,10 +114,11 @@ export default function Home() {
 
       <section id="platforms" className="border-y border-cyber-border/70 bg-cyber-surface/40">
         <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-7 sm:px-8 md:flex-row md:items-center md:justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyber-muted">Platform workflows in the product</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyber-muted">Platform integrations in this build</p>
           <ul className="flex flex-wrap gap-2" aria-label="Supported streaming platforms">
             {platforms.map((platform) => <li key={platform} className="rounded-full border border-cyber-border bg-cyber-bg px-3 py-1.5 text-xs font-medium text-cyber-text">{platform}</li>)}
           </ul>
+          <p className="max-w-xl text-xs leading-5 text-cyber-muted">Coverage depends on platform permissions. TikTok LIVE monitoring is not available in this build.</p>
         </div>
       </section>
 
