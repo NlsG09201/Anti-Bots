@@ -12,9 +12,9 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.28.0",
-    "@types/cytoscape": "^3.21.9",
+    "@types/cytoscape": "^3.31.0",
     "clsx": "^2.1.0",
-    "cytoscape": "^3.33.4",
+    "cytoscape": "^3.34.4",
     "date-fns": "^3.6.0",
     "js-cookie": "^3.0.5",
     "lucide-react": "^0.577.0",
