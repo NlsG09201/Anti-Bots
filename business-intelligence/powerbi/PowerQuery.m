@@ -1,8 +1,10 @@
-// Create Power Query parameters pServer (Text) and pDatabase (Text) in Power BI.
+﻿// Set pBillingProjectId, pProjectId and pDataset (Text) to the tenant BigQuery target.
 // Set credentials in Power BI's data-source settings; do not embed passwords here.
 let
-    Source = PostgreSQL.Database(pServer, pDatabase),
-    Warehouse = Source{[Schema = "bi", Item = "vw_powerbi_stream_snapshot"]}[Data],
+    Source = GoogleBigQuery.Database([BillingProject = pBillingProjectId]),
+    Project = Source{[Name = pProjectId]}[Data],
+    Dataset = Project{[Name = pDataset, Kind = "Schema"]}[Data],
+    Warehouse = Dataset{[Name = "vw_powerbi_stream_snapshot", Kind = "Table"]}[Data],
     KeepColumns = Table.SelectColumns(Warehouse, {
         "snapshot_date", "tenant_id", "stream_id", "streamer_id", "platform_key",
         "platform_name", "channel_name", "is_live", "viewer_count",
@@ -28,7 +30,7 @@ let
     ValidRows = Table.SelectRows(SetTypes, each [stream_id] <> null and [snapshot_date] <> null),
     OneSnapshotPerStreamDay = Table.Distinct(ValidRows, {"stream_id", "snapshot_date"}),
     MergePlatformDimension = Table.NestedJoin(OneSnapshotPerStreamDay, {"platform_key"},
-        Source{[Schema = "bi", Item = "dim_platform"]}[Data], {"platform_key"},
+        Dataset{[Name = "dim_platform", Kind = "Table"]}[Data], {"platform_key"},
         "PlatformDimension", JoinKind.LeftOuter),
     ExpandPlatform = Table.ExpandTableColumn(MergePlatformDimension, "PlatformDimension",
         {"platform_name"}, {"platform_name_dimension"}),

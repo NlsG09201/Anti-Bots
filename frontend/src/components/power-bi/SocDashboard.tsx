@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import {
   Area,
@@ -142,6 +142,7 @@ export function SocDashboard() {
   const [hours, setHours] = useState(168);
   const [exportError, setExportError] = useState<string | null>(null);
   const [bigQueryStatus, setBigQueryStatus] = useState<string | null>(null);
+  const [bigQueryTarget, setBigQueryTarget] = useState<string | null>(null);
   const [bigQueryBusy, setBigQueryBusy] = useState(false);
   const {
     accessToken,
@@ -159,6 +160,21 @@ export function SocDashboard() {
     sync,
     refresh,
   } = usePowerBiSocData(hours);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    let active = true;
+    api.powerBiAnalytics.bigQueryConfig(accessToken)
+      .then((config) => {
+        if (active && config.configured && config.project_id && config.dataset) {
+          setBigQueryTarget(`${config.project_id}.${config.dataset}`);
+        }
+      })
+      .catch(() => {
+        if (active) setBigQueryTarget(null);
+      });
+    return () => { active = false; };
+  }, [accessToken]);
 
   const global = overview?.metrics_globales;
   const realtime = overview?.metricas_tiempo_real;
@@ -256,7 +272,7 @@ export function SocDashboard() {
     setBigQueryStatus(null);
     setExportError(null);
     try {
-      const response = await api.powerBiAnalytics.syncBigQuery(accessToken, 2160);
+      const response = await api.powerBiAnalytics.syncBigQuery(accessToken);
       const loaded = response.tables_loaded?.reduce((sum, item) => sum + item.rows, 0) ?? 0;
       setBigQueryStatus(
         `BigQuery actualizado: ${response.project_id}.${response.dataset}; ${response.tables_loaded?.length ?? 0} tablas, ${formatNumber(loaded)} filas cargadas.`,
@@ -336,6 +352,7 @@ export function SocDashboard() {
         </div>
       )}
       {bigQueryStatus && <div role="status" className="rounded-lg border border-cyber-accent/30 bg-cyber-accent/10 p-3 text-sm text-cyber-accent">{bigQueryStatus}</div>}
+      {bigQueryTarget && <p className="text-xs text-cyber-muted">Google BigQuery tenant dataset: <code className="text-cyber-accent">{bigQueryTarget}</code></p>}
 
       {loading ? (
         <div className="rounded-lg border border-cyber-border bg-cyber-surface/40 p-8 text-center text-sm text-cyber-muted">

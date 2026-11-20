@@ -1,6 +1,8 @@
-let
-    Source = PostgreSQL.Database(pServer, pDatabase),
-    Warehouse = Source{[Schema = "bi", Item = "vw_powerbi_dim_stream"]}[Data],
+﻿let
+    Source = GoogleBigQuery.Database([BillingProject = pBillingProjectId]),
+    Project = Source{[Name = pProjectId]}[Data],
+    Dataset = Project{[Name = pDataset, Kind = "Schema"]}[Data],
+    Warehouse = Dataset{[Name = "dim_stream", Kind = "Table"]}[Data],
     CleanText = Table.TransformColumns(Warehouse, {
         {"channel_name", each Text.Trim(Text.Clean(Text.From(_))), type text}
     }),

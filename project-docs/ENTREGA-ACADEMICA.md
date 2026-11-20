@@ -1,4 +1,4 @@
-# Documentación de entregables académicos — StreamShield
+﻿# Documentación de entregables académicos — StreamShield
 
 **Proyecto:** StreamShield — monitoreo y análisis de amenazas en transmisiones en vivo  
 **Repositorio:** [NlsG09201/Anti-Bots](https://github.com/NlsG09201/Anti-Bots)  
@@ -258,50 +258,51 @@ El diagrama resume relaciones y atributos de interés para el informe. Las clave
 
 | Fuente | Tipo de dato | Acceso en el proyecto | Uso analítico |
 | --- | --- | --- | --- |
-| PostgreSQL | Relacional, operacional | Sesión SQLAlchemy del backend; modelos en `backend/app/infrastructure/database/models.py` | Canales, usuarios, eventos, sesiones, ataques y alertas. |
-| Redis | Clave/valor y flujos de eventos | Cliente de caché/eventos en `backend/app/infrastructure/cache/` y `backend/app/events/` | Datos recientes, colas, límites y publicación; no es el repositorio histórico primario. |
-| MongoDB | Documentos, opcional | Cliente e integraciones bajo `backend/app/infrastructure/mongodb/` | Algunas características o colecciones de inteligencia; su disponibilidad depende de configuración. |
-| APIs de plataformas | Eventos y metadatos externos | Adaptadores en `backend/app/integrations/` | Twitch, Kick, YouTube y TikTok según permisos, APIs y variables configuradas. |
-| Fuentes de reputación | Datos externos de IP/ASN | Integraciones en `backend/app/integrations/threat_intel/` | Enriquecimiento de señales; requiere las fuentes o credenciales pertinentes. |
+| PostgreSQL | Relacional, operacional y warehouse intermedio | SQLAlchemy, modelos y esquema `bi` | Canales, sesiones, ataques, actividad de chat y hechos/dimensiones. |
+| Google BigQuery | Warehouse analítico en la nube | `BigQueryWarehouseService` mediante Application Default Credentials | Dataset físico separado para cada tenant; Power BI lo consulta directamente. |
+| Redis | Clave/valor y flujos | Caché y eventos del backend | Datos temporales; no es la fuente histórica del informe. |
+| MongoDB y APIs de plataforma | Documentos y servicios externos opcionales | Adaptadores de integraciones configuradas | Enriquecimiento y señales disponibles según permisos y credenciales. |
 
-Los datos exportados se filtran por tenant y ventana temporal a través de `AnalyticsWarehouseService` (`backend/app/services/analytics/powerbi.py`). Los endpoints documentados bajo `/api/v1/analytics/` exigen usuario analista o superior. El acceso efectivo a fuentes externas depende de credenciales, permisos y disponibilidad; no se presupone que el entorno de entrega tenga datos reales.
+`bi.refresh_warehouse` transforma datos PostgreSQL y carga las dimensiones/hechos. El mismo proceso ETL replica tablas a BigQuery después de cada carga diaria; el usuario analista también puede iniciarlo desde Power BI SOC Analytics. La API aplica aislamiento por tenant y determina el dataset destino en servidor. El conector de Power BI usa credenciales Google autorizadas para ese dataset.
 
-### 2.2 Modelo dimensional propuesto para análisis
+### 2.2 Modelo dimensional implementado
 
-El código define tablas de exportación y relaciones para Power BI; esto es un **modelo de datos analítico generado para consumo**, no un almacén dimensional independiente con tablas físicas de dimensiones y hechos. Para explicar su organización dimensional, se propone el siguiente esquema estrella lógico:
+El Data Warehouse PostgreSQL está definido físicamente en `business-intelligence/sql/001_warehouse.sql`; `002_refresh_warehouse.sql` es el proceso ETL idempotente. BigQuery conserva las claves y el grano en ocho tablas por tenant:
 
 ```mermaid
 erDiagram
-    DIM_STREAM ||--o{ FACT_ATTACK : contexto
-    DIM_STREAM ||--o{ FACT_VIEWER_SESSION : contexto
-    DIM_STREAM ||--o{ FACT_EVENT : contexto
+    DIM_STREAM ||--o{ FACT_STREAM_SNAPSHOT : canal
+    DIM_STREAM ||--o{ FACT_VIEWER_SESSION : canal
+    DIM_STREAM ||--o{ FACT_ATTACK : canal
+    DIM_STREAM ||--o{ FACT_CHAT_ACTIVITY : canal
     DIM_PLATFORM ||--o{ DIM_STREAM : clasifica
     DIM_STREAMER ||--o{ DIM_STREAM : administra
-    DIM_DATE ||--o{ FACT_ATTACK : fecha
+    DIM_DATE ||--o{ FACT_STREAM_SNAPSHOT : fecha
     DIM_DATE ||--o{ FACT_VIEWER_SESSION : fecha
-    DIM_DATE ||--o{ FACT_EVENT : fecha
-    DIM_SEVERITY ||--o{ FACT_ATTACK : clasifica
+    DIM_DATE ||--o{ FACT_ATTACK : fecha
+    DIM_DATE ||--o{ FACT_CHAT_ACTIVITY : fecha
 ```
 
-| Tabla lógica | Tipo | Grano y atributos principales |
-| --- | --- | --- |
-| `DIM_DATE` | Dimensión propuesta | Un registro por fecha; día, mes, trimestre y año. Se deriva de marcas temporales al preparar el informe. |
-| `DIM_PLATFORM` | Dimensión derivada | Una fila por plataforma (`platform_key`, nombre). El catálogo se deriva de `platforms`. |
-| `DIM_STREAMER` | Dimensión derivada | Un registro por streamer/tenant según las columnas exportadas; no exponer correo en informes compartidos. |
-| `DIM_STREAM` | Dimensión derivada | Una fila por canal (`stream_id`, plataforma, streamer, nombre, estado). |
-| `DIM_SEVERITY` | Dimensión propuesta | Catálogo de severidad/tipo de amenaza para ordenar y filtrar. |
-| `FACT_ATTACK` | Hecho derivado | Una fila por ataque exportado; riesgo, confianza, usuarios afectados y estado. |
-| `FACT_VIEWER_SESSION` | Hecho derivado | Una fila por sesión de espectador; duración, estado sospechoso y riesgo. |
-| `FACT_EVENT` | Hecho derivado | Una fila por evento exportado; tipo, fecha y señal de riesgo. |
+| Tabla BigQuery | Tipo y grano |
+| --- | --- |
+| `dim_date` | Dimensión: una fila por fecha, con atributos calendario. |
+| `dim_platform` | Dimensión: una fila por plataforma. |
+| `dim_streamer` | Dimensión: una fila por streamer del tenant. |
+| `dim_stream` | Dimensión: una fila por canal, plataforma y streamer. |
+| `vw_powerbi_stream_snapshot` | Hecho: canal y día, viewers, chatters, engagement y amenaza. |
+| `vw_powerbi_viewer_session` | Hecho: una fila por sesión de espectador. |
+| `vw_powerbi_attack` | Hecho: una fila por incidente, severidad, riesgo y mitigación. |
+| `vw_powerbi_chat_activity` | Hecho: canal, fecha y tipo de evento de chat. |
 
-La implementación Power BI ya declara datasets `platforms`, `streamers`, `streams`, `viewers`, `suspicious_viewers`, `attacks`, `follows`, `engagement_metrics`, `ai_predictions`, `threat_scores`, `chat_activity` y `bot_profiles`, además de relaciones desde streams a sus registros analíticos. El esquema dimensional de arriba describe cómo organizar ese contrato para un análisis temporal; no asegura que exista un ETL persistente ni dimensiones físicas precargadas.
+Las relaciones usan `stream_id`, `full_date` y `platform_key`; están representadas en el modelo TMDL del PBIP. El dataset tiene nombre `streamshield_bi_<uuid_del_tenant_sin_guiones>` y evita mezclar registros entre organizaciones.
 
-### 2.3 Prototipo de dashboard Power BI
+### 2.3 Dashboard e integración con la aplicación
 
-Existe soporte de backend para metadatos, modelo, medidas, exportación de paquete y sincronización opcional con Power BI Service. Las rutas de análisis y exportación están en `backend/app/api/v1/powerbi_analytics.py`; la construcción del paquete y datasets está en `backend/app/services/analytics/powerbi.py`. La guía operativa está en [`POWERBI-ANALYTICS.md`](POWERBI-ANALYTICS.md) y [`POWER_BI_GUIDE.md`](../docs/POWER_BI_GUIDE.md).
+`business-intelligence/powerbi/StreamShield-BI.pbip` contiene el modelo, medidas y las páginas **Resumen ejecutivo** y **Actividad y riesgo**, con filtros por fecha, plataforma, canal y severidad/riesgo. Sus consultas M consumen las tablas BigQuery. La aplicación permite sincronizar los datos reales con `POST /api/v1/analytics/bigquery/sync`; el cron hace la carga diaria. La actualización de Power BI Service se programa después de la ejecución del cron con las credenciales Google del tenant.
 
-El informe se plantea con páginas para: (1) resumen y tendencia de amenazas, (2) ataques por plataforma/severidad, (3) actividad sospechosa y sesiones, y (4) engagement y señales de IA. Las medidas declaradas incluyen conteos de ataques y sesiones, proporción sospechosa, severidad y engagement. El resultado es un **prototipo de modelo y exportación integrado en el backend**. No se afirma que haya un archivo `.pbix` publicado ni que Power BI Service esté conectado: la sincronización requiere que el propietario configure Azure/Power BI y sus variables de entorno.
+Desde Power BI SOC Analytics se descargan archivos de analítica JSON/Excel/ZIP y, cuando se configura un informe publicado, **PDF, PPTX y PBIX generados por Power BI Service**. El backend valida el tenant autorizado, oculta los secretos Microsoft y devuelve el archivo como respuesta adjunta desde `GET /api/v1/analytics/exports/powerbi-report?format=pdf|pptx|pbix`.
 
+La guía de aprovisionamiento, permisos, parámetros del PBIP, publicación y descarga está en [`business-intelligence/README.md`](../business-intelligence/README.md). El código está implementado; la conexión, publicación, refresh real y capturas requieren las cuentas del equipo en Google Cloud y Microsoft. No se incluyen resultados o capturas inventadas.
 ## 3. Investigación de Operaciones
 
 ### 3.1 Problema real derivado de StreamShield
@@ -339,7 +340,7 @@ El porcentaje estima el avance documental y funcional demostrable en este reposi
 | Objetivo específico | Evidencia (sección o anexo) | Avance (%) | Pendiente para 8.º |
 | --- | --- | ---: | --- |
 | 1. Documentar arquitectura, agente inteligente, interfaz integrada, seguridad, modelo ER/diccionario y repositorio | Secciones 1.1–1.5; módulo Spring real en `backend-spring/`, seguridad JWT compartida, consulta JPA por tenant, agente conectado opcionalmente desde el frontend y repositorio enlazado. | 75% | Migrar las rutas restantes de FastAPI con compatibilidad de contrato y pruebas antes de sustituirlo; desplegar Spring con secretos propios y verificar el chat en el entorno integrado. Anexar capturas del despliegue final. |
-| 2. Identificar fuentes, tipos y acceso; definir modelo dimensional y dashboard Power BI | Secciones 2.1–2.3; `powerbi.py`, `powerbi_analytics.py`, guía de Power BI y datasets/modelo de exportación. | 75% | Conectar las credenciales institucionales, importar/validar datos del entorno, construir y capturar el informe en Power BI Desktop/Service. El archivo publicado `.pbix` no se encuentra evidenciado en el repositorio. |
+| 2. Identificar fuentes, tipos y acceso; definir modelo dimensional y dashboard Power BI | Secciones 2.1–2.3; warehouse PostgreSQL, mirror tenant-scoped BigQuery, PBIP/TMDL y endpoint de sincronización/exportación desde Power BI. | 90% implementación | Aplicar Terraform en el proyecto Google del equipo, cargar y validar sus datos reales, publicar/actualizar en Power BI Service y adjuntar capturas y archivos descargados. Las cuentas externas no están disponibles en este entorno. |
 | 3. Plantear y resolver un problema real de Investigación de Operaciones | Secciones 3.1–3.2; solver exacto, endpoint por tenant y dashboard ejecutable sobre sesiones operacionales. | 100% implementación | Validar con el equipo los valores de tiempo, costo y exposición; las puntuaciones disponibles no están calibradas estadísticamente como probabilidades. |
 | 4. Adjuntar evidencia y resultados analíticos respetando límite de plantilla | Sección 3.2 describe el flujo para reproducir y consultar resultados reales en la API y el dashboard. | 80% | Ejecutar en el entorno del equipo, guardar captura de la respuesta con sus datos reales y adaptar portada/extensión/anexos a la plantilla oficial. |
 

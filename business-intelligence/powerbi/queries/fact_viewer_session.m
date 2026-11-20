@@ -1,6 +1,8 @@
-let
-    Source = PostgreSQL.Database(pServer, pDatabase),
-    Warehouse = Source{[Schema = "bi", Item = "vw_powerbi_viewer_session"]}[Data],
+﻿let
+    Source = GoogleBigQuery.Database([BillingProject = pBillingProjectId]),
+    Project = Source{[Name = pProjectId]}[Data],
+    Dataset = Project{[Name = pDataset, Kind = "Schema"]}[Data],
+    Warehouse = Dataset{[Name = "vw_powerbi_viewer_session", Kind = "Table"]}[Data],
     FillNullMeasures = Table.ReplaceValue(Warehouse, null, 0, Replacer.ReplaceValue, {
         "risk_score", "chat_messages", "watch_duration_seconds"
     }),

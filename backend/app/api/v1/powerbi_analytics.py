@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from uuid import UUID
+from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AnalystUser, get_db
@@ -20,7 +21,7 @@ from app.services.analytics.powerbi import (
     powerbi_model_manifest,
     powerbi_package_bytes,
 )
-from app.services.analytics.bigquery import BigQueryWarehouseService
+from app.services.analytics.bigquery import BigQueryWarehouseService, WAREHOUSE_SCHEMAS
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/analytics", tags=["Power BI Analytics"])
@@ -90,7 +91,7 @@ async def analytics_bigquery_config(current_user: AnalystUser):
         "project_id": cfg.google_cloud_project_id or None,
         "dataset": service.dataset_for_tenant(current_user.tenant_id) if service.configured else None,
         "location": cfg.bigquery_location,
-        "tables": list(EXPORT_DATASETS),
+        "tables": list(WAREHOUSE_SCHEMAS),
     }
 
 
@@ -98,18 +99,22 @@ async def analytics_bigquery_config(current_user: AnalystUser):
 async def analytics_bigquery_sync(
     current_user: AnalystUser,
     db: AsyncSession = Depends(get_db),
-    hours: int = Query(2160, ge=1, le=2160),
 ):
     service = BigQueryWarehouseService()
     if not service.configured:
         raise HTTPException(status_code=503, detail="Google BigQuery no está configurado en el backend.")
-    warehouse = AnalyticsWarehouseService(db, current_user.tenant_id, hours=hours)
-    bundle = await warehouse.build_export_bundle()
     try:
+        await db.execute(
+            text(
+                "CALL bi.refresh_warehouse(CAST(:tenant_id AS uuid), current_date - 90)"
+            ),
+            {"tenant_id": current_user.tenant_id},
+        )
+        await db.commit()
+        result = await service.sync_tenant(db, current_user.tenant_id)
         return {
-            "generated_at": warehouse.snapshot_at.isoformat(),
-            "window_hours": hours,
-            **await service.sync_bundle(current_user.tenant_id, bundle),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            **result,
         }
     except Exception as exc:
         logger.error(

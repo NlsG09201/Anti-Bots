@@ -36,4 +36,9 @@ business-intelligence/terraform/*.tfstate.*
 business-intelligence/terraform/*.tfvars
 !business-intelligence/terraform/terraform.tfvars.example
 business-intelligence/terraform/.terraform/
+business-intelligence/terraform-gcp/*.tfstate
+business-intelligence/terraform-gcp/*.tfstate.*
+business-intelligence/terraform-gcp/*.tfvars
+!business-intelligence/terraform-gcp/terraform.tfvars.example
+business-intelligence/terraform-gcp/.terraform/
 .cursor/

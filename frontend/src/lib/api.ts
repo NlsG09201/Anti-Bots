@@ -448,7 +448,7 @@ export const api = {
         true,
         "blob",
       ),
-    syncBigQuery: (token: ApiAuthToken, hours = 2160) =>
+    syncBigQuery: (token: ApiAuthToken) =>
       request<{
         enabled: boolean;
         configured: boolean;
@@ -456,7 +456,7 @@ export const api = {
         dataset?: string;
         tables_loaded?: { table: string; rows: number }[];
       }>(
-        `/api/v1/analytics/bigquery/sync?hours=${hours}`,
+        "/api/v1/analytics/bigquery/sync",
         { method: "POST" },
         token,
       ),

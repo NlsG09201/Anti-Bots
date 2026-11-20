@@ -1,130 +1,98 @@
-# Proyecto aplicado de Business Intelligence — StreamShield
+# Analítica StreamShield en Google Cloud y Power BI
 
-Esta carpeta implementa el almacén dimensional, la carga ETL, las transformaciones Power Query y los materiales del modelo Power BI para datos operacionales reales de StreamShield. No contiene filas inventadas ni credenciales.
+Esta integración toma datos operacionales de StreamShield, mantiene un Data Warehouse dimensional en PostgreSQL y replica sus dimensiones y hechos a **BigQuery** en Google Cloud. Power BI Desktop/Service conecta directamente a BigQuery. Cada tenant se escribe en un dataset independiente; la API vuelve a generar esas tablas desde el almacén real y no crea filas de demostración.
 
-## Arquitectura elegida
-
-- **Nube:** AWS.
-- **Base de datos:** Amazon RDS for PostgreSQL. Terraform crea la instancia cifrada y con backups; los CIDR autorizados limitan el acceso al origen fijo del backend, la puerta de enlace Power BI y la estación administradora.
-- **OLTP:** tablas PostgreSQL existentes de StreamShield (`streams`, `viewer_sessions`, `attacks`, `stream_events`, `users`).
-- **ETL:** procedimiento PostgreSQL tenant scoped que realiza upsert en el esquema `bi`; la clave natural evita duplicados y el agregado de chat se reconstruye por ventana.
-- **Data Warehouse:** dimensiones conformadas de fecha, plataforma, canal y streamer; hechos de snapshots diarios, sesiones, ataques y actividad de chat.
-- **Power BI:** importación de vistas tenant scoped con PostgreSQL. El gateway de datos de Power BI en un host con IP de salida fija permite que Power BI Service actualice RDS sin abrir PostgreSQL a Internet.
-- **Automatización:** Render Cron ejecuta ETL todos los días a las 07:00 UTC. Configura en Power BI Service la actualización diaria a las 08:00 UTC para leer la carga ya terminada.
+## Arquitectura que ejecuta el código
 
 ```mermaid
 flowchart LR
-    A[Kick / Twitch / YouTube / TikTok] --> B[StreamShield API]
-    B --> C[(AWS RDS PostgreSQL · OLTP)]
-    C --> D[bi.refresh_warehouse · ETL idempotente]
-    D --> E[(Esquema dimensional bi)]
-    E --> F[Power Query · modelo estrella]
-    F --> G[Power BI Desktop]
-    G --> H[Power BI Service]
-    I[Render Cron · 07:00 UTC] --> D
-    J[On-premises data gateway] --> E
-    H --> J
+  A[StreamShield · PostgreSQL operacional] --> B[ETL idempotente bi.refresh_warehouse]
+  B --> C[(PostgreSQL · dimensiones y hechos)]
+  C --> D[BigQueryWarehouseService]
+  D --> E[(Google BigQuery · dataset exclusivo por tenant)]
+  E --> F[Power Query · modelo estrella PBIP]
+  F --> G[Power BI Desktop / Service · informe interactivo]
+  H[Dashboard web StreamShield] -->|REST autenticado| D
+  G -->|ExportTo PDF / PPTX o Export PBIX| H
 ```
 
-AWS publica PostgreSQL 16.15 para RDS a la fecha de esta implementación; confirma la disponibilidad de la versión y de la clase de instancia en la región elegida antes de aplicar Terraform ([versiones RDS PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/PostgreSQLReleaseNotes/postgresql-versions.html)).
+El backend y el cron existentes consultan PostgreSQL. `bi.refresh_warehouse` carga el esquema estrella; después `BigQueryWarehouseService` reemplaza las tablas correspondientes en `streamshield_bi_<tenant_uuid_sin_guiones>`. El usuario puede iniciar la sincronización desde **Power BI SOC Analytics → Sync BigQuery**, y el cron `anti-bots-bi-refresh` la realiza diariamente tras la carga SQL. La API usa Google Application Default Credentials y nunca acepta un `tenant_id` del navegador para seleccionar el destino.
 
-## Archivos
+## Orígenes y modelo dimensional
 
-- `terraform/`: instancia RDS, cifrado, backups, protección contra borrado y firewall por allowlist.
-- `sql/001_warehouse.sql`: dimensiones, hechos, vistas filtradas por identidad de base de datos e índices.
-- `sql/002_refresh_warehouse.sql`: procedimiento idempotente `bi.refresh_warehouse(tenant_uuid, from_date)`.
-- `sql/003_powerbi_tenant_role.sql`: aprovisionamiento de un login Power BI de solo lectura para un tenant.
-- `sql/004_application_role.sql`: login de servicio para API/ETL, separado de la cuenta maestra RDS.
-- `scripts/refresh_warehouse.py`: entrada local de la carga diaria idempotente; comparte la implementación con `backend/app/services/analytics/warehouse_refresh.py`.
-- `scripts/validate_warehouse.py`: compara dimensiones y hechos con las tablas operacionales por tenant; sale con código distinto de cero ante diferencias.
-- `powerbi/PowerQuery.m`: diez pasos de transformación, sin credenciales incluidas.
-- `powerbi/queries/`: consultas M completas para dimensiones y hechos tenant scoped; `PowerQuery.m` transforma el snapshot para análisis.
-- `powerbi/measures.dax`: medidas KPI para el modelo estrella.
-- `powerbi/StreamShield-BI.pbip`: proyecto inicial de Power BI con modelo TMDL y reporte PBIR de dos páginas; requiere completar conexión/credenciales y validarlo en Power BI Desktop.
+Las fuentes operacionales son las tablas PostgreSQL `streams`, `viewer_sessions`, `attacks`, `stream_events` y `users`, junto con las agregaciones de chat disponibles. La transformación se encuentra en `sql/002_refresh_warehouse.sql`; el backend ejecuta el procedimiento después de las migraciones del warehouse.
 
-## Implementación de infraestructura
+Cada dataset tenant-scoped de BigQuery contiene:
 
-1. Instala Terraform 1.6+ y AWS CLI; configura un perfil AWS con permisos acotados para RDS, VPC, grupos de seguridad e IAM DB authentication. Usa una cuenta no productiva primero.
-2. En `business-intelligence/terraform`, copia `terraform.tfvars.example` a `terraform.tfvars`; reemplaza el CIDR de ejemplo por las IPs estáticas `/32` del backend/gateway y del administrador. No uses `0.0.0.0/0`.
-3. RDS genera y guarda la contraseña maestra en AWS Secrets Manager. El estado Terraform local contiene metadatos del recurso; para equipos usa un backend remoto S3 cifrado y bloqueo de estado. No subas el estado ni `terraform.tfvars` a Git.
-4. Ejecuta `terraform init`, `terraform fmt -check`, `terraform validate`, `terraform plan` y revisa el plan; luego aplica con `terraform apply` en la cuenta autorizada. Recupera la contraseña desde el ARN `master_user_secret_arn` sólo para la migración/bootstrap; la aplicación debe usar un login de servicio de privilegio mínimo.
-5. Guarda endpoint y credenciales de servicio en el gestor de secretos. Después de ejecutar `001` y `002`, crea el usuario `streamshield_app` con `004_application_role.sql`; configura `DATABASE_URL` con ese usuario y el formato PostgreSQL que usa el backend (`postgresql+asyncpg://...`) con TLS (`sslmode=require`) y despliega la API hacia RDS. El rol se separa de la cuenta maestra, aunque conserva permisos DDL porque la API actual ejecuta migraciones al iniciar. Si la API sigue en Render, autoriza únicamente su egress IP estática; sin egress fijo usa el backend de [VPS](../deploy/vps/README.md) y permite la IP pública fija de ese host.
+| Tabla BigQuery | Tipo | Grano |
+| --- | --- | --- |
+| `dim_date` | Dimensión | Una fila por fecha del calendario. |
+| `dim_platform` | Dimensión | Una fila por plataforma. |
+| `dim_stream` | Dimensión | Una fila por canal del tenant. |
+| `dim_streamer` | Dimensión | Una fila por propietario/streamer del tenant. |
+| `vw_powerbi_stream_snapshot` | Hecho | Canal y día: viewers, chatters, amenazas, engagement y riesgo. |
+| `vw_powerbi_viewer_session` | Hecho | Una fila por sesión de espectador. |
+| `vw_powerbi_attack` | Hecho | Una fila por ataque/incidente. |
+| `vw_powerbi_chat_activity` | Hecho | Canal, día y tipo de evento de chat. |
 
-Antes de cambiar producción, exporta la base PostgreSQL fuente con `pg_dump --format=custom --no-owner --no-acl` y restáurala en RDS con `pg_restore --no-owner --no-acl`. Haz la transferencia en una ventana de mantenimiento: detén escrituras, conserva el backup fuera del repositorio en almacenamiento cifrado, restaura, compara conteos de `tenants`, `users`, `streams`, `viewer_sessions`, `attacks` y `stream_events`, y sólo entonces cambia `DATABASE_URL` en API/worker. Las credenciales se suministran desde el gestor de secretos; no se escriben como argumentos visibles ni se adjunta un dump al proyecto.
+Las relaciones del modelo Power BI son `dim_stream[stream_id]` a cada hecho por `stream_id`, `dim_date[full_date]` a la fecha del hecho y `dim_platform[platform_key]` a `dim_stream[platform_key]`. Están declaradas en `powerbi/StreamShield-BI.SemanticModel/definition/relationships.tmdl`. El PBIP incluye medidas DAX y dos páginas con KPIs, tendencias, severidad, segmentadores y detalle de canales.
 
-La infraestructura no se ha creado en una cuenta AWS desde este entorno: no hay credenciales de cuenta ni autorización de acceso disponibles. La plantilla está lista para revisión y aplicación en la cuenta propietaria.
+## Preparar el proyecto Google Cloud
 
-## Carga del esquema y ETL
+Se requiere un proyecto Google Cloud existente con facturación habilitada. El código crea datasets y tablas, pero no activa facturación ni aprovisiona recursos en una cuenta sin autorización del propietario.
 
-Tras restaurar la base fuente, ejecuta la inicialización PostgreSQL como administrador, luego termina las migraciones operacionales y ejecuta el DDL/ETL del warehouse:
+1. Instala Terraform 1.6+, Google Cloud CLI y habilita `bigquery.googleapis.com` en el proyecto. Autentica la cuenta administradora para aplicar Terraform.
+2. Desde `business-intelligence/terraform-gcp`, copia `terraform.tfvars.example` a `terraform.tfvars` y asigna el `project_id` real. Ese archivo está ignorado por Git.
+3. Ejecuta `terraform init`, `terraform validate`, `terraform plan` y revisa el plan antes de aplicar. `terraform apply` habilita la API y crea `streamshield-bi-sync` con `roles/bigquery.user`; ese rol permite crear datasets y jobs, y el creador obtiene propiedad sobre los datasets que crea.
+4. Configura `GOOGLE_CLOUD_PROJECT_ID`, `BIGQUERY_ENABLED=true`, `BIGQUERY_LOCATION` y `BIGQUERY_DATASET_PREFIX` en el backend y en el cron. La región del dataset de BigQuery debe coincidir con la elegida en Power BI.
+5. Para desarrollo local, configura ADC con `gcloud auth application-default login`. En producción en Google Cloud, asigna la service account al runtime. En un host externo como Render, usa Workload Identity Federation si el host lo permite; de lo contrario, monta una credencial de service account como secreto y define `GOOGLE_APPLICATION_CREDENTIALS` con su ruta. No guardes llaves JSON en el repositorio ni en el PBIP.
+6. Ejecuta `sql/001_warehouse.sql` y `sql/002_refresh_warehouse.sql` en la base operacional, despliega API/worker y cron, y autentícate en la aplicación con un usuario analista. La sincronización manual está en `POST /api/v1/analytics/bigquery/sync`; `GET /api/v1/analytics/bigquery/config` devuelve el proyecto y dataset autorizados para la sesión.
 
-```powershell
-psql "$env:BI_DATABASE_URL" -v ON_ERROR_STOP=1 -f infrastructure/postgres/init.sql
-psql "$env:BI_DATABASE_URL" -v ON_ERROR_STOP=1 -f business-intelligence/sql/001_warehouse.sql
-psql "$env:BI_DATABASE_URL" -v ON_ERROR_STOP=1 -f business-intelligence/sql/002_refresh_warehouse.sql
-psql "$env:BI_DATABASE_URL" -v ON_ERROR_STOP=1 -f business-intelligence/sql/004_application_role.sql
-```
+Terraform crea el principal, no crea la cuenta de servicio en la plataforma de alojamiento ni publica el informe en Microsoft. La cuenta Microsoft/Power BI y el proyecto GCP son recursos del equipo.
 
-El job `anti-bots-bi-refresh` está declarado en `render.yaml`; su imagen usa `backend/` como raíz y ejecuta `python scripts/refresh_warehouse.py`, que comparte el módulo `app.services.analytics.warehouse_refresh` con la entrada local. Al enlazarlo en Render, define `DATABASE_URL` igual al backend. El job sólo actualiza el warehouse y no necesita credenciales de Power BI. Power BI Service consulta ese warehouse mediante el gateway en su horario de refresh. La ruta opcional `/api/v1/analytics/powerbi/sync` conserva el modo push y requiere credenciales de Service Principal; el Service Principal debe estar permitido en la configuración del tenant de Power BI, tener permiso de escritura en el workspace y usar el scope `Dataset.ReadWrite.All`.
+## Conectar el modelo interactivo de Power BI
 
-Prueba manual, una vez desplegado y con streams reales:
+1. Abre `powerbi/StreamShield-BI.pbip` en Power BI Desktop actualizado. Las consultas M usan el conector oficial `GoogleBigQuery.Database` y las expresiones `pBillingProjectId`, `pProjectId` y `pDataset`.
+2. En los parámetros del modelo, pon el ID de proyecto con permisos para ejecutar BigQuery jobs, el proyecto que contiene el dataset y el nombre devuelto por `GET /api/v1/analytics/bigquery/config`. El dashboard web también muestra el destino cuando la integración está configurada.
+3. En el diálogo de credenciales del conector BigQuery, inicia sesión con el Google principal asignado a ese tenant. Dale `BigQuery Data Viewer` solamente sobre ese dataset y `BigQuery Job User` en el proyecto de facturación/ejecución; no compartas datasets de otros tenants.
+4. Actualiza el modelo en Desktop, valida las ocho tablas y las relaciones, y publica en un workspace privado de Power BI. En Service crea la conexión cloud de Google BigQuery con el principal autorizado, configura credenciales y programa el refresh después del cron (el cron actual corre a las 07:00 UTC).
+5. El informe incluye **Resumen ejecutivo** y **Actividad y riesgo**. Los segmentadores de fecha, plataforma, canal y riesgo/severidad filtran los visuales relacionados. Se pueden incorporar páginas desde el proyecto PBIP manteniendo el mismo modelo.
 
-```sql
-CALL bi.refresh_warehouse('UUID-REAL-DEL-TENANT'::uuid, current_date - 90);
-SELECT count(*) FROM bi.dim_stream;
-SELECT snapshot_date, count(*) FROM bi.fact_stream_snapshot GROUP BY snapshot_date ORDER BY snapshot_date DESC;
-SELECT count(*) FROM bi.fact_viewer_session;
-SELECT count(*) FROM bi.fact_attack;
-SELECT count(*) FROM bi.fact_chat_activity;
-```
+La integración BigQuery–Power BI es cloud-to-cloud y no necesita gateway PostgreSQL. El conector admite inicio de sesión organizacional o service account. La actualización en Desktop/Service requiere credenciales de Google válidas y permisos IAM del principal.
 
-Las consultas de conteo deben ejecutarse como administrador para inspeccionar todo el warehouse. El job registra resultado/errores en los logs de Render. No se declaran resultados de ejecución hasta correrlos contra la base real.
+## Descargar informes publicados desde la aplicación
 
-Para validar contra una base real después de cargar el warehouse, configura `DATABASE_URL` en el entorno sin pegar credenciales en el repositorio y ejecuta desde la raíz del proyecto:
+La sección de exportaciones del dashboard ofrece dos flujos distintos:
 
-```powershell
-python business-intelligence/scripts/validate_warehouse.py
-```
+- **JSON, Excel y paquete Power BI:** los genera StreamShield a partir de la analítica filtrada por el tenant autenticado.
+- **Power BI PDF, PowerPoint y PBIX:** solicita el informe publicado a Power BI REST API y descarga los bytes reales del servicio; no fabrica una vista ni convierte un paquete ZIP en un informe.
 
-El validador comprueba que `dim_date` sea un calendario continuo de años completos y compara, por tenant, canales, sesiones, ataques, cantidad y valores del snapshot diario, y mensajes/grupos de actividad de chat de los últimos 90 días. Imprime las cuentas y discrepancias y termina con código 1 si detecta diferencias. Sólo usa filas existentes; no genera datos sintéticos. Aún no se ha ejecutado contra datos de RDS porque no hay una conexión a la base desplegada.
+Para el segundo flujo, configura `POWERBI_ENABLED=true`, `POWERBI_TENANT_ID`, `POWERBI_CLIENT_ID`, `POWERBI_CLIENT_SECRET`, `POWERBI_GROUP_ID`, `POWERBI_REPORT_ID` y `POWERBI_REPORT_TENANT_ID`. La ruta solo permite exportar el informe al tenant configurado y responde 404 a los demás. El service principal debe estar habilitado en el tenant de Power BI, autorizado para usar las APIs y miembro del workspace. La descarga PDF/PPTX usa el endpoint asíncrono de exportación; Microsoft exige capacidad Fabric/Premium/Embedded compatible y no admite esa API para PPU. La descarga PBIX usa el endpoint de exportación de informe y está sujeta a las limitaciones del modelo publicado. Un informe exportable debe existir ya en el workspace; el código no afirma que haya publicado uno automáticamente.
 
-## Seguridad y conexión de Power BI
+La aplicación envía `GET /api/v1/analytics/exports/powerbi-report?format=pdf|pptx|pbix` con el JWT del usuario. El backend valida tenant, obtiene el token de Microsoft en servidor, exporta el ID de informe configurado y devuelve el archivo como adjunto. Los secretos no pasan al navegador.
 
-1. Crea un usuario PostgreSQL por tenant ejecutando `sql/003_powerbi_tenant_role.sql` como administrador. Sustituye el nombre, contraseña aleatoria, UUID del tenant y base de datos. No reutilices el usuario propietario.
-2. El login sólo recibe `SELECT` sobre vistas y dimensiones aprobadas. Las vistas comprueban `session_user` contra `bi.user_tenant_access`; la identidad no mapeada no devuelve filas. No concedas acceso directo a las tablas `fact_*`, `dim_stream` o `dim_streamer`.
-3. En Power BI Desktop, instala el conector PostgreSQL actualizado, selecciona **Obtener datos → PostgreSQL**, usa endpoint RDS, puerto 5432, base `streamshield` y modo **Importar**. Autentica con el login exclusivo del tenant.
-4. Importa y renombra las vistas a `dim_date`, `dim_platform`, `dim_stream`, `dim_streamer`, `fact_stream_snapshot`, `fact_viewer_session`, `fact_attack`, `fact_chat_activity`. Usa las vistas `vw_powerbi_*` correspondientes y las tablas de fecha/plataforma compartidas.
-5. En Power Query crea parámetros de texto `pServer` y `pDatabase`. Crea una consulta por cada archivo de `powerbi/queries/` y nómbralas según su archivo; usa `powerbi/PowerQuery.m` como consulta `fact_stream_snapshot`. Los diez pasos de esta última: (1) seleccionar columnas analíticas reduce datos cargados; (2) limpiar/recortar canal y plataforma normaliza texto; (3) reemplazar conteos nulos por cero estabiliza agregados; (4) asignar tipos evita comparaciones incorrectas; (5) descartar claves/fechas inválidas protege relaciones; (6) quitar duplicados por canal-fecha garantiza el grano del snapshot; (7) combinar plataforma integra la dimensión; (8) expandir el nombre normalizado evita códigos crudos en visuales; (9) calcular cobertura chat/viewers crea un KPI comparable; (10) clasificar amenaza en bandas y crear mes de inicio habilita segmentación temporal. Las dos últimas columnas son derivadas, no sustituyen los datos fuente.
-6. Relaciona `dim_stream[stream_id]` con cada hecho por `stream_id` (1 a muchos); `dim_date[full_date]` con la fecha correspondiente de cada hecho; `dim_platform[platform_key]` con `dim_stream[platform_key]`. Marca `dim_date` como tabla de fechas.
-7. Crea las medidas de `powerbi/measures.dax`. Los KPI de streams, viewers y chatters en vivo usan el ultimo snapshot disponible dentro del filtro de fecha para no sumar el historico diario. Tablero sugerido: **Resumen ejecutivo** (streams live, viewers, chatters, riesgo, ataques activos); **Actividad** (línea de mensajes por fecha, cobertura por canal y plataforma); **Amenazas** (ataques por severidad/tipo, viewers sospechosos, tabla de mitigaciones); **Sesiones** (duración, mensajes y riesgo por canal). Añade segmentadores de fecha, plataforma, canal y severidad.
-8. Publica en un workspace dedicado. Instala y registra el **On-premises data gateway** en el host con IP autorizada, registra la conexión PostgreSQL con las credenciales del tenant y enlázala al semantic model. En Power BI Service activa actualización diaria a las 08:00 UTC. La cuenta/licencia, el workspace y el gateway son recursos del usuario y deben habilitarse en Microsoft 365.
+## Variables de entorno
 
-El PBIP es un proyecto fuente editable con ocho tablas TMDL, relaciones, medidas y dos páginas PBIR. Abre `powerbi/StreamShield-BI.pbip` en Power BI Desktop, configura `pServer` y `pDatabase`, y proporciona las credenciales PostgreSQL del tenant en el diálogo de conexión; no guardes credenciales en el proyecto. Revisa que las vistas `vw_powerbi_*` existan, valida que todas las tablas y visuales carguen, y marca `dim_date[full_date]` como tabla de fechas tras verificar valores únicos, continuidad y años completos. El ETL crea el calendario desde el 1 de enero del año inicial de los datos hasta el 31 de diciembre del año actual. Las consultas M completas están en `powerbi/queries/`; `powerbi/PowerQuery.m` define diez transformaciones del snapshot. Compara las medidas con conteos SQL antes de publicar.
+| Variable | Uso |
+| --- | --- |
+| `BIGQUERY_ENABLED` | Habilita el mirror/ETL. |
+| `GOOGLE_CLOUD_PROJECT_ID` | Proyecto BigQuery de destino. |
+| `BIGQUERY_LOCATION` | Región/multirregión BigQuery. |
+| `BIGQUERY_DATASET_PREFIX` | Prefijo del dataset tenant. |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Ruta a credencial montada como secreto, si no se usa ADC del runtime. |
+| `POWERBI_ENABLED` y credenciales `POWERBI_*` | Sincronización del push dataset existente. |
+| `POWERBI_REPORT_ID`, `POWERBI_REPORT_TENANT_ID` | Informe publicado y tenant autorizado para sus descargas. |
+| `POWERBI_EXPORT_TIMEOUT_SECONDS` | Tiempo máximo de espera para exportación PDF/PPTX. |
 
-Este entorno no tiene Power BI Desktop, RDS ni una cuenta Power BI Service, así que el PBIP no se ha abierto ni validado contra datos reales. La carga del modelo, la exportación final a PBIX, y la publicación requieren Desktop/Service y cuentas autorizadas; no se afirma que esas acciones externas se hayan ejecutado.
+## Evidencia reproducible y estado externo
 
-## Exportación y actualización mediante API
+1. En StreamShield inicia sesión y ejecuta **Sync BigQuery**. La respuesta incluye proyecto, dataset tenant y filas cargadas por tabla.
+2. En Google Cloud Console abre BigQuery y comprueba las ocho tablas bajo el dataset cuyo sufijo corresponde al tenant autenticado. Su contenido se obtiene de la consulta PostgreSQL de ese tenant.
+3. Conecta el PBIP con las credenciales Google autorizadas, actualiza el modelo y captura las páginas y filtros en Desktop/Service.
+4. Desde la aplicación descarga PDF/PPTX/PBIX del informe publicado y conserva la respuesta de API o captura de descarga como evidencia.
 
-La API ofrece CSV/JSON/Excel y paquete Power BI bajo `/api/v1/analytics/exports/*`, requiere usuario analista y filtra por tenant. El endpoint opcional `/api/v1/analytics/powerbi/sync` crea un push dataset cuyo nombre lleva un sufijo del tenant. Cada ejecución borra las filas anteriores de cada tabla push y carga la instantánea actual; Microsoft documenta esta operación para push datasets ([Delete Rows](https://learn.microsoft.com/en-us/rest/api/power-bi/push-datasets/datasets-delete-rows-in-group)). El proyecto principal usa PostgreSQL Import + gateway porque el push API tiene límites de almacenamiento y lote documentados por Microsoft ([limitaciones de push](https://learn.microsoft.com/en-us/power-bi/developer/embedded/push-datasets-limitations)). Mantén el workspace privado para el equipo autorizado; el sufijo del dataset no sustituye permisos/RLS de Power BI.
+Este repositorio no contiene credenciales del proyecto GCP ni de Power BI Service; por eso no puede aprovisionar recursos, cargar datos a una cuenta real, publicar el informe ni adjuntar una captura con datos reales. Los flujos, rutas y artefactos están implementados y esperan esas credenciales y el informe publicado del equipo. No se usan datos sintéticos.
 
-## Evidencias y límites de esta entrega
+## Infraestructura AWS preexistente
 
-- Verificación local: PostgreSQL temporal ejecutó `001_warehouse.sql`, creó el procedimiento de `002_refresh_warehouse.sql` y lo llamó contra un esquema operacional vacío, modelado con las columnas requeridas. El calendario resultante fue continuo y cubrió 2026 completo (365 días); no se insertaron filas de negocio. Esto valida sintaxis/ejecución del DDL y del camino vacío, pero no valida conteos ni resultados con datos reales.
-- El DDL/ETL y los conectores se construyen a partir del esquema operacional existente; no se insertan registros sintéticos.
-- La evidencia de conteos, conexión Power BI, publicación y refresh debe capturarse después de aplicar la infraestructura y ejecutar el proyecto contra una cuenta AWS y tenant Microsoft reales.
-- El archivo adjunto registra 401 en rutas protegidas servidas tanto por el dominio directo de Render como por el rewrite de Vercel. No incluye el cuerpo de respuesta, encabezado Authorization ni cookies; por eso no demuestra que ambas llamadas usaran el mismo token ni identifica la causa. El cliente intenta renovar el access token usando la cookie HttpOnly y reintenta la llamada una sola vez. Diagnostico pendiente en las cuentas: iniciar sesion de nuevo, comprobar `/api/v1/auth/me` con ese access token y confirmar en Render que todas las instancias usan el mismo `JWT_SECRET_KEY`; no copiar tokens, cookies ni secretos en tickets o logs. Si `/auth/me` devuelve 200 pero una ruta protegida sigue en 401, revisar los logs del mismo despliegue y confirmar que Vercel y las llamadas directas apuntan al API esperado.
-
-## Trazabilidad de requisitos
-
-| Requisito | Implementación |
-|---|---|
-| Nube, PostgreSQL y seguridad | `terraform/`, `sql/003_powerbi_tenant_role.sql` |
-| Modelo relacional | tablas operacionales existentes y `sql/001_warehouse.sql` |
-| Inserción y consistencia | upsert desde datos operacionales en `sql/002_refresh_warehouse.sql` |
-| Conexión/importación Power BI | guía de conexión de esta página y vistas tenant scoped |
-| 8+ transformaciones Power Query | `powerbi/PowerQuery.m` |
-| Data Warehouse y ETL | esquemas `bi` y procedimiento idempotente |
-| KPI/tablero | `powerbi/measures.dax`, `powerbi/StreamShield-BI.pbip` y páginas PBIR incluidas |
-| Publicación | procedimiento de workspace/gateway arriba; requiere sesión Microsoft |
-| Código y documentación | esta carpeta y `project-docs/POWERBI-ANALYTICS.md` |
-| Actualización automática | cron diario + Power BI Service refresh; requiere activar credenciales y gateway |
+`terraform/` conserva el diseño alternativo previo con Amazon RDS. No es necesario para el destino BigQuery; el proveedor vigente para este flujo es `terraform-gcp/`. Los scripts `scripts/validate_warehouse.py` y el esquema `sql/` siguen sirviendo para validar la capa PostgreSQL común antes de reflejarla en BigQuery.

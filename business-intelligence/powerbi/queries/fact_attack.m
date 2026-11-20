@@ -1,6 +1,8 @@
-let
-    Source = PostgreSQL.Database(pServer, pDatabase),
-    Warehouse = Source{[Schema = "bi", Item = "vw_powerbi_attack"]}[Data],
+﻿let
+    Source = GoogleBigQuery.Database([BillingProject = pBillingProjectId]),
+    Project = Source{[Name = pProjectId]}[Data],
+    Dataset = Project{[Name = pDataset, Kind = "Schema"]}[Data],
+    Warehouse = Dataset{[Name = "vw_powerbi_attack", Kind = "Table"]}[Data],
     NormalizeLabels = Table.TransformColumns(Warehouse, {
         {"attack_type", each Text.Lower(Text.Trim(Text.From(_))), type text},
         {"severity", each Text.Lower(Text.Trim(Text.From(_))), type text},
