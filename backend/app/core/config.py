@@ -274,8 +274,17 @@ class Settings(BaseSettings):
     powerbi_client_id: str = ""
     powerbi_client_secret: str = ""
     powerbi_group_id: str = ""
+    powerbi_report_id: str = ""
+    powerbi_report_tenant_id: str = ""
     powerbi_dataset_name: str = "StreamShield SOC Analytics"
     powerbi_max_rows_per_table: int = 5000
+    powerbi_export_timeout_seconds: int = Field(default=240, ge=30, le=600)
+
+    google_cloud_project_id: str = ""
+    bigquery_enabled: bool = False
+    bigquery_location: str = "US"
+    bigquery_dataset_prefix: str = "streamshield_bi"
+    bigquery_max_rows_per_table: int = Field(default=100000, ge=1, le=1000000)
 
     @field_validator(
         "database_url",

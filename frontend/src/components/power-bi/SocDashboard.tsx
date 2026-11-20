@@ -141,6 +141,8 @@ function EmptyState({ label }: { label: string }) {
 export function SocDashboard() {
   const [hours, setHours] = useState(168);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [bigQueryStatus, setBigQueryStatus] = useState<string | null>(null);
+  const [bigQueryBusy, setBigQueryBusy] = useState(false);
   const {
     accessToken,
     overview,
@@ -232,6 +234,40 @@ export function SocDashboard() {
     }
   }
 
+  async function downloadPublishedReport(format: "pdf" | "pptx" | "pbix") {
+    if (!accessToken) return;
+    setExportError(null);
+    try {
+      const blob = await api.powerBiAnalytics.exportPublishedReport(accessToken, format);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `streamshield-powerbi-report.${format}`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : `No se pudo descargar el informe Power BI (${format}).`);
+    }
+  }
+
+  async function syncBigQuery() {
+    if (!accessToken) return;
+    setBigQueryBusy(true);
+    setBigQueryStatus(null);
+    setExportError(null);
+    try {
+      const response = await api.powerBiAnalytics.syncBigQuery(accessToken, 2160);
+      const loaded = response.tables_loaded?.reduce((sum, item) => sum + item.rows, 0) ?? 0;
+      setBigQueryStatus(
+        `BigQuery actualizado: ${response.project_id}.${response.dataset}; ${response.tables_loaded?.length ?? 0} tablas, ${formatNumber(loaded)} filas cargadas.`,
+      );
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "No se pudo sincronizar BigQuery.");
+    } finally {
+      setBigQueryBusy(false);
+    }
+  }
+
   if (error) {
     return (
       <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-5 text-sm text-red-200">
@@ -284,6 +320,10 @@ export function SocDashboard() {
               <DatabaseZap size={14} />
               {sync.isPending ? "Syncing" : "Sync Power BI"}
             </Button>
+            <Button variant="outline" size="sm" onClick={() => void syncBigQuery()} disabled={bigQueryBusy || !accessToken}>
+              <DatabaseZap size={14} />
+              {bigQueryBusy ? "Syncing BigQuery…" : "Sync BigQuery"}
+            </Button>
           </div>
         </div>
       </header>
@@ -295,6 +335,7 @@ export function SocDashboard() {
             : sync.data.message ?? "Power BI Service credentials are not configured."}
         </div>
       )}
+      {bigQueryStatus && <div role="status" className="rounded-lg border border-cyber-accent/30 bg-cyber-accent/10 p-3 text-sm text-cyber-accent">{bigQueryStatus}</div>}
 
       {loading ? (
         <div className="rounded-lg border border-cyber-border bg-cyber-surface/40 p-8 text-center text-sm text-cyber-muted">
@@ -492,6 +533,15 @@ export function SocDashboard() {
                 <Button variant="outline" size="sm" onClick={() => downloadExport("powerbi-package")}>
                   <Download size={14} />
                   Package
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => void downloadPublishedReport("pdf")}>
+                  <Download size={14} /> Power BI PDF
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => void downloadPublishedReport("pptx")}>
+                  <Download size={14} /> PowerPoint
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => void downloadPublishedReport("pbix")}>
+                  <Download size={14} /> PBIX
                 </Button>
               </div>
             }

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from uuid import UUID
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,9 +20,52 @@ from app.services.analytics.powerbi import (
     powerbi_model_manifest,
     powerbi_package_bytes,
 )
+from app.services.analytics.bigquery import BigQueryWarehouseService
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/analytics", tags=["Power BI Analytics"])
+
+
+@router.get("/exports/powerbi-report")
+async def analytics_export_published_powerbi_report(
+    current_user: AnalystUser,
+    format: str = Query(..., pattern="^(pdf|pptx|pbix)$"),
+):
+    """Download an export of the published report bound to one tenant."""
+    service = PowerBIService()
+    if not service.report_export_configured:
+        raise HTTPException(
+            status_code=503,
+            detail="La exportación del informe publicado requiere configurar Power BI y el tenant del informe.",
+        )
+    if str(current_user.tenant_id) != get_settings().powerbi_report_tenant_id:
+        raise HTTPException(status_code=404, detail="Report not found")
+    try:
+        content, media_type, filename = await service.export_report(format)
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            "powerbi_report_export_rejected",
+            tenant_id=str(current_user.tenant_id),
+            format=format,
+            provider_status=exc.response.status_code,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Power BI no pudo exportar el informe. Verifica permisos, publicación y capacidad del workspace.",
+        ) from exc
+    except (RuntimeError, TimeoutError) as exc:
+        logger.error(
+            "powerbi_report_export_failed",
+            tenant_id=str(current_user.tenant_id),
+            format=format,
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(status_code=502, detail="No se pudo generar el archivo desde Power BI.") from exc
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def _validate_dataset(dataset: str) -> str:
@@ -32,6 +78,49 @@ def _validate_dataset(dataset: str) -> str:
             },
         )
     return dataset
+
+
+@router.get("/bigquery/config")
+async def analytics_bigquery_config(current_user: AnalystUser):
+    service = BigQueryWarehouseService()
+    cfg = get_settings()
+    return {
+        "enabled": cfg.bigquery_enabled,
+        "configured": service.configured,
+        "project_id": cfg.google_cloud_project_id or None,
+        "dataset": service.dataset_for_tenant(current_user.tenant_id) if service.configured else None,
+        "location": cfg.bigquery_location,
+        "tables": list(EXPORT_DATASETS),
+    }
+
+
+@router.post("/bigquery/sync")
+async def analytics_bigquery_sync(
+    current_user: AnalystUser,
+    db: AsyncSession = Depends(get_db),
+    hours: int = Query(2160, ge=1, le=2160),
+):
+    service = BigQueryWarehouseService()
+    if not service.configured:
+        raise HTTPException(status_code=503, detail="Google BigQuery no está configurado en el backend.")
+    warehouse = AnalyticsWarehouseService(db, current_user.tenant_id, hours=hours)
+    bundle = await warehouse.build_export_bundle()
+    try:
+        return {
+            "generated_at": warehouse.snapshot_at.isoformat(),
+            "window_hours": hours,
+            **await service.sync_bundle(current_user.tenant_id, bundle),
+        }
+    except Exception as exc:
+        logger.error(
+            "bigquery_sync_failed",
+            tenant_id=str(current_user.tenant_id),
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo cargar la analítica del tenant en BigQuery; revisa permisos y logs del backend.",
+        ) from exc
 
 
 @router.get("/overview")

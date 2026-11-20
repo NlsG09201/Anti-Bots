@@ -439,6 +439,36 @@ export const api = {
         true,
         "blob",
       ),
+    exportPublishedReport: (token: ApiAuthToken, format: "pdf" | "pptx" | "pbix") =>
+      request<Blob>(
+        `/api/v1/analytics/exports/powerbi-report?format=${format}`,
+        {},
+        token,
+        DIRECT_API_URL,
+        true,
+        "blob",
+      ),
+    syncBigQuery: (token: ApiAuthToken, hours = 2160) =>
+      request<{
+        enabled: boolean;
+        configured: boolean;
+        project_id?: string;
+        dataset?: string;
+        tables_loaded?: { table: string; rows: number }[];
+      }>(
+        `/api/v1/analytics/bigquery/sync?hours=${hours}`,
+        { method: "POST" },
+        token,
+      ),
+    bigQueryConfig: (token: ApiAuthToken) =>
+      request<{
+        enabled: boolean;
+        configured: boolean;
+        project_id?: string | null;
+        dataset?: string | null;
+        location: string;
+        tables: string[];
+      }>("/api/v1/analytics/bigquery/config", {}, token),
     overview: (token: ApiAuthToken, hours = 168) =>
       request<PowerBiOverview>(
         `/api/v1/analytics/overview?hours=${hours}`,

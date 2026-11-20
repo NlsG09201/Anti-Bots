@@ -9,6 +9,8 @@ from sqlalchemy import select, text
 
 from app.infrastructure.database.models import Stream
 from app.infrastructure.database.session import AsyncSessionLocal
+from app.services.analytics.bigquery import BigQueryWarehouseService
+from app.services.analytics.powerbi import AnalyticsWarehouseService
 
 logger = logging.getLogger("bi_refresh")
 
@@ -34,6 +36,18 @@ async def main() -> None:
                     {"tenant_id": tenant_id, "from_date": cutoff},
                 )
                 await db.commit()
+                bigquery = BigQueryWarehouseService()
+                if bigquery.configured:
+                    bundle = await AnalyticsWarehouseService(
+                        db, tenant_id, hours=2160
+                    ).build_export_bundle()
+                    result = await bigquery.sync_bundle(tenant_id, bundle)
+                    logger.info(
+                        "bigquery warehouse refreshed tenant=%s dataset=%s tables=%d",
+                        tenant,
+                        result.get("dataset"),
+                        len(result.get("tables_loaded", [])),
+                    )
                 logger.info("warehouse refresh completed tenant=%s", tenant)
             except Exception:
                 failed_tenants.append(tenant)

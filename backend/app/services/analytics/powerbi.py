@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import asyncio
 import io
 import json
 import zipfile
@@ -1372,6 +1373,70 @@ def powerbi_package_bytes(
 class PowerBIService:
     TOKEN_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
     API_BASE = "https://api.powerbi.com/v1.0/myorg"
+
+    @property
+    def report_export_configured(self) -> bool:
+        return bool(
+            self.configured
+            and settings.powerbi_report_id
+            and settings.powerbi_report_tenant_id
+        )
+
+    async def export_report(self, output_format: str) -> tuple[bytes, str, str]:
+        """Export the one configured, tenant-bound Power BI report."""
+        if not self.report_export_configured:
+            raise RuntimeError("Power BI report export is not configured")
+        if output_format not in {"pdf", "pptx", "pbix"}:
+            raise ValueError("Unsupported Power BI export format")
+
+        token = await self._get_access_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        report_id = settings.powerbi_report_id
+        group_id = settings.powerbi_group_id
+        async with httpx.AsyncClient(timeout=40.0) as client:
+            if output_format == "pbix":
+                response = await client.get(
+                    f"{self.API_BASE}/groups/{group_id}/reports/{report_id}/Export",
+                    headers=headers,
+                    params={"downloadType": "IncludeModel"},
+                    timeout=180.0,
+                )
+                response.raise_for_status()
+                return response.content, "application/octet-stream", f"streamshield-report-{report_id}.pbix"
+
+            response = await client.post(
+                f"{self.API_BASE}/groups/{group_id}/reports/{report_id}/ExportTo",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"format": output_format.upper()},
+            )
+            response.raise_for_status()
+            export_id = response.json().get("id")
+            if not export_id:
+                raise RuntimeError("Power BI did not return an export job id")
+
+            deadline = asyncio.get_running_loop().time() + settings.powerbi_export_timeout_seconds
+            while asyncio.get_running_loop().time() < deadline:
+                await asyncio.sleep(2)
+                status_response = await client.get(
+                    f"{self.API_BASE}/groups/{group_id}/reports/{report_id}/exports/{export_id}",
+                    headers=headers,
+                )
+                status_response.raise_for_status()
+                status = status_response.json()
+                state = status.get("status")
+                if state == "Failed":
+                    raise RuntimeError("Power BI report export failed")
+                if state == "Succeeded":
+                    file_response = await client.get(
+                        f"{self.API_BASE}/groups/{group_id}/reports/{report_id}/exports/{export_id}/file",
+                        headers=headers,
+                        timeout=180.0,
+                    )
+                    file_response.raise_for_status()
+                    mime = "application/pdf" if output_format == "pdf" else "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    extension = "pdf" if output_format == "pdf" else "pptx"
+                    return file_response.content, mime, f"streamshield-report-{report_id}.{extension}"
+            raise TimeoutError("Power BI report export exceeded the configured timeout")
 
     @property
     def configured(self) -> bool:
