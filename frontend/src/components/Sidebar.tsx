@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity, AlertTriangle, Ban, Binary, Bot, Brain, ChevronDown, Code, DatabaseZap,
+  Activity, AlertTriangle, Ban, Binary, Bot, Brain, Calculator, ChevronDown, Code, DatabaseZap,
   Fingerprint, Globe, LayoutDashboard, LogOut, MessageSquare, Radio, Radar, Rocket,
   Settings, Shield, ShieldAlert, Users, X,
 } from "lucide-react";
@@ -26,6 +26,7 @@ const navGroups = [
       { href: "/dashboard/bans", label: "Bans", icon: Ban },
       { href: "/dashboard/viewers", label: "Viewers", icon: Users },
       { href: "/dashboard/viewer-flow", label: "Viewer flow", icon: Activity },
+      { href: "/dashboard/operations-research", label: "Operations Research", icon: Calculator },
       { href: "/dashboard/bot", label: "Kick bot", icon: Bot },
       { href: "/dashboard/twitch-moderator", label: "Twitch moderator", icon: ShieldAlert },
     ],

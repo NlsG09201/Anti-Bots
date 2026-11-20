@@ -310,31 +310,27 @@ Durante un pico de actividad, el SOC puede detectar más sesiones sospechosas de
 
 ### 3.2 Modelo de programación lineal binaria
 
-Para cada sesión candidata (i\), definir:
+Para cada sesión candidata real (i), definir (x_i\in\{0,1\}) (incluirla en la cola), (p_i=\operatorname{clip}(risk\_score_i/100,0,1)) (proxy de prioridad; no es probabilidad calibrada), (t) (minutos uniformes por revisión), (c\ge0) (costo relativo de falso positivo), (B) (minutos disponibles) y (F) (presupuesto de exposición, puntos 0–100). El analista introduce (t,c,B,F) en cada ejecución.
 
-- (x_i \in \{0,1\}): vale 1 si la sesión se incluye en la revisión del periodo.
-- (p_i \in [0,1]\): prioridad estimada a partir de señales disponibles, calibrada con datos etiquetados; no equivale a certeza.
-- (t_i > 0\): minutos de revisión requeridos por la sesión, estimados por el equipo.
-- (c_i \ge 0\): costo relativo de un falso positivo (afectar una sesión legítima).
-- (B\): minutos de analista disponibles durante el periodo.
-- (F\): límite acordado de exposición a falsos positivos, expresado como presupuesto de riesgo.
+**Maximizar**
 
-Una formulación es:
-
-**Maximizar**  
-\(\displaystyle \sum_i (p_i - \lambda c_i) x_i\)
+\(\displaystyle \sum_i (p_i-c(1-p_i))x_i\)
 
 **Sujeto a**
 
-\(\displaystyle \sum_i t_i x_i \le B\)  (capacidad de revisión)
+\(\displaystyle \sum_i t x_i \le B\) (capacidad de revisión)
 
-\(\displaystyle \sum_i c_i(1-p_i)x_i \le F\)  (presupuesto de riesgo de falso positivo)
+\(\displaystyle \sum_i c(1-p_i)x_i \le F\) (presupuesto proxy de exposición)
 
-\(x_i \in \{0,1\}\quad \forall i\)  (decisión de incluir o no cada sesión)
+\(x_i\in\{0,1\}\quad\forall i\) (selección binaria)
 
-Aquí, \(\lambda \ge 0\) representa la aversión institucional a los falsos positivos. El valor de \(F\), los tiempos de revisión y \(\lambda\) deben acordarse y estimarse con el equipo; el repositorio no contiene una medición validada para asignarles valores reales. La puntuación de riesgo, en consecuencia, no debe presentarse como probabilidad calibrada salvo que se valide empíricamente.
+La exposición (c(1-p_i)) no es una tasa observada de falsos positivos y el puntaje no es una probabilidad. El equipo debe acordar los parámetros de operación.
 
-**Interpretación:** la solución selecciona las sesiones con mayor valor esperado de revisión dentro del tiempo disponible y del umbral de riesgo aceptado. La salida recomienda qué revisar primero; la decisión de sancionar sigue en manos del analista. El modelo puede resolverse como mochila binaria con un solver de optimización, pero el repositorio no contiene actualmente un solver ni resultados experimentales de esta formulación.
+**Implementación operativa:** `backend/app/services/optimization/review_queue.py` resuelve exactamente la mochila binaria mediante programación dinámica entera. La ruta autenticada `POST /api/v1/operations-research/review-queue/optimize` consulta sesiones activas y sospechosas y sus canales, siempre filtrados por tenant. Acepta capacidad (1–1440 min), tiempo por revisión (1–120 min), presupuesto (0–100 puntos), costo relativo (0–10), canal opcional y límite de candidatas (hasta 2.000). No usa datos sintéticos, no modifica registros ni aplica bans.
+
+La vista [`/dashboard/operations-research`](../frontend/src/app/dashboard/operations-research/page.tsx) comunica parámetros por REST/JSON con el token de sesión y muestra la respuesta calculada: candidatas reales, selección, tiempo usado, exposición proxy y orden de revisión. Sin datos factibles, informa que no hay sesiones elegibles; no sustituye la ausencia de datos con cifras de ejemplo.
+
+**Evidencia reproducible:** iniciar backend y frontend según la configuración normal, entrar con rol analista o superior y abrir **Protection → Operations Research**. Ejecutar “Resolver con sesiones reales”. La respuesta se puede inspeccionar en Network para `POST /api/v1/operations-research/review-queue/optimize` y en la documentación OpenAPI bajo **Operations Research**. Los resultados son propios de la consulta del tenant en ese momento; la vista avisa si alcanzó el límite de candidatas. La salida recomienda revisión humana, nunca sanciones.
 
 ## 4. Matriz de cumplimiento por objetivo
 
@@ -344,8 +340,8 @@ El porcentaje estima el avance documental y funcional demostrable en este reposi
 | --- | --- | ---: | --- |
 | 1. Documentar arquitectura, agente inteligente, interfaz integrada, seguridad, modelo ER/diccionario y repositorio | Secciones 1.1–1.5; módulo Spring real en `backend-spring/`, seguridad JWT compartida, consulta JPA por tenant, agente conectado opcionalmente desde el frontend y repositorio enlazado. | 75% | Migrar las rutas restantes de FastAPI con compatibilidad de contrato y pruebas antes de sustituirlo; desplegar Spring con secretos propios y verificar el chat en el entorno integrado. Anexar capturas del despliegue final. |
 | 2. Identificar fuentes, tipos y acceso; definir modelo dimensional y dashboard Power BI | Secciones 2.1–2.3; `powerbi.py`, `powerbi_analytics.py`, guía de Power BI y datasets/modelo de exportación. | 75% | Conectar las credenciales institucionales, importar/validar datos del entorno, construir y capturar el informe en Power BI Desktop/Service. El archivo publicado `.pbix` no se encuentra evidenciado en el repositorio. |
-| 3. Plantear un problema real de Investigación de Operaciones con variables, objetivo y restricciones | Secciones 3.1–3.2; prioridad de revisión de sesiones sospechosas con límite de capacidad y presupuesto de falsos positivos. | 80% | Estimar parámetros con datos observados, documentar supuestos aprobados por el equipo y resolver el caso con datos del proyecto; añadir tabla de resultados y análisis de sensibilidad. |
-| 4. Adjuntar evidencia y resultados analíticos respetando límite de plantilla | Este documento separa descripción, tablas y diagramas que pueden trasladarse como figuras/anexos. | 60% | Ajustar extensión a la plantilla oficial; incorporar capturas propias, resultados calculados, portada/formato exigidos y anexos numerados. |
+| 3. Plantear y resolver un problema real de Investigación de Operaciones | Secciones 3.1–3.2; solver exacto, endpoint por tenant y dashboard ejecutable sobre sesiones operacionales. | 100% implementación | Validar con el equipo los valores de tiempo, costo y exposición; las puntuaciones disponibles no están calibradas estadísticamente como probabilidades. |
+| 4. Adjuntar evidencia y resultados analíticos respetando límite de plantilla | Sección 3.2 describe el flujo para reproducir y consultar resultados reales en la API y el dashboard. | 80% | Ejecutar en el entorno del equipo, guardar captura de la respuesta con sus datos reales y adaptar portada/extensión/anexos a la plantilla oficial. |
 
 ### Evidencia que debe completar el equipo antes de entregar
 

@@ -522,6 +522,14 @@ export const api = {
         token,
       ),
   },
+  operationsResearch: {
+    optimizeReviewQueue: (token: ApiAuthToken, input: ReviewOptimizationInput) =>
+      request<ReviewOptimizationResult>(
+        "/api/v1/operations-research/review-queue/optimize",
+        { method: "POST", body: JSON.stringify(input) },
+        token,
+      ),
+  },
   platformHealth: {
     overview: (token: ApiAuthToken) =>
       request<PlatformHealthOverview>("/api/v1/platform-health/overview", {}, token),
@@ -1866,6 +1874,38 @@ export interface SocOverview {
     active_attacks: number;
   };
   updated_at: string;
+}
+
+export interface ReviewOptimizationInput {
+  capacity_minutes: number;
+  minutes_per_review: number;
+  false_positive_budget: number;
+  false_positive_cost: number;
+  stream_id?: string;
+  max_candidates: number;
+}
+
+export interface ReviewOptimizationResult {
+  solver: string;
+  candidate_count: number;
+  selected_count: number;
+  capacity_minutes: number;
+  minutes_per_review: number;
+  used_minutes: number;
+  unused_minutes: number;
+  false_positive_budget: number;
+  estimated_exposure_points: number;
+  objective_value: number;
+  data_source: string;
+  truncated: boolean;
+  assumptions: string[];
+  selected: Array<{
+    session_id: string;
+    stream_name: string;
+    username: string;
+    risk_score: number;
+    priority_proxy: number;
+  }>;
 }
 
 export interface ViewerFlowMetrics {

@@ -31,6 +31,7 @@ from app.api.v1 import (
     twitchbots_soc,
     platform_health,
     viewer_flow,
+    operations_research,
     twitch_integration,
     twitch_chat_bot,
     kick_integration,
@@ -296,6 +297,7 @@ app.include_router(powerbi_analytics.router, prefix=API_PREFIX)
 app.include_router(twitchbots_soc.router, prefix=API_PREFIX)
 app.include_router(platform_health.router, prefix=API_PREFIX)
 app.include_router(viewer_flow.router, prefix=API_PREFIX)
+app.include_router(operations_research.router, prefix=API_PREFIX)
 app.include_router(events_pipeline.router, prefix=API_PREFIX)
 app.include_router(ai_insights.router, prefix=API_PREFIX)
 app.include_router(assistant.router, prefix=API_PREFIX)
