@@ -2,13 +2,13 @@
 
 **Proyecto:** StreamShield — monitoreo y análisis de amenazas en transmisiones en vivo  
 **Repositorio:** [NlsG09201/Anti-Bots](https://github.com/NlsG09201/Anti-Bots)  
-**Fecha de corte de la documentación:** 9 de octubre de 2026
+**Fecha de corte de la documentación:** 20 de noviembre de 2026
 
 ## Alcance y fidelidad técnica
 
 Este documento reúne la evidencia del repositorio para los requisitos de Desarrollo Web Avanzado, Visualización de Datos II e Investigación de Operaciones. Distingue entre capacidades implementadas, prototipos respaldados por código y propuestas académicas. No presenta una tecnología como implementada si no existe evidencia en el proyecto.
 
-La aplicación en producción utiliza **Next.js/React**, **FastAPI/Python**, **PostgreSQL** y **Redis**. Se añadió un servicio complementario aislado en **Spring Boot 3.5**, con Spring Security, Spring Data JPA y Spring AI para el agente SOC y una consulta de canales por tenant. El módulo Java ya compila y pasa sus pruebas, pero todavía no sustituye la API FastAPI ni sus demás rutas. La migración es progresiva para conservar las funciones de producción mientras se completa la paridad.
+La aplicación principal utiliza **Next.js/React**, **FastAPI/Python**, **PostgreSQL** y **Redis**. Se añadió un servicio complementario aislado en **Spring Boot 4.1.2**, con Spring Security, Spring Data JPA y Spring AI 2.0.2 para el agente SOC y una consulta de canales por tenant. El servicio Java no sustituye la API FastAPI ni sus demás rutas. La descripción detallada de stack, capas, endpoints, interfaz, LLM y datos está en [`DESARROLLO-WEB-AVANZADO.md`](DESARROLLO-WEB-AVANZADO.md).
 
 ## 1. Desarrollo Web Avanzado
 
@@ -254,6 +254,8 @@ El diagrama resume relaciones y atributos de interés para el informe. Las clave
 
 ## 2. Visualización de Datos II
 
+La guía técnica y de evidencia reproducible está en [`POWERBI-ANALYTICS.md`](POWERBI-ANALYTICS.md). Describe las fuentes, el ETL, las ocho tablas del dataset tenant-scoped, las relaciones del modelo PBIP, sus visualizaciones y filtros, y los endpoints de integración web. También distingue la sincronización BigQuery del push dataset Microsoft. El informe PBIP y el código son artefactos reales del repositorio; las capturas de Power BI Desktop/Service y la verificación de publicación requieren ejecutar el flujo con las cuentas y datos autorizados del equipo.
+
 ### 2.1 Fuentes de datos y acceso
 
 | Fuente | Tipo de dato | Acceso en el proyecto | Uso analítico |
@@ -263,7 +265,7 @@ El diagrama resume relaciones y atributos de interés para el informe. Las clave
 | Redis | Clave/valor y flujos | Caché y eventos del backend | Datos temporales; no es la fuente histórica del informe. |
 | MongoDB y APIs de plataforma | Documentos y servicios externos opcionales | Adaptadores de integraciones configuradas | Enriquecimiento y señales disponibles según permisos y credenciales. |
 
-`bi.refresh_warehouse` transforma datos PostgreSQL y carga las dimensiones/hechos. El mismo proceso ETL replica tablas a BigQuery después de cada carga diaria; el usuario analista también puede iniciarlo desde Power BI SOC Analytics. La API aplica aislamiento por tenant y determina el dataset destino en servidor. El conector de Power BI usa credenciales Google autorizadas para ese dataset.
+`bi.refresh_warehouse` transforma datos PostgreSQL y carga las dimensiones/hechos. El proceso programado puede replicar tablas a BigQuery después de la carga; un analista también puede iniciar la carga manual desde Power BI SOC Analytics. La API aplica aislamiento por tenant y determina el dataset destino en servidor. El conector de Power BI usa credenciales Google autorizadas para ese dataset.
 
 ### 2.2 Modelo dimensional implementado
 
@@ -298,12 +300,14 @@ Las relaciones usan `stream_id`, `full_date` y `platform_key`; están representa
 
 ### 2.3 Dashboard e integración con la aplicación
 
-`business-intelligence/powerbi/StreamShield-BI.pbip` contiene el modelo, medidas y las páginas **Resumen ejecutivo** y **Actividad y riesgo**, con filtros por fecha, plataforma, canal y severidad/riesgo. Sus consultas M consumen las tablas BigQuery. La aplicación permite sincronizar los datos reales con `POST /api/v1/analytics/bigquery/sync`; el cron hace la carga diaria. La actualización de Power BI Service se programa después de la ejecución del cron con las credenciales Google del tenant.
+`business-intelligence/powerbi/StreamShield-BI.pbip` contiene el modelo, medidas y las páginas **Resumen ejecutivo** y **Amenazas y actividad**, con filtros por fecha, plataforma, canal y banda de riesgo. Sus consultas M consumen las tablas BigQuery. La aplicación permite sincronizar los datos reales con `POST /api/v1/analytics/bigquery/sync`; el cron realiza la carga programada. La actualización de Power BI Service se programa después de la ejecución del cron con las credenciales Google del tenant. La vista web integrada presenta analítica propia y no es un iframe del PBIP.
 
 Desde Power BI SOC Analytics se descargan archivos de analítica JSON/Excel/ZIP y, cuando se configura un informe publicado, **PDF, PPTX y PBIX generados por Power BI Service**. El backend valida el tenant autorizado, oculta los secretos Microsoft y devuelve el archivo como respuesta adjunta desde `GET /api/v1/analytics/exports/powerbi-report?format=pdf|pptx|pbix`.
 
-La guía de aprovisionamiento, permisos, parámetros del PBIP, publicación y descarga está en [`business-intelligence/README.md`](../business-intelligence/README.md). El código está implementado; la conexión, publicación, refresh real y capturas requieren las cuentas del equipo en Google Cloud y Microsoft. No se incluyen resultados o capturas inventadas.
+La guía de aprovisionamiento, permisos, parámetros del PBIP, publicación y descarga está en [`business-intelligence/README.md`](../business-intelligence/README.md). La integración y el PBIP están implementados; la conexión, publicación, refresh real y capturas requieren las cuentas del equipo en Google Cloud y Microsoft. No se incluyen resultados o capturas inventadas.
 ## 3. Investigación de Operaciones
+
+El informe metodológico final que articula las tres asignaturas, declara el uso de IA y presenta limitaciones y referencias APA 7 está en [`INFORME-METODOLOGICO-FINAL.md`](INFORME-METODOLOGICO-FINAL.md).
 
 ### 3.1 Problema real derivado de StreamShield
 
@@ -337,10 +341,10 @@ La vista [`/dashboard/operations-research`](../frontend/src/app/dashboard/operat
 
 El porcentaje estima el avance documental y funcional demostrable en este repositorio. No equivale a una calificación del docente ni a la aprobación de un entregable externo. Los porcentajes reflejan que hay código y/o diseño en esta entrega; los elementos expresamente pendientes requieren evidencia independiente.
 
-| Objetivo específico | Evidencia (sección o anexo) | Avance (%) | Pendiente para 8.º |
+| Objetivo específico | Evidencia (sección o anexo) | Avance / estado | Pendiente para 8.º |
 | --- | --- | ---: | --- |
 | 1. Documentar arquitectura, agente inteligente, interfaz integrada, seguridad, modelo ER/diccionario y repositorio | Secciones 1.1–1.5; módulo Spring real en `backend-spring/`, seguridad JWT compartida, consulta JPA por tenant, agente conectado opcionalmente desde el frontend y repositorio enlazado. | 75% | Migrar las rutas restantes de FastAPI con compatibilidad de contrato y pruebas antes de sustituirlo; desplegar Spring con secretos propios y verificar el chat en el entorno integrado. Anexar capturas del despliegue final. |
-| 2. Identificar fuentes, tipos y acceso; definir modelo dimensional y dashboard Power BI | Secciones 2.1–2.3; warehouse PostgreSQL, mirror tenant-scoped BigQuery, PBIP/TMDL y endpoint de sincronización/exportación desde Power BI. | 90% implementación | Aplicar Terraform en el proyecto Google del equipo, cargar y validar sus datos reales, publicar/actualizar en Power BI Service y adjuntar capturas y archivos descargados. Las cuentas externas no están disponibles en este entorno. |
+| 2. Identificar fuentes, tipos y acceso; definir modelo dimensional y dashboard Power BI | Secciones 2.1–2.3 y guía `POWERBI-ANALYTICS.md`; warehouse PostgreSQL, mirror tenant-scoped BigQuery, PBIP/TMDL, dashboard web y endpoints de sincronización/exportación. | Implementación en repositorio | En las cuentas del equipo: aprovisionar GCP, conectar/actualizar PBIP, publicar en Power BI Service y adjuntar capturas con datos reales. No se puede certificar la publicación o actualización cloud desde este repositorio. |
 | 3. Plantear y resolver un problema real de Investigación de Operaciones | Secciones 3.1–3.2; solver exacto, endpoint por tenant y dashboard ejecutable sobre sesiones operacionales. | 100% implementación | Validar con el equipo los valores de tiempo, costo y exposición; las puntuaciones disponibles no están calibradas estadísticamente como probabilidades. |
 | 4. Adjuntar evidencia y resultados analíticos respetando límite de plantilla | Sección 3.2 describe el flujo para reproducir y consultar resultados reales en la API y el dashboard. | 80% | Ejecutar en el entorno del equipo, guardar captura de la respuesta con sus datos reales y adaptar portada/extensión/anexos a la plantilla oficial. |
 

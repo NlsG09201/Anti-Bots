@@ -51,6 +51,8 @@ La API queda en `http://localhost:8000`; `/health` es liveness y `/readyz` compr
 
 ## Despliegue
 
+La documentación para las entregas está en [`project-docs/DESARROLLO-WEB-AVANZADO.md`](project-docs/DESARROLLO-WEB-AVANZADO.md), [`project-docs/POWERBI-ANALYTICS.md`](project-docs/POWERBI-ANALYTICS.md), [`project-docs/INFORME-METODOLOGICO-FINAL.md`](project-docs/INFORME-METODOLOGICO-FINAL.md) y [`project-docs/ENTREGA-ACADEMICA.md`](project-docs/ENTREGA-ACADEMICA.md).
+
 - Security reporting and incident response: [`SECURITY.md`](SECURITY.md).
 - Docker: consulte [`deploy/DOCKER.md`](deploy/DOCKER.md) para desarrollo, tests, staging y producción.
 - Render: consulte `render.yaml` y `docs/OPENAI_SETUP.md`; los secretos se configuran en el panel de Render o en el flujo de importación protegido.
