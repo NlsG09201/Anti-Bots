@@ -33,7 +33,7 @@ export default function KickBotPage() {
   const botQuery = useQuery({
     queryKey: ["kick-bot-settings", activeStreamId],
     queryFn: () => api.kick.botSettings(token!, activeStreamId),
-    enabled: !!token && !!activeStreamId,
+    enabled: !!token && !!activeStreamId && stream?.has_broadcaster_oauth !== false,
   });
 
   const settings = settingsOverride?.streamId === activeStreamId
@@ -109,7 +109,7 @@ export default function KickBotPage() {
 
       {(streamsLoading || botQuery.isLoading) && activeStreamId && <div className="flex items-center gap-2 text-cyber-muted"><Loader2 className="animate-spin" size={16} /> Cargando configuración…</div>}
 
-      {stream && botQuery.error && (
+      {stream?.has_broadcaster_oauth !== false && stream && botQuery.error && (
         <section role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-5">
           <h2 className="font-semibold text-amber-100">No se pudo cargar el bot de Kick</h2>
           <p className="mt-2 text-sm text-amber-100/80">{(botQuery.error as Error).message}</p>
@@ -122,6 +122,14 @@ export default function KickBotPage() {
           <h2 className="text-lg font-semibold text-white">Conecta un canal de Kick</h2>
           <p className="mt-2 text-sm text-cyber-muted">La conexión autoriza lectura de chat, envío de mensajes y suscripción a eventos. Se solicitará también permiso para timeout y ban desde el área Viewers.</p>
           <button onClick={() => void authorizeKick()} className="mt-4 rounded-lg bg-cyber-accent px-4 py-2 font-semibold text-black">Conectar Kick</button>
+        </section>
+      )}
+
+      {stream?.has_broadcaster_oauth === false && (
+        <section role="status" className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-5">
+          <h2 className="font-semibold text-amber-100">Autoriza el canal de Kick</h2>
+          <p className="mt-2 text-sm text-amber-100/80">Este canal no tiene una autorización OAuth activa guardada. Vuelve a conectar Kick para cargar y administrar la configuración del bot.</p>
+          <button onClick={() => void authorizeKick(activeStreamId)} className="mt-4 rounded-lg border border-amber-400/50 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-400/10">Autorizar canal</button>
         </section>
       )}
 

@@ -15,10 +15,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             staleTime: 5000,
             refetchOnWindowFocus: false,
             retry: (failureCount, error) => {
-              if (
-                error instanceof ApiError &&
-                (error.status === 401 || error.status === 403 || error.status === 429)
-              ) {
+              if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
                 return false;
               }
               return failureCount < 1;
