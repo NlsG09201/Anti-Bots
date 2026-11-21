@@ -84,7 +84,7 @@ function StreamRow({ row }: { row: PlatformHealthStream }) {
         <span>viewers: {row.viewer_count}</span>
         <span>msg/min: {row.messages_per_min}</span>
         <span>reconn: {row.reconnect_count}</span>
-        <span>errores (5 min): {row.recent_error_count ?? 0}</span>
+        <span>errores (5 min): {row.recent_error_count ?? "—"}</span>
         <span>
           socket: {row.socket_connected ? row.socket_transport || "on" : "off"}
         </span>

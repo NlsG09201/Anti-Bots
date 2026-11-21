@@ -2080,7 +2080,7 @@ export interface PlatformHealthStream {
   socket_transport?: string;
   reconnect_count?: number;
   error_count?: number;
-  recent_error_count?: number;
+  recent_error_count?: number | null;
   last_error?: string | null;
   ai_anomaly_score?: number;
   ai_flags?: string[];

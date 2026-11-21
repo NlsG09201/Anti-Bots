@@ -150,7 +150,9 @@ class PlatformHealthEngine:
         for s in streams:
             summary[s.status] = summary.get(s.status, 0) + 1
 
-        issues = await self._store.list_issues(30)
+        issues = self._enrich_cached_issues(
+            await self._store.list_issues(30), streams
+        )
         overview = PlatformHealthOverview(
             enabled=True,
             system=SystemHealthSlice(
@@ -197,6 +199,33 @@ class PlatformHealthEngine:
             }
             await self._store.push_issue(issue)
             await self._maybe_create_alert(snap, flag, severity)
+
+    @staticmethod
+    def _enrich_cached_issues(
+        issues: List[Dict[str, Any]], streams: List[StreamMonitorHealth]
+    ) -> List[Dict[str, Any]]:
+        """Add current monitor state to legacy high_errors records in Redis."""
+        streams_by_id = {stream.stream_id: stream for stream in streams}
+        enriched: List[Dict[str, Any]] = []
+        for issue in issues:
+            item = dict(issue)
+            if item.get("flag") == "high_errors":
+                snap = streams_by_id.get(str(item.get("stream_id", "")))
+                # None means this snapshot predates recent-error tracking.
+                if snap and snap.recent_error_count is not None:
+                    current_errors = snap.recent_error_count
+                    label = f"{snap.channel_name} ({snap.platform}): high_errors"
+                    if current_errors:
+                        detail = f"{current_errors} errores en los ultimos 5 min"
+                        if snap.last_error:
+                            detail += f". Ultimo error: {snap.last_error}"
+                    else:
+                        detail = (
+                            "incidencia historica; sin errores en los ultimos 5 min"
+                        )
+                    item["message"] = f"{label} ({detail})"
+            enriched.append(item)
+        return enriched
 
     async def _maybe_create_alert(
         self,
@@ -280,7 +309,9 @@ class PlatformHealthEngine:
             system=system,
             integrations=integrations,
             streams=streams,
-            issues=await self._store.list_issues(30),
+            issues=self._enrich_cached_issues(
+                await self._store.list_issues(30), streams
+            ),
             summary=summary,
         )
 
