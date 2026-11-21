@@ -53,6 +53,7 @@ class StreamMonitorHealth(BaseModel):
 
 class IntegrationProbeResult(BaseModel):
     platform: PlatformName
+    available: bool = True
     ok: bool = False
     latency_ms: Optional[float] = None
     circuit_state: str = "closed"
@@ -65,6 +66,7 @@ class IntegrationProbeResult(BaseModel):
 class SystemHealthSlice(BaseModel):
     redis_ok: bool = False
     redis_latency_ms: Optional[float] = None
+    redis_message: str = ""
     realtime_pubsub_ok: bool = False
     worker_alive: bool = False
     worker_last_seen: Optional[str] = None

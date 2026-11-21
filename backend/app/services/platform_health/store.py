@@ -8,7 +8,12 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.core.logging import get_logger
-from app.infrastructure.cache.redis_client import RedisCache, optional_get_redis, redis_is_configured
+from app.infrastructure.cache.redis_client import (
+    RedisCache,
+    optional_get_redis,
+    redis_cache_is_configured,
+    redis_is_configured,
+)
 from app.domain.platform_health.schemas import (
     IntegrationProbeResult,
     PlatformHealthOverview,
@@ -47,14 +52,11 @@ class PlatformHealthStore:
             return None
 
     async def load_all_stream_health(self) -> List[StreamMonitorHealth]:
-        if not redis_is_configured():
+        if not redis_cache_is_configured():
             return []
         try:
-            client = await optional_get_redis()
-            if not client:
-                return []
             keys = []
-            async for key in client.scan_iter(match=f"ss:{STREAM_PREFIX}:*", count=50):
+            async for key in self._cache.scan_iter(match=f"{STREAM_PREFIX}:*", count=50):
                 keys.append(key)
             out: List[StreamMonitorHealth] = []
             for key in keys[:80]:

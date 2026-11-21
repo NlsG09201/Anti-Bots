@@ -1,6 +1,7 @@
 import ipaddress
 import json
 import time
+import fnmatch
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -207,6 +208,35 @@ class RedisCache:
             return
         client = await get_redis()
         await client.delete(full)
+
+    async def scan_iter(self, match: str, count: int = 50):
+        """Iterate matching cache keys over native Redis, REST, or local memory."""
+        full_match = self._key(match)
+        if self._use_memory:
+            now = time.monotonic()
+            for key, (_, expires) in list(_memory.items()):
+                if expires and now > expires:
+                    _memory.pop(key, None)
+                elif fnmatch.fnmatchcase(key, full_match):
+                    yield key
+            return
+        if self._use_rest:
+            cursor = "0"
+            while True:
+                response = (await _upstash_pipeline([
+                    ["SCAN", cursor, "MATCH", full_match, "COUNT", count]
+                ]))[0]
+                if not isinstance(response, (list, tuple)) or len(response) != 2:
+                    raise RuntimeError("Unexpected Redis SCAN response")
+                cursor = str(response[0])
+                for key in response[1] or []:
+                    yield str(key)
+                if cursor == "0":
+                    break
+            return
+        client = await get_redis()
+        async for key in client.scan_iter(match=full_match, count=count):
+            yield key
 
     async def incr(self, key: str, ttl: int = 60) -> int:
         full = self._key(key)

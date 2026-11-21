@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.services.platform_health.circuit_breaker import get_circuit_breaker
 from app.domain.platform_health.schemas import IntegrationProbeResult
+from app.domain.platform_health.sanitization import sanitize_diagnostic
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -23,7 +24,7 @@ async def probe_kick_api() -> IntegrationProbeResult:
             platform="kick",
             ok=False,
             circuit_state=cb.state,
-            message="circuit open",
+            message=f"circuit open: {cb.last_error or 'recent requests failed'}",
         )
     t0 = time.perf_counter()
     try:
@@ -37,7 +38,7 @@ async def probe_kick_api() -> IntegrationProbeResult:
         if ok:
             cb.record_success()
         else:
-            cb.record_failure()
+            cb.record_failure(f"http_{r.status_code}")
         return IntegrationProbeResult(
             platform="kick",
             ok=ok,
@@ -46,30 +47,31 @@ async def probe_kick_api() -> IntegrationProbeResult:
             message=f"http_{r.status_code}",
         )
     except Exception as exc:
-        cb.record_failure()
+        detail = sanitize_diagnostic(str(exc), limit=120)
+        cb.record_failure(detail)
         return IntegrationProbeResult(
             platform="kick",
             ok=False,
             circuit_state=cb.state,
-            message=str(exc)[:120],
+            message=detail,
         )
 
 
 async def probe_youtube_api() -> IntegrationProbeResult:
     cb = get_circuit_breaker("youtube")
-    if not cb.allow_request():
-        return IntegrationProbeResult(
-            platform="youtube",
-            ok=False,
-            circuit_state=cb.state,
-            message="circuit open",
-        )
     if not settings.youtube_api_key:
         return IntegrationProbeResult(
             platform="youtube",
             ok=False,
             circuit_state=cb.state,
             message="YOUTUBE_API_KEY missing",
+        )
+    if not cb.allow_request():
+        return IntegrationProbeResult(
+            platform="youtube",
+            ok=False,
+            circuit_state=cb.state,
+            message=f"circuit open: {cb.last_error or 'recent requests failed'}",
         )
     t0 = time.perf_counter()
     try:
@@ -87,12 +89,13 @@ async def probe_youtube_api() -> IntegrationProbeResult:
             message="ok",
         )
     except Exception as exc:
-        cb.record_failure()
+        detail = sanitize_diagnostic(str(exc), limit=120)
+        cb.record_failure(detail)
         return IntegrationProbeResult(
             platform="youtube",
             ok=False,
             circuit_state=cb.state,
-            message=str(exc)[:120],
+            message=detail,
         )
 
 
@@ -101,8 +104,9 @@ async def probe_tiktok_api() -> IntegrationProbeResult:
     return IntegrationProbeResult(
         platform="tiktok",
         ok=False,
+        available=False,
         circuit_state=cb.state,
-        message="official_live_api_unavailable",
+        message="Official live API unavailable",
     )
 
 

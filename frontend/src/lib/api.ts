@@ -2046,6 +2046,7 @@ export interface ViewerFlowOverview {
 export interface PlatformHealthSystem {
   redis_ok?: boolean;
   redis_latency_ms?: number | null;
+  redis_message?: string;
   realtime_pubsub_ok?: boolean;
   worker_alive?: boolean;
   worker_last_seen?: string | null;
@@ -2057,6 +2058,7 @@ export interface PlatformHealthSystem {
 export interface IntegrationProbe {
   platform: "kick" | "youtube" | "tiktok";
   ok: boolean;
+  available?: boolean;
   latency_ms?: number | null;
   circuit_state?: string;
   message?: string;

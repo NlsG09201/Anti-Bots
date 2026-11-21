@@ -21,6 +21,7 @@ class PlatformCircuitBreaker:
     state: CircuitState = "closed"
     opened_at: float = 0.0
     half_open_calls: int = 0
+    last_error: str = ""
 
     def allow_request(self) -> bool:
         now = time.monotonic()
@@ -40,9 +41,12 @@ class PlatformCircuitBreaker:
         self.failures = 0
         self.state = "closed"
         self.half_open_calls = 0
+        self.last_error = ""
 
-    def record_failure(self) -> None:
+    def record_failure(self, error: str = "") -> None:
         self.failures += 1
+        if error:
+            self.last_error = error[:500]
         if self.state == "half_open":
             self._open()
             return

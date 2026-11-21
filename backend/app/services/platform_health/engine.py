@@ -14,6 +14,7 @@ from app.core.logging import get_logger
 from app.events.realtime import publish_realtime
 from app.infrastructure.database.models import Alert, AlertSeverity, Platform, Stream
 from app.infrastructure.database.session import AsyncSessionLocal
+from app.infrastructure.cache.redis_client import redis_cache_is_configured, redis_is_configured
 from app.services.platform_health.probes import run_all_integration_probes
 from app.services.platform_health.registry import all_trackers
 from app.domain.platform_health.schemas import (
@@ -35,6 +36,8 @@ def _status_from_tracker(
     *,
     orchestrator_running: bool,
 ) -> HealthStatus:
+    if "high_errors" in snap.ai_flags:
+        return "error"
     if snap.ai_flags and snap.ai_anomaly_score >= 50:
         if "stale_poll" in snap.ai_flags or "socket_down" in snap.ai_flags:
             return "stale"
@@ -98,6 +101,7 @@ class PlatformHealthEngine:
 
         orch = get_platform_monitor_orchestrator()
         redis_ok, redis_ms = await self._store.probe_redis_latency()
+        redis_message = self._redis_message(redis_ok)
         worker_alive, worker_ts = await self._store.worker_is_alive(
             settings.platform_health_worker_heartbeat_ttl
         )
@@ -106,6 +110,7 @@ class PlatformHealthEngine:
             SystemHealthSlice(
                 redis_ok=redis_ok,
                 redis_latency_ms=redis_ms,
+                redis_message=redis_message,
                 realtime_pubsub_ok=redis_ok,
                 worker_alive=worker_alive,
                 worker_last_seen=worker_ts,
@@ -158,6 +163,7 @@ class PlatformHealthEngine:
             system=SystemHealthSlice(
                 redis_ok=redis_ok,
                 redis_latency_ms=redis_ms,
+                redis_message=redis_message,
                 realtime_pubsub_ok=redis_ok,
                 worker_alive=worker_alive,
                 worker_last_seen=worker_ts,
@@ -297,8 +303,15 @@ class PlatformHealthEngine:
     async def build_overview(self) -> PlatformHealthOverview:
         system, integrations = await self._store.load_global()
         streams = await self._store.load_all_stream_health()
+        from app.services.monitoring.orchestrator import get_platform_monitor_orchestrator
+
+        orchestrator_running = get_platform_monitor_orchestrator()._running
         for tracker in all_trackers().values():
-            snap = tracker.to_snapshot(status="unknown")
+            base = tracker.to_snapshot()
+            status = _status_from_tracker(
+                base, orchestrator_running=orchestrator_running
+            )
+            snap = tracker.to_snapshot(status=status)
             streams = [s for s in streams if s.stream_id != snap.stream_id]
             streams.append(snap)
         summary: Dict[str, int] = {}
@@ -314,6 +327,16 @@ class PlatformHealthEngine:
             ),
             summary=summary,
         )
+
+    @staticmethod
+    def _redis_message(redis_ok: bool) -> str:
+        if redis_ok:
+            return "TCP disponible"
+        if not redis_is_configured():
+            if redis_cache_is_configured():
+                return "Falta REDIS_URL TCP; Upstash REST no ofrece Pub/Sub ni colas de trabajo."
+            return "REDIS_URL TCP y caché REST no configurados."
+        return "REDIS_URL TCP configurada, pero el ping de Redis falló."
 
 
 def get_platform_health_engine() -> PlatformHealthEngine:

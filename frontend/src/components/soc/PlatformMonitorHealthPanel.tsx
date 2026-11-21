@@ -50,13 +50,18 @@ function IntegrationRow({ probe }: { probe: IntegrationProbe }) {
       <div className="flex items-center gap-2">
         <PlatformBadge platform={probe.platform} />
         <span className="text-cyber-muted">{probe.circuit_state}</span>
+        {probe.message && (
+          <span className="text-cyber-muted max-w-64 truncate" title={probe.message}>
+            {probe.message}
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {probe.latency_ms != null && (
           <span className="font-mono text-cyber-muted">{probe.latency_ms}ms</span>
         )}
-        <Badge variant={probe.ok ? "default" : "danger"}>
-          {probe.ok ? "OK" : "FAIL"}
+        <Badge variant={probe.available === false ? "info" : probe.ok ? "default" : "danger"}>
+          {probe.available === false ? "N/A" : probe.ok ? "OK" : "FAIL"}
         </Badge>
       </div>
     </div>
@@ -137,9 +142,7 @@ export function PlatformMonitorHealthPanel({
         <SystemPill
           label="Redis / PubSub"
           ok={!!sys?.redis_ok}
-          detail={
-            sys?.redis_latency_ms != null ? `${sys.redis_latency_ms} ms` : undefined
-          }
+          detail={sys?.redis_message || (sys?.redis_latency_ms != null ? `${sys.redis_latency_ms} ms` : undefined)}
         />
         <SystemPill
           label="Worker Render"
