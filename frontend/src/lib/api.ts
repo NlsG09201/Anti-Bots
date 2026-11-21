@@ -32,9 +32,38 @@ function getAccessTokenExpiry(token: string): number | null {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public retryAfterMs?: number) {
     super(message);
   }
+}
+
+const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 60_000;
+const MAX_RATE_LIMIT_COOLDOWN_MS = 300_000;
+let apiRateLimitedUntil = 0;
+
+function retryAfterMilliseconds(response: Response): number {
+  const retryAfter = response.headers.get("Retry-After")?.trim();
+  if (!retryAfter) return DEFAULT_RATE_LIMIT_COOLDOWN_MS;
+
+  const seconds = Number(retryAfter);
+  const retryAt = Number.isFinite(seconds)
+    ? Date.now() + Math.max(0, seconds) * 1000
+    : Date.parse(retryAfter);
+  if (!Number.isFinite(retryAt)) return DEFAULT_RATE_LIMIT_COOLDOWN_MS;
+
+  return Math.min(
+    MAX_RATE_LIMIT_COOLDOWN_MS,
+    Math.max(1_000, retryAt - Date.now()),
+  );
+}
+
+function rateLimitError(retryAfterMs: number): ApiError {
+  const seconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
+  return new ApiError(
+    429,
+    `La API limitó temporalmente las solicitudes. Espera ${seconds} segundos antes de volver a consultar.`,
+    retryAfterMs,
+  );
 }
 
 function parseApiErrorMessage(error: unknown, status: number): string {
@@ -151,6 +180,11 @@ async function request<T>(
     headers["X-CSRF-Token"] = csrf;
   }
 
+  const cooldownRemaining = apiRateLimitedUntil - Date.now();
+  if (cooldownRemaining > 0) {
+    throw rateLimitError(cooldownRemaining);
+  }
+
   const response = await fetch(`${apiBase}${path}`, {
     ...options,
     headers,
@@ -158,7 +192,9 @@ async function request<T>(
   });
 
   if (response.status === 429) {
-    throw new ApiError(429, "Demasiadas peticiones. Espera unos segundos e inténtalo de nuevo.");
+    const retryAfterMs = retryAfterMilliseconds(response);
+    apiRateLimitedUntil = Math.max(apiRateLimitedUntil, Date.now() + retryAfterMs);
+    throw rateLimitError(retryAfterMs);
   }
 
   if (response.status === 502 || response.status === 504) {

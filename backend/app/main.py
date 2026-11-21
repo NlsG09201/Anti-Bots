@@ -403,6 +403,11 @@ app = CORSMiddleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Stream-Key"],
-    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-Response-Time"],
+    expose_headers=[
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-Response-Time",
+        "Retry-After",
+    ],
     max_age=3600,
 )
