@@ -8,7 +8,7 @@
 
 Este documento reúne la evidencia del repositorio para los requisitos de Desarrollo Web Avanzado, Visualización de Datos II e Investigación de Operaciones. Distingue entre capacidades implementadas, prototipos respaldados por código y propuestas académicas. No presenta una tecnología como implementada si no existe evidencia en el proyecto.
 
-La aplicación principal utiliza **Next.js/React**, **FastAPI/Python**, **PostgreSQL** y **Redis**. Se añadió un servicio complementario aislado en **Spring Boot 4.1.2**, con Spring Security, Spring Data JPA y Spring AI 2.0.2 para el agente SOC y una consulta de canales por tenant. El servicio Java no sustituye la API FastAPI ni sus demás rutas. La descripción detallada de stack, capas, endpoints, interfaz, LLM y datos está en [`DESARROLLO-WEB-AVANZADO.md`](DESARROLLO-WEB-AVANZADO.md).
+La aplicación principal utiliza **Next.js/React**, **FastAPI/Python**, **PostgreSQL** y **Redis**. Se añadió un servicio complementario aislado en **Spring Boot 4.1.3**, con Spring Security, Spring Data JPA y Spring AI 2.0.2 para el agente SOC y una consulta de canales por tenant. El servicio Java no sustituye la API FastAPI ni sus demás rutas. La descripción detallada de stack, capas, endpoints, interfaz, LLM y datos está en [`DESARROLLO-WEB-AVANZADO.md`](DESARROLLO-WEB-AVANZADO.md).
 
 ## 1. Desarrollo Web Avanzado
 

@@ -14,7 +14,7 @@ Este documento describe la aplicación comprobable en el código. La API operati
 | API principal | Python 3.11, FastAPI 0.161.1, Uvicorn 0.34.0, Pydantic 2.10.6 | API REST, autenticación, reglas de dominio, webhooks y WebSockets. |
 | Persistencia principal | PostgreSQL; SQLAlchemy 2.0.36, asyncpg 0.30.0 y Alembic 1.14.0 | Datos operacionales y consultas asíncronas. |
 | Eventos y caché | Redis 5.2.1, arq 0.26.1 | Caché, revocación de tokens y procesamiento/eventos cuando se configura Redis TCP. |
-| Servicio Java complementario | Java 21, Spring Boot 4.1.2, Spring AI 2.0.2, Spring Security y Spring Data JPA | Rutas del asistente SOC y consulta de canales aislada por tenant. |
+| Servicio Java complementario | Java 21, Spring Boot 4.1.3, Spring AI 2.0.2, Spring Security y Spring Data JPA | Rutas del asistente SOC y consulta de canales aislada por tenant. |
 | Analítica/ML | scikit-learn 1.5.0, Weka J48 (python-weka-wrapper3 0.3.3); Power BI y BigQuery opcionales | Clasificación/analítica según módulos y configuración. |
 | Pruebas y construcción | Maven en Java; npm, ESLint y TypeScript en frontend; pytest en backend | Construcción y validaciones automatizadas definidas por el proyecto. |
 
