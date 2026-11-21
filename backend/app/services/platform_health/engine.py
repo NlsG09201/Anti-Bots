@@ -186,7 +186,13 @@ class PlatformHealthEngine:
                 "channel": snap.channel_name,
                 "flag": flag,
                 "severity": severity,
-                "message": f"{snap.channel_name} ({snap.platform}): {flag}",
+                "message": f"{snap.channel_name} ({snap.platform}): {flag}"
+                + (
+                    f" ({snap.recent_error_count} errores en 5 min)"
+                    + (f". Ultimo error: {snap.last_error}" if snap.last_error else "")
+                    if flag == "high_errors"
+                    else ""
+                ),
                 "ai_score": snap.ai_anomaly_score,
             }
             await self._store.push_issue(issue)

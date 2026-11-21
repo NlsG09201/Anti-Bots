@@ -40,6 +40,7 @@ class StreamMonitorHealth(BaseModel):
     socket_transport: str = ""
     reconnect_count: int = 0
     error_count: int = 0
+    recent_error_count: int = 0
     last_error: Optional[str] = None
     frozen_viewer_polls: int = 0
     ai_anomaly_score: float = 0.0

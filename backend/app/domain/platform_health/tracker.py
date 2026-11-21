@@ -2,12 +2,35 @@
 
 from __future__ import annotations
 
+import re
 import time
 from collections import deque
 from datetime import datetime, timezone
 from typing import Deque, List, Optional, Tuple
 
 from app.domain.platform_health.schemas import StreamMonitorHealth
+
+
+_SENSITIVE_ERROR_PATTERNS = (
+    (
+        re.compile(r"(?i)(authorization[\"']?\s*[:=]\s*[\"']?(?:bearer\s+)?)[^\"'\s,;}]+"),
+        r"\1[REDACTED]",
+    ),
+    (
+        re.compile(r"(?i)((?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|password|token|secret|key|code)=)[^&\s,;]+"),
+        r"\1[REDACTED]",
+    ),
+    (re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+"), "Bearer [REDACTED]"),
+    (re.compile(r"\bAIza[0-9A-Za-z_-]{20,}\b"), "[REDACTED_API_KEY]"),
+    (re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"), "[REDACTED_API_KEY]"),
+)
+
+
+def _safe_error_message(message: str) -> str:
+    safe = (message or "")[:500]
+    for pattern, replacement in _SENSITIVE_ERROR_PATTERNS:
+        safe = pattern.sub(replacement, safe)
+    return safe
 
 
 class MonitorHealthTracker:
@@ -103,7 +126,11 @@ class MonitorHealthTracker:
         self._error_count += 1
         self._error_timestamps.append(now)
         self._prune_error_timestamps(now)
-        self._last_error = (message or "")[:300]
+        self._last_error = _safe_error_message(message)
+
+    def _recent_error_count(self) -> int:
+        self._prune_error_timestamps()
+        return len(self._error_timestamps)
 
     def _prune_error_timestamps(self, now: Optional[float] = None) -> None:
         cutoff = (time.monotonic() if now is None else now) - 300.0
@@ -190,6 +217,7 @@ class MonitorHealthTracker:
             socket_transport=self._socket_transport,
             reconnect_count=self._reconnect_count,
             error_count=self._error_count,
+            recent_error_count=self._recent_error_count(),
             last_error=self._last_error,
             frozen_viewer_polls=self._frozen_polls,
             ai_anomaly_score=ai_score,
