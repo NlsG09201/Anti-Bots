@@ -71,7 +71,9 @@ def optimize_review_queue(
     return {
         "solver": "exact dynamic programming (0-1 knapsack)",
         "candidate_count": len(rows),
+        "eligible_count": len(eligible),
         "selected_count": len(selected),
+        "max_review_count": max_reviews,
         "capacity_minutes": capacity_minutes,
         "minutes_per_review": minutes_per_review,
         "used_minutes": used_minutes,

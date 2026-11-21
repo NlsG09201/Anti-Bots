@@ -17,7 +17,7 @@ router = APIRouter(prefix="/operations-research", tags=["Operations Research"])
 class ReviewOptimizationRequest(BaseModel):
     capacity_minutes: int = Field(ge=1, le=1440)
     minutes_per_review: int = Field(default=5, ge=1, le=120)
-    false_positive_budget: int = Field(default=20, ge=0, le=100)
+    false_positive_budget: int = Field(default=50, ge=0, le=100)
     false_positive_cost: float = Field(default=1.0, ge=0, le=10)
     stream_id: UUID | None = None
     max_candidates: int = Field(default=500, ge=1, le=2000)

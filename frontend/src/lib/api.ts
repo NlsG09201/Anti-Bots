@@ -1954,7 +1954,9 @@ export interface ReviewOptimizationInput {
 export interface ReviewOptimizationResult {
   solver: string;
   candidate_count: number;
+  eligible_count: number;
   selected_count: number;
+  max_review_count: number;
   capacity_minutes: number;
   minutes_per_review: number;
   used_minutes: number;
