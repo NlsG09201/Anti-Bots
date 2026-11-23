@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
+from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.infrastructure.database.models import Platform, Stream
+from app.infrastructure.database.models import KickWebhookEvent, Platform, Stream
 from app.services.platforms.base import LiveStatus
 from app.services.platforms.registry import get_platform_adapter
 from app.services.viewers.session import ViewerSessionService
@@ -20,6 +23,39 @@ class PlatformSyncService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.viewers = ViewerSessionService(db)
+
+    async def _recent_kick_chatters(self, stream_id: UUID) -> list[dict[str, Any]]:
+        """Return distinct chat authors seen in verified webhooks during 30m."""
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+        result = await self.db.scalars(
+            select(KickWebhookEvent)
+            .where(
+                KickWebhookEvent.stream_id == stream_id,
+                KickWebhookEvent.event_type == "chat.message.sent",
+                KickWebhookEvent.message_timestamp >= cutoff,
+                KickWebhookEvent.processing_status != "expired",
+            )
+            .order_by(KickWebhookEvent.message_timestamp.desc())
+            .limit(5000)
+        )
+        by_user: dict[str, dict[str, Any]] = {}
+        for row in result.all():
+            sender = (row.raw_payload or {}).get("sender") or {}
+            username = str(sender.get("username") or "").strip()
+            user_id = str(sender.get("user_id") or sender.get("channel_slug") or "").strip()
+            if not username or not user_id:
+                continue
+            key = user_id.casefold()
+            if key in by_user:
+                by_user[key]["messages"] += 1
+            else:
+                by_user[key] = {
+                    "username": username,
+                    "user_id": user_id,
+                    "source": "kick_chat",
+                    "messages": 1,
+                }
+        return list(by_user.values())
 
     async def sync_viewers(self, stream: Stream) -> Dict[str, Any]:
         adapter = get_platform_adapter(stream.platform)
@@ -88,9 +124,12 @@ class PlatformSyncService:
                     meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
                     meta["kick_webhook_callback_url"] = get_settings().kick_webhook_callback_url
                     stream.settings = meta
-                    kick_subscription_status = (
-                        "partial" if subscription_result.get("failed") else "configured"
-                    )
+                    if meta["kick_chat_webhook_subscribed"]:
+                        kick_subscription_status = "configured"
+                    elif "chat.message.sent" in subscription_result.get("failed", []):
+                        kick_subscription_status = "failed"
+                    else:
+                        kick_subscription_status = "partial"
                 except Exception as exc:
                     kick_subscription_status = "failed"
                     meta["kick_webhook_subscription_error"] = type(exc).__name__
@@ -111,36 +150,24 @@ class PlatformSyncService:
                 meta.pop("live_video_id", None)
             stream.settings = meta
 
-        chat_history_error = None
-        kick_roster_complete = False
+        kick_activity_window = False
         if live.is_live or (stream.platform == Platform.KICK and live_status_error):
-            try:
+            if stream.platform == Platform.KICK:
+                # Read only signature-verified chat.message.sent deliveries;
+                # Kick does not expose a supported complete chatter roster.
+                chatters = await self._recent_kick_chatters(stream.id)
+                kick_activity_window = True
+            else:
                 snapshots = await adapter.fetch_viewers(stream)
-                if stream.platform == Platform.KICK and not live_status_error:
-                    kick_roster_complete = True
-            except Exception as exc:
-                if stream.platform != Platform.KICK:
-                    raise
-                snapshots = []
-                chat_history_error = type(exc).__name__
-                logger.warning(
-                    "kick_active_chatters_lookup_failed",
-                    stream_id=str(stream.id),
-                    error_type=chat_history_error,
-                )
-            if live_status_error and snapshots:
-                live.is_live = True
-                stream.is_live = True
-                kick_roster_complete = True
-            chatters = [
-                {
-                    "username": snap.platform_username or snap.platform_user_id,
-                    "user_id": snap.platform_user_id,
-                    "source": snap.metadata.get("source", stream.platform.value),
-                }
-                for snap in snapshots
-                if snap.is_in_chat and (snap.platform_username or snap.platform_user_id)
-            ]
+                chatters = [
+                    {
+                        "username": snap.platform_username or snap.platform_user_id,
+                        "user_id": snap.platform_user_id,
+                        "source": snap.metadata.get("source", stream.platform.value),
+                    }
+                    for snap in snapshots
+                    if snap.is_in_chat and (snap.platform_username or snap.platform_user_id)
+                ]
         else:
             # Un canal confirmado offline no debe conservar participantes activos.
             chatters = []
@@ -148,14 +175,14 @@ class PlatformSyncService:
         sync_stats = await self.viewers.sync_chat_presence(
             stream.id,
             chatters,
-            # A successful Kick active-chatters response is a complete current
-            # roster. Webhook-only fallback is incremental and must retain users.
+            # Kick lists message authors from the recent webhook window, not
+            # every person present in chat or silent viewers.
             full_resync=(
                 stream.platform != Platform.KICK
-                or kick_roster_complete
+                or kick_activity_window
                 or not live.is_live
             ),
-            clear_if_empty=not live.is_live or kick_roster_complete,
+            clear_if_empty=not live.is_live or kick_activity_window,
         )
         synced = sync_stats["total_synced"]
         if stream.platform == Platform.KICK:
@@ -168,7 +195,7 @@ class PlatformSyncService:
             "viewer_count": live.viewer_count,
             "chatters_synced": synced,
             "source": (
-                "kick_active_chatters"
+                "kick_webhook_chat_authors"
                 if stream.platform == Platform.KICK
                 else stream.platform.value
             ),
@@ -179,11 +206,7 @@ class PlatformSyncService:
                 if stream.platform == Platform.KICK
                 else {}
             ),
-            **(
-                {"chat_history_error": chat_history_error}
-                if chat_history_error
-                else {}
-            ),
+            **({"chat_activity_window_minutes": 30} if stream.platform == Platform.KICK else {}),
             **(
                 {"live_status_error": live_status_error}
                 if live_status_error

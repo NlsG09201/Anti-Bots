@@ -886,8 +886,8 @@ export const api = {
         viewer_count: number;
         chatters_synced: number;
         source: string;
-        chat_subscription?: "configured" | "failed" | null;
-        chat_history_error?: string;
+        chat_subscription?: "configured" | "failed" | "partial" | null;
+        chat_activity_window_minutes?: number;
         live_status_error?: string;
       }>(
         `/api/v1/streams/${streamId}/sync/platform`,

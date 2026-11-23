@@ -56,24 +56,6 @@ class KickPlatformAdapter(PlatformAdapter):
         )
 
     async def fetch_viewers(self, stream: Stream) -> List[ViewerSnapshot]:
-        # Kick's public active-chatters endpoint lists participants currently
-        # present in chat. It does not expose viewers who watch silently.
-        channel_id = str(stream.external_id or "")
-        slug = (stream.settings or {}).get("login") or stream.channel_name
-        resolved_id = await (await self._client(stream)).get_broadcaster_id_by_slug(slug)
-        if resolved_id:
-            channel_id = resolved_id
-            stream.external_id = resolved_id
-        if not channel_id:
-            raise RuntimeError("No se pudo resolver el ID del canal Kick para leer el chat.")
-
-        chatters = await KickAPIClient().get_active_chatters(channel_id)
-        return [
-            ViewerSnapshot(
-                platform_user_id=str(chatter["user_id"]),
-                platform_username=str(chatter["username"]),
-                is_in_chat=True,
-                metadata={"source": "kick_chat", "role": chatter["role"]},
-            )
-            for chatter in chatters
-        ]
+        # Kick's supported API does not provide a chatters roster. Chat authors
+        # are ingested from verified chat.message.sent webhooks by sync_service.
+        return []

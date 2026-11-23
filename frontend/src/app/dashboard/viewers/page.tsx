@@ -195,8 +195,10 @@ function ViewersContent() {
             `${analysis.flagged} coincidencias conocidas, ${analysis.review_required ?? 0} para revisar. ` +
             (platform === "kick" && sync.chat_subscription === "failed"
               ? "No se pudo activar la suscripción de chat de Kick. Revisa las credenciales y la configuración de Webhooks de la aplicación Kick."
-              : platform === "kick" && sync.chat_history_error
-                ? `No se pudo consultar la lista de usuarios activos de Kick (${sync.chat_history_error}); se conservaron los usuarios recibidos por webhook.`
+              : platform === "kick" && sync.chat_subscription !== "configured"
+                ? "Kick no confirmo la suscripcion oficial de chat.message.sent; los autores apareceran cuando lleguen eventos webhook."
+                : platform === "kick"
+                  ? `Usuarios que escribieron en los ultimos ${sync.chat_activity_window_minutes ?? 30} min. Kick no expone espectadores silenciosos ni un roster completo.`
                 : "Los espectadores silenciosos no son identificables por la plataforma."),
         );
       } catch (e) {
@@ -406,8 +408,10 @@ function ViewersContent() {
           Quién está viendo el stream
         </h1>
         <p className="text-cyber-muted text-sm mt-1 max-w-3xl">
-          Al elegir un canal cargamos participantes observados en el chat. Las plataformas no revelan
-          la identidad de quienes miran sin escribir. Viewers en vivo según {platformLabel(currentStream?.platform)}:{" "}
+          {currentStream?.platform?.toLowerCase() === "kick"
+            ? "Kick muestra autores recibidos por webhook en los últimos 30 minutos; no expone una lista completa de participantes ni espectadores silenciosos. "
+            : "Al elegir un canal cargamos participantes observados en el chat. Las plataformas no revelan la identidad de quienes miran sin escribir. "}
+          Viewers en vivo según {platformLabel(currentStream?.platform)}:{" "}
           <strong className="text-white">{twitchViewers || "—"}</strong>
           {monitorStatus?.active_viewers_tracked != null && twitchViewers > 0 && (
             <>

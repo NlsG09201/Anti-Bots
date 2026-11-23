@@ -33,6 +33,14 @@ services:
         value: https://anti-bots.onrender.com/api/v1/integrations/twitch/callback
       - key: TWITCH_EVENTSUB_CALLBACK_URL
         value: https://anti-bots.onrender.com/api/v1/webhooks/twitch
+      - key: KICK_CLIENT_ID
+        sync: false
+      - key: KICK_CLIENT_SECRET
+        sync: false
+      - key: KICK_REDIRECT_URI
+        value: https://anti-bots.onrender.com/api/v1/integrations/kick/callback
+      - key: KICK_WEBHOOK_CALLBACK_URL
+        value: https://anti-bots.onrender.com/api/v1/webhooks/kick
       - key: TRUSTED_HOSTS
         value: anti-bots.onrender.com,anti-bots-api.onrender.com
       - key: RENDER
@@ -113,6 +121,14 @@ services:
         value: "false"
       - key: PLATFORM_MONITOR_ENABLED
         value: "true"
+      - key: KICK_CLIENT_ID
+        sync: false
+      - key: KICK_CLIENT_SECRET
+        sync: false
+      - key: KICK_REDIRECT_URI
+        value: https://anti-bots.onrender.com/api/v1/integrations/kick/callback
+      - key: KICK_WEBHOOK_CALLBACK_URL
+        value: https://anti-bots.onrender.com/api/v1/webhooks/kick
       - key: EVENT_QUEUE_ENABLED
         value: "true"
       - key: AI_ENABLED
