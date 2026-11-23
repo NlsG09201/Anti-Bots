@@ -1,9 +1,10 @@
 import sys
 import unittest
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from push_render_env import _service_health_url, _validate_production_env  # noqa: E402
+from push_render_env import service_health_url, validate_production_env  # noqa: E402
 
 
 class RenderEnvironmentValidationTests(unittest.TestCase):
@@ -19,17 +20,17 @@ class RenderEnvironmentValidationTests(unittest.TestCase):
         }
 
     def test_accepts_complete_production_environment(self):
-        _validate_production_env(self.env)
+        validate_production_env(self.env)
 
     def test_rejects_loopback_trusted_host(self):
         self.env["TRUSTED_HOSTS"] = "localhost,anti-bots-api.onrender.com"
         with self.assertRaisesRegex(ValueError, "TRUSTED_HOSTS"):
-            _validate_production_env(self.env)
+            validate_production_env(self.env)
 
     def test_requires_native_redis_when_event_features_are_enabled(self):
         self.env["REDIS_URL"] = ""
         with self.assertRaisesRegex(ValueError, "REDIS_URL"):
-            _validate_production_env(self.env)
+            validate_production_env(self.env)
 
     def test_allows_missing_redis_when_all_dependent_features_are_disabled(self):
         self.env["REDIS_URL"] = ""
@@ -39,25 +40,25 @@ class RenderEnvironmentValidationTests(unittest.TestCase):
             "EVENT_REALTIME_PUBSUB_ENABLED",
         ):
             self.env[feature] = "false"
-        _validate_production_env(self.env)
+        validate_production_env(self.env)
 
     def test_rejects_non_redis_url_without_printing_its_value(self):
         self.env["REDIS_URL"] = "https://private-token.example.test"
         with self.assertRaisesRegex(ValueError, "REDIS_URL") as caught:
-            _validate_production_env(self.env)
+            validate_production_env(self.env)
         self.assertNotIn("private-token", str(caught.exception))
 
     def test_worker_does_not_use_web_health_check(self):
-        service = {"type": "background_worker", "name": "anti-bots-platform-monitor"}
-        self.assertIsNone(_service_health_url(service, service["name"]))
+        service: dict[str, Any] = {"type": "background_worker", "name": "anti-bots-platform-monitor"}
+        self.assertIsNone(service_health_url(service, service["name"]))
 
     def test_web_service_uses_render_health_url(self):
-        service = {
+        service: dict[str, Any] = {
             "type": "web_service",
             "serviceDetails": {"url": "https://anti-bots-api.onrender.com"},
         }
         self.assertEqual(
-            _service_health_url(service, "anti-bots-api"),
+            service_health_url(service, "anti-bots-api"),
             "https://anti-bots-api.onrender.com",
         )
 

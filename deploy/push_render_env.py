@@ -11,6 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import Any, Mapping
 
 DEPLOY_DIR = Path(__file__).resolve().parent
 IMPORT_FILE = Path(os.environ.get("RENDER_ENV_FILE", DEPLOY_DIR / "render.import.env"))
@@ -49,7 +50,7 @@ def _api_key() -> str:
     return key
 
 
-def _validate_production_env(env: dict[str, str]) -> None:
+def validate_production_env(env: Mapping[str, str]) -> None:
     """Fail before contacting Render when known startup blockers are present."""
     if env.get("APP_ENV", "").strip().lower() != "production":
         return
@@ -171,7 +172,7 @@ def _trigger_deploy(service_id: str, key: str) -> None:
     _request("POST", f"/services/{service_id}/deploys", key, {"clearCache": "do_not_clear"})
 
 
-def _service_health_url(service: dict, name: str) -> str | None:
+def service_health_url(service: Mapping[str, Any], name: str) -> str | None:
     if service.get("type") != "web_service":
         return None
     return (service.get("serviceDetails") or {}).get("url") or f"https://{name}.onrender.com"
@@ -203,7 +204,7 @@ def main() -> None:
             sys.exit("Falta deploy/render.import.env")
 
     env = _parse_env_file(import_path)
-    _validate_production_env(env)
+    validate_production_env(env)
     api_key = _api_key()
     print(f"Buscando {SERVICE_NAME}...")
     service = _find_service(api_key, SERVICE_NAME)
@@ -216,7 +217,7 @@ def main() -> None:
     print("Deploy...")
     _trigger_deploy(sid, api_key)
 
-    health_url = _service_health_url(service, SERVICE_NAME)
+    health_url = service_health_url(service, SERVICE_NAME)
     if health_url:
         print(f"Esperando {health_url} (hasta 6 min)...")
         if not _wait_health(health_url):
