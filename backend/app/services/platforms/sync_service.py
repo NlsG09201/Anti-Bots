@@ -41,6 +41,8 @@ class PlatformSyncService:
         by_user: dict[str, dict[str, Any]] = {}
         for row in result.all():
             sender = (row.raw_payload or {}).get("sender") or {}
+            if not isinstance(sender, dict):
+                continue
             username = str(sender.get("username") or "").strip()
             user_id = str(sender.get("user_id") or sender.get("channel_slug") or "").strip()
             if not username or not user_id:

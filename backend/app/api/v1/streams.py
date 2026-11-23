@@ -580,7 +580,11 @@ async def run_channel_monitor(
             },
         ) from exc
     except Exception as exc:
-        logger.error("channel_monitor_failed", stream_id=str(stream_id), error_type=type(exc).__name__)
+        logger.exception(
+            "channel_monitor_failed",
+            stream_id=str(stream_id),
+            error_type=type(exc).__name__,
+        )
         await db.rollback()
         raise HTTPException(
             status_code=503,

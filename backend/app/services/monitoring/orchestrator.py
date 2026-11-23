@@ -30,6 +30,14 @@ class PlatformMonitorOrchestrator:
         self._reconcile_task: Optional[asyncio.Task] = None
         self._running = False
 
+    @staticmethod
+    def _monitor_task(monitor: MonitorHandle) -> Optional[asyncio.Task]:
+        """Return the polling task for either supported monitor implementation."""
+        task = getattr(monitor, "_poll_task", None)
+        if task is None:
+            task = getattr(monitor, "_task", None)
+        return task
+
     def _should_monitor(self, stream: Stream) -> bool:
         if stream.platform == Platform.TWITCH:
             return False
@@ -44,9 +52,10 @@ class PlatformMonitorOrchestrator:
         sid = str(stream.id)
         if sid in self._monitors:
             monitor = self._monitors[sid]
-            if monitor._poll_task and monitor._poll_task.done():
-                 logger.warning("monitor_task_dead_restarting", stream_id=sid)
-                 await self._stop_monitor(sid)
+            task = self._monitor_task(monitor)
+            if task is None or task.done():
+                logger.warning("monitor_task_dead_restarting", stream_id=sid)
+                await self._stop_monitor(sid)
             else:
                 return
 
