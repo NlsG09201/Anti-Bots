@@ -26,6 +26,17 @@ def _missing_required_env_keys() -> list[str]:
     return missing
 
 
+def _print_production_env_remediation() -> None:
+    print(
+        "\nRender -> anti-bots-api -> Environment: configure "
+        "TRUSTED_HOSTS=anti-bots.onrender.com,anti-bots-api.onrender.com "
+        "and REDIS_URL with the provider's native redis:// or rediss:// URL.\n"
+        "Upstash REST credentials do not replace REDIS_URL. Save the variables "
+        "and redeploy; do not import an outdated environment file.",
+        flush=True,
+    )
+
+
 def main() -> None:
     invalidate_settings_cache()
     settings = get_settings()
@@ -50,12 +61,7 @@ def main() -> None:
             ", ".join(missing_keys),
             flush=True,
         )
-        print(
-            "\nSolucion: Render -> anti-bots-api -> Environment\n"
-            "  Add from .env -> pega deploy/render.import.env -> Save -> Manual Deploy\n"
-            "  (Dashboard Start Command debe coincidir con render.yaml o dejarse vacio)",
-            flush=True,
-        )
+        _print_production_env_remediation()
         sys.exit(1)
 
     errors = validate_production_settings()
@@ -63,11 +69,7 @@ def main() -> None:
         print("\n=== RENDER STARTUP BLOCKED ===", flush=True)
         for err in errors:
             print(f"  - {err}", flush=True)
-        print(
-            "\nSolucion: Render -> anti-bots-api -> Environment\n"
-            "  Add from .env -> pega deploy/render.import.env -> Save -> Manual Deploy\n",
-            flush=True,
-        )
+        _print_production_env_remediation()
         sys.exit(1)
 
     if "localhost" in settings.database_url or "127.0.0.1" in settings.database_url:
