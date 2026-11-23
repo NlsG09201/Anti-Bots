@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
+import httpx
 from sqlalchemy import select
 
 from app.core.logging import get_logger
@@ -185,11 +186,16 @@ class YouTubeLiveMonitor:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                self._health.record_error(str(exc))
+                safe_error = (
+                    f"YouTube API HTTP {exc.response.status_code}"
+                    if isinstance(exc, httpx.HTTPStatusError)
+                    else type(exc).__name__
+                )
+                self._health.record_error(safe_error)
                 logger.warning(
                     "youtube_monitor_error",
                     channel=self.channel_query,
-                    error=str(exc)[:200],
+                    error=safe_error,
                 )
             await asyncio.sleep(max(poll_ms / 1000.0, 3.0))
 

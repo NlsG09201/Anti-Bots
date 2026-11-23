@@ -524,7 +524,8 @@ class LiveIntelEngine:
         if not self.enabled or self._running:
             return
         self._running = True
-        await self.sample_all()
+        # Do not hold ASGI startup while polling up to 30 external channels.
+        # Render must receive the bound HTTP port before this background work.
         self._sample_task = asyncio.create_task(self._sample_loop())
         logger.info("live_intel_engine_started")
 
