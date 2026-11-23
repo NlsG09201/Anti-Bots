@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import statistics
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Optional
@@ -52,6 +53,7 @@ class AnomalyIntelligenceService:
 
     def __init__(self) -> None:
         self._cache = RedisCache(prefix="ss")
+        self._cache_retry_after = 0.0
         self._isolation_forest = None
         try:
             from sklearn.ensemble import IsolationForest
@@ -66,17 +68,38 @@ class AnomalyIntelligenceService:
 
     async def _load_history(self, stream_id: str, metric: str) -> List[float]:
         key = f"{stream_baseline_key(stream_id)}:{metric}"
-        data = await self._cache.get(key)
+        local = _local_baselines.get(key)
+        if time.monotonic() < self._cache_retry_after:
+            return list(local) if local else []
+        try:
+            data = await self._cache.get(key)
+        except Exception as exc:
+            self._cache_retry_after = time.monotonic() + 60.0
+            logger.warning(
+                "anomaly_baseline_cache_read_failed",
+                error_type=type(exc).__name__,
+                retry_after_seconds=60,
+            )
+            return list(local) if local else []
         if isinstance(data, list):
             return [float(x) for x in data[-self.WINDOW_HISTORY :]]
-        local = _local_baselines.get(key)
         return list(local) if local else []
 
     async def _save_history(self, stream_id: str, metric: str, values: List[float]) -> None:
         trimmed = values[-self.WINDOW_HISTORY :]
         key = f"{stream_baseline_key(stream_id)}:{metric}"
-        await self._cache.set(key, trimmed, ttl=TTL_BASELINE)
         _local_baselines[key] = deque(trimmed, maxlen=self.WINDOW_HISTORY)
+        if time.monotonic() < self._cache_retry_after:
+            return
+        try:
+            await self._cache.set(key, trimmed, ttl=TTL_BASELINE)
+        except Exception as exc:
+            self._cache_retry_after = time.monotonic() + 60.0
+            logger.warning(
+                "anomaly_baseline_cache_write_failed",
+                error_type=type(exc).__name__,
+                retry_after_seconds=60,
+            )
 
     def _zscore(self, value: float, history: List[float]) -> Optional[float]:
         if len(history) < 5:
