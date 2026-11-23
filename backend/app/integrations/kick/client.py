@@ -53,6 +53,40 @@ class KickAPIClient:
                 }
         raise RuntimeError("No fue posible consultar el estado del canal Kick.")
 
+    async def get_active_chatters(self, channel_id: str) -> list[Dict[str, Any]]:
+        """Fetch Kick's public active chat roster (chat participants, not lurkers)."""
+        if not channel_id.isdigit():
+            raise ValueError("Kick requiere el ID numérico del canal para consultar el chat.")
+
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            response = await client.get(
+                f"https://web.kick.com/api/v1/channels/{channel_id}/chat/active-chatters",
+                headers={"Accept": "application/json"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        groups = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(groups, dict):
+            raise RuntimeError("Kick devolvió un listado de chat no válido.")
+
+        chatters: list[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for role, members in groups.items():
+            if not isinstance(members, list):
+                continue
+            for member in members:
+                if not isinstance(member, dict):
+                    continue
+                username = str(member.get("username") or member.get("slug") or "").strip()
+                slug = str(member.get("slug") or username).strip()
+                key = slug.casefold()
+                if not username or not key or key in seen:
+                    continue
+                seen.add(key)
+                chatters.append({"username": username, "user_id": slug, "role": role})
+        return chatters
+
     async def get_broadcaster_id_by_slug(self, slug: str) -> Optional[str]:
         if not self.access_token:
             return None

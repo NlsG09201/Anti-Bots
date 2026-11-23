@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.infrastructure.database.models import Platform, Stream
+from app.services.platforms.base import LiveStatus
 from app.services.platforms.registry import get_platform_adapter
 from app.services.viewers.session import ViewerSessionService
 
@@ -23,7 +24,24 @@ class PlatformSyncService:
     async def sync_viewers(self, stream: Stream) -> Dict[str, Any]:
         adapter = get_platform_adapter(stream.platform)
         kick_subscription_status = None
-        live = await adapter.fetch_live_status(stream)
+        live_status_error = None
+        try:
+            live = await adapter.fetch_live_status(stream)
+        except Exception as exc:
+            if stream.platform != Platform.KICK:
+                raise
+            # A transient OAuth/status API failure must not prevent reading the
+            # public active-chat roster or erase the last known live status.
+            live_status_error = type(exc).__name__
+            live = LiveStatus(
+                is_live=bool(stream.is_live),
+                viewer_count=int(stream.viewer_count or 0),
+            )
+            logger.warning(
+                "kick_live_status_unavailable_using_cached_status",
+                stream_id=str(stream.id),
+                error_type=live_status_error,
+            )
         stream.is_live = live.is_live
         stream.viewer_count = live.viewer_count
         if stream.platform == Platform.KICK:
@@ -93,8 +111,27 @@ class PlatformSyncService:
                 meta.pop("live_video_id", None)
             stream.settings = meta
 
-        if live.is_live:
-            snapshots = await adapter.fetch_viewers(stream)
+        chat_history_error = None
+        kick_roster_complete = False
+        if live.is_live or (stream.platform == Platform.KICK and live_status_error):
+            try:
+                snapshots = await adapter.fetch_viewers(stream)
+                if stream.platform == Platform.KICK and not live_status_error:
+                    kick_roster_complete = True
+            except Exception as exc:
+                if stream.platform != Platform.KICK:
+                    raise
+                snapshots = []
+                chat_history_error = type(exc).__name__
+                logger.warning(
+                    "kick_active_chatters_lookup_failed",
+                    stream_id=str(stream.id),
+                    error_type=chat_history_error,
+                )
+            if live_status_error and snapshots:
+                live.is_live = True
+                stream.is_live = True
+                kick_roster_complete = True
             chatters = [
                 {
                     "username": snap.platform_username or snap.platform_user_id,
@@ -111,10 +148,14 @@ class PlatformSyncService:
         sync_stats = await self.viewers.sync_chat_presence(
             stream.id,
             chatters,
-            # Kick events include message authors only, not a complete roster.
-            # Never mark existing chatters absent based on incomplete Kick events.
-            full_resync=stream.platform != Platform.KICK,
-            clear_if_empty=not live.is_live,
+            # A successful Kick active-chatters response is a complete current
+            # roster. Webhook-only fallback is incremental and must retain users.
+            full_resync=(
+                stream.platform != Platform.KICK
+                or kick_roster_complete
+                or not live.is_live
+            ),
+            clear_if_empty=not live.is_live or kick_roster_complete,
         )
         synced = sync_stats["total_synced"]
         if stream.platform == Platform.KICK:
@@ -127,7 +168,7 @@ class PlatformSyncService:
             "viewer_count": live.viewer_count,
             "chatters_synced": synced,
             "source": (
-                "kick_webhook"
+                "kick_active_chatters"
                 if stream.platform == Platform.KICK
                 else stream.platform.value
             ),
@@ -136,6 +177,16 @@ class PlatformSyncService:
                     "chat_subscription": kick_subscription_status,
                 }
                 if stream.platform == Platform.KICK
+                else {}
+            ),
+            **(
+                {"chat_history_error": chat_history_error}
+                if chat_history_error
+                else {}
+            ),
+            **(
+                {"live_status_error": live_status_error}
+                if live_status_error
                 else {}
             ),
         }

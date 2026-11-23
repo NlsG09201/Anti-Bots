@@ -55,6 +55,25 @@ class KickPlatformAdapter(PlatformAdapter):
         )
 
     async def fetch_viewers(self, stream: Stream) -> List[ViewerSnapshot]:
-        # Kick's documented Events API sends chat messages, not a complete
-        # participant roster. Verified chat webhooks populate active sessions.
-        return []
+        # Kick's public active-chatters endpoint lists participants currently
+        # present in chat. It does not expose viewers who watch silently.
+        channel_id = str(stream.external_id or "")
+        if not channel_id.isdigit():
+            channel_id = await (await self._client(stream)).get_broadcaster_id_by_slug(
+                (stream.settings or {}).get("login") or stream.channel_name
+            ) or ""
+            if channel_id:
+                stream.external_id = channel_id
+        if not channel_id:
+            raise RuntimeError("No se pudo resolver el ID del canal Kick para leer el chat.")
+
+        chatters = await KickAPIClient().get_active_chatters(channel_id)
+        return [
+            ViewerSnapshot(
+                platform_user_id=str(chatter["user_id"]),
+                platform_username=str(chatter["username"]),
+                is_in_chat=True,
+                metadata={"source": "kick_chat", "role": chatter["role"]},
+            )
+            for chatter in chatters
+        ]

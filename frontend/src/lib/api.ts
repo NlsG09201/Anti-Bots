@@ -888,6 +888,7 @@ export const api = {
         source: string;
         chat_subscription?: "configured" | "failed" | null;
         chat_history_error?: string;
+        live_status_error?: string;
       }>(
         `/api/v1/streams/${streamId}/sync/platform`,
         { method: "POST" },

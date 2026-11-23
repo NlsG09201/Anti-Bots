@@ -1,5 +1,8 @@
+from types import SimpleNamespace
+
 import pytest
 
+from app.integrations.kick.client import KickAPIClient
 from app.integrations.tiktok.webcast import UNAVAILABLE_REASON, fetch_tiktok_room
 from app.integrations.kick.oauth import DEFAULT_SCOPES, KICK_WEBHOOK_EVENTS
 from app.services.platforms.kick_adapter import KickPlatformAdapter
@@ -7,10 +10,20 @@ from app.services.platforms.tiktok_adapter import TikTokPlatformAdapter
 
 
 @pytest.mark.asyncio
-async def test_kick_does_not_claim_a_complete_chat_roster():
-    snapshots = await KickPlatformAdapter().fetch_viewers(stream=None)
+async def test_kick_fetches_current_active_chatters(monkeypatch):
+    async def active_chatters(_client, channel_id):
+        assert channel_id == "12345"
+        return [{"username": "chat_user", "user_id": "chat_user", "role": "chatters"}]
 
-    assert snapshots == []
+    monkeypatch.setattr(KickAPIClient, "get_active_chatters", active_chatters)
+    stream = SimpleNamespace(external_id="12345", settings={}, channel_name="channel")
+
+    snapshots = await KickPlatformAdapter().fetch_viewers(stream)
+
+    assert len(snapshots) == 1
+    assert snapshots[0].platform_username == "chat_user"
+    assert snapshots[0].is_in_chat is True
+    assert snapshots[0].metadata["source"] == "kick_chat"
 
 
 @pytest.mark.asyncio

@@ -196,7 +196,7 @@ function ViewersContent() {
             (platform === "kick" && sync.chat_subscription === "failed"
               ? "No se pudo activar la suscripción de chat de Kick. Revisa las credenciales y la configuración de Webhooks de la aplicación Kick."
               : platform === "kick" && sync.chat_history_error
-                ? `No se pudo consultar el historial reciente de chat (${sync.chat_history_error}); se conservaron los usuarios recibidos por webhook.`
+                ? `No se pudo consultar la lista de usuarios activos de Kick (${sync.chat_history_error}); se conservaron los usuarios recibidos por webhook.`
                 : "Los espectadores silenciosos no son identificables por la plataforma."),
         );
       } catch (e) {
