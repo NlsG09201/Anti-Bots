@@ -149,9 +149,13 @@ class KickOAuth:
         access_token: str,
         broadcaster_user_id: str | None = None,
         *,
+        event_names: Optional[list[str]] = None,
         previously_requested: Optional[list[str]] = None,
         requested_at: Optional[str] = None,
     ) -> Dict[str, Any]:
+        requested_events = sorted(set(event_names or KICK_WEBHOOK_EVENTS))
+        if set(requested_events) - set(KICK_WEBHOOK_EVENTS):
+            raise ValueError("Unsupported Kick event subscription requested")
         async with httpx.AsyncClient(timeout=20.0) as client:
             headers = {
                 "Authorization": f"Bearer {access_token}",
@@ -177,7 +181,7 @@ class KickOAuth:
                 if name and str(version) == "1" and item.get("method", "webhook") == "webhook":
                     subscribed.add(str(name))
 
-            missing = [name for name in KICK_WEBHOOK_EVENTS if name not in subscribed]
+            missing = [name for name in requested_events if name not in subscribed]
             assumed = []
             if previously_requested and requested_at:
                 try:

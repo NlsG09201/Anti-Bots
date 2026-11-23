@@ -114,6 +114,7 @@ class PlatformSyncService:
                     subscription_result = await oauth.reconcile_event_subscriptions(
                         token,
                         stream.external_id if app_token else None,
+                        event_names=["chat.message.sent"],
                     )
                     meta["kick_webhook_subscriptions"] = (
                         subscription_result.get("subscribed", [])
