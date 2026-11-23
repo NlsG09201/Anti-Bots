@@ -121,7 +121,6 @@ class PlatformSyncService:
                         + subscription_result.get("assumed", [])
                     )
                     if subscription_result.get("created"):
-                        from datetime import datetime, timezone
                         meta["kick_webhook_subscriptions_requested_at"] = datetime.now(timezone.utc).isoformat()
                     meta["kick_webhook_subscriptions_verified"] = bool(
                         subscription_result.get("verified_by_api")
@@ -133,7 +132,6 @@ class PlatformSyncService:
                     meta["kick_webhook_subscription_error"] = (
                         ",".join(subscription_result.get("failed", [])) or None
                     )
-                    from datetime import datetime, timezone
                     meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
                     meta["kick_webhook_callback_url"] = get_settings().kick_webhook_callback_url
                     stream.settings = meta
@@ -153,7 +151,6 @@ class PlatformSyncService:
                 except Exception as exc:
                     kick_subscription_status = "failed"
                     meta["kick_webhook_subscription_error"] = type(exc).__name__
-                    from datetime import datetime, timezone
                     meta["kick_webhook_subscriptions_checked_at"] = datetime.now(timezone.utc).isoformat()
                     stream.settings = meta
                     logger.warning(
