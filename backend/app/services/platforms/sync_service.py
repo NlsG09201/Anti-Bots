@@ -178,8 +178,26 @@ class PlatformSyncService:
         if live.is_live or (stream.platform == Platform.KICK and live_status_error):
             if stream.platform == Platform.KICK:
                 # Read only signature-verified chat.message.sent deliveries;
-                # Kick does not expose a supported complete chatter roster.
+                # combine them with the best-effort active-chat roster when
+                # Kick's web endpoint is reachable.
                 chatters = await self._recent_kick_chatters(stream.id)
+                active_chatters = await adapter.fetch_viewers(stream)
+                by_user = {
+                    str(chatter.get("username") or chatter.get("user_id") or "").casefold(): chatter
+                    for chatter in chatters
+                }
+                for snapshot in active_chatters:
+                    username = snapshot.platform_username or snapshot.platform_user_id
+                    key = str(username).casefold()
+                    existing = by_user.get(key)
+                    chatter = {
+                        "username": username,
+                        "user_id": snapshot.platform_user_id,
+                        "source": "kick_chat",
+                        "messages": int((existing or {}).get("messages", 0)),
+                    }
+                    by_user[key] = chatter
+                chatters = list(by_user.values())
                 kick_activity_window = True
             else:
                 snapshots = await adapter.fetch_viewers(stream)
