@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import List
+from urllib.parse import quote
 
 import httpx
 
@@ -67,11 +68,12 @@ class KickPlatformAdapter(PlatformAdapter):
         optional best-effort source; verified chat.message.sent webhooks remain
         the supported source and are merged by PlatformSyncService.
         """
-        broadcaster_id = str(stream.external_id or "").strip()
-        if not broadcaster_id.isdigit():
+        channel_slug = str(
+            (stream.settings or {}).get("login") or stream.channel_name or ""
+        ).strip().lstrip("@")
+        if not channel_slug:
             return []
 
-        url = f"https://web.kick.com/api/v1/channels/{broadcaster_id}/chat/active-chatters"
         try:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(8.0, connect=4.0),
@@ -82,7 +84,24 @@ class KickPlatformAdapter(PlatformAdapter):
                     "Referer": f"https://kick.com/{stream.channel_name}",
                 },
             ) as client:
-                response = await client.get(url)
+                channel_response = await client.get(
+                    f"https://kick.com/api/v2/channels/{quote(channel_slug, safe='')}"
+                )
+                channel_response.raise_for_status()
+                channel_payload = channel_response.json()
+                channel_id = str(
+                    channel_payload.get("id") if isinstance(channel_payload, dict) else ""
+                ).strip()
+                if not channel_id.isdigit():
+                    logger.warning(
+                        "kick_internal_channel_id_unavailable",
+                        stream_id=str(stream.id),
+                    )
+                    return []
+
+                response = await client.get(
+                    f"https://web.kick.com/api/v1/channels/{channel_id}/chat/active-chatters"
+                )
                 response.raise_for_status()
                 payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
