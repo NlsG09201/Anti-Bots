@@ -27,12 +27,13 @@ class KickPlatformAdapter(PlatformAdapter):
     async def fetch_live_status(self, stream: Stream) -> LiveStatus:
         client = await self._client(stream)
         broadcaster_id = str(stream.external_id or "")
-        if not broadcaster_id.isdigit():
-            broadcaster_id = await client.get_broadcaster_id_by_slug(
-                (stream.settings or {}).get("login") or stream.channel_name
-            ) or ""
-            if broadcaster_id:
-                stream.external_id = broadcaster_id
+        # external_id is the broadcaster ID. Older discovery code stored the
+        # live-stream ID there, so resolve by the stable channel slug first.
+        slug = (stream.settings or {}).get("login") or stream.channel_name
+        resolved_id = await client.get_broadcaster_id_by_slug(slug)
+        if resolved_id:
+            broadcaster_id = resolved_id
+            stream.external_id = resolved_id
         if not broadcaster_id.isdigit() and client.access_token:
             # Older monitor builds overwrote external_id with the livestream
             # UUID. Recover the broadcaster ID from the connected Kick account.
@@ -58,12 +59,11 @@ class KickPlatformAdapter(PlatformAdapter):
         # Kick's public active-chatters endpoint lists participants currently
         # present in chat. It does not expose viewers who watch silently.
         channel_id = str(stream.external_id or "")
-        if not channel_id.isdigit():
-            channel_id = await (await self._client(stream)).get_broadcaster_id_by_slug(
-                (stream.settings or {}).get("login") or stream.channel_name
-            ) or ""
-            if channel_id:
-                stream.external_id = channel_id
+        slug = (stream.settings or {}).get("login") or stream.channel_name
+        resolved_id = await (await self._client(stream)).get_broadcaster_id_by_slug(slug)
+        if resolved_id:
+            channel_id = resolved_id
+            stream.external_id = resolved_id
         if not channel_id:
             raise RuntimeError("No se pudo resolver el ID del canal Kick para leer el chat.")
 

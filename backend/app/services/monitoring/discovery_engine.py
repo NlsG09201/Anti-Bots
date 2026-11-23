@@ -108,10 +108,14 @@ class LiveDiscoveryEngine:
                 try:
                     live = await adapter.fetch_live_status(stream)
                     stream.viewer_count = live.viewer_count
-                    if live.external_live_id:
-                        stream.external_id = live.external_live_id
-                    
                     meta = dict(stream.settings or {})
+                    if live.external_live_id:
+                        live_id_key = (
+                            "live_video_id"
+                            if stream.platform.value == "youtube"
+                            else "live_stream_id"
+                        )
+                        meta[live_id_key] = live.external_live_id
                     meta["last_discovery_check"] = datetime.now(timezone.utc).isoformat()
                     meta["last_sync_title"] = live.title
                     meta["validation_reason"] = reason
@@ -178,9 +182,14 @@ class LiveDiscoveryEngine:
 
             stream.viewer_count = live.viewer_count
             stream.is_live = live.is_live
-            if live.external_live_id:
-                stream.external_id = live.external_live_id
             stream_meta = dict(stream.settings or {})
+            if live.external_live_id:
+                live_id_key = (
+                    "live_video_id"
+                    if stream.platform.value == "youtube"
+                    else "live_stream_id"
+                )
+                stream_meta[live_id_key] = live.external_live_id
             stream_meta["stream_title"] = live.title
             stream.settings = stream_meta
 

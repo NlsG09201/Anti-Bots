@@ -91,8 +91,10 @@ class YouTubeLiveMonitor:
                     stream.is_live = live.is_live
                     stream.viewer_count = live.viewer_count
                     if live.external_live_id:
-                        stream.external_id = live.external_live_id
                         self.video_id = live.external_live_id
+                        meta = dict(stream.settings or {})
+                        meta["live_video_id"] = live.external_live_id
+                        stream.settings = meta
 
                     if live.viewer_count - prev >= 100:
                         await emit_platform_event(
