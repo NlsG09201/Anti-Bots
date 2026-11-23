@@ -68,6 +68,35 @@ def optimize_review_queue(
     selected.sort(key=lambda item: item.risk_score, reverse=True)
     used_minutes = len(selected) * minutes_per_review
     exposure_points = sum(eligible[index][1] for index in chosen) / 100
+    if not rows:
+        recommendation = (
+            "No se encontraron sesiones activas marcadas como sospechosas o con puntuación "
+            "de riesgo mayor que cero. Mantén la monitorización; el optimizador no recomienda "
+            "revisar usuarios sin señales de riesgo."
+        )
+    elif not eligible:
+        recommendation = (
+            "Hay sesiones sospechosas, pero todas superan el presupuesto de exposición "
+            "o no justifican el costo de revisión configurado. Revisa esos parámetros "
+            "antes de ampliar la cola."
+        )
+    elif max_reviews == 0:
+        recommendation = (
+            "Hay sesiones que cumplen el presupuesto, pero la capacidad no alcanza "
+            "para una revisión. Aumenta la capacidad o reduce los minutos por revisión."
+        )
+    elif selected:
+        recommendation = (
+            f"Prioriza {len(selected)} sesión(es) seleccionada(s), ordenadas por riesgo. "
+            f"Usarás {used_minutes} de {capacity_minutes} minutos y "
+            f"{round(exposure_points, 2)} de {false_positive_budget} puntos de exposición. "
+            "Valida la evidencia antes de tomar cualquier medida."
+        )
+    else:
+        recommendation = (
+            "Ninguna combinación mejora el objetivo con la capacidad y el presupuesto actuales. "
+            "Ajusta los parámetros o mantén la cola en observación."
+        )
     return {
         "solver": "exact dynamic programming (0-1 knapsack)",
         "candidate_count": len(rows),
@@ -81,6 +110,7 @@ def optimize_review_queue(
         "false_positive_budget": false_positive_budget,
         "estimated_exposure_points": round(exposure_points, 2),
         "objective_value": round(best_score, 4),
+        "recommendation": recommendation,
         "selected": [
             {
                 "session_id": item.session_id,

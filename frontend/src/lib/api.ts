@@ -1965,6 +1965,7 @@ export interface ReviewOptimizationResult {
   false_positive_budget: number;
   estimated_exposure_points: number;
   objective_value: number;
+  recommendation: string;
   data_source: string;
   truncated: boolean;
   assumptions: string[];

@@ -19,10 +19,28 @@ export default function OperationsResearchPage() {
     queryFn: () => api.streams.list(token!),
     enabled: !!token,
   });
+  const initialCalculation = useQuery({
+    queryKey: ["operations-research-initial", token],
+    queryFn: () => api.operationsResearch.optimizeReviewQueue(token!, {
+      capacity_minutes: 60,
+      minutes_per_review: 5,
+      false_positive_budget: 50,
+      false_positive_cost: 1,
+      max_candidates: 500,
+    }),
+    enabled: !!token,
+    retry: false,
+  });
   const solve = useMutation({
     mutationFn: (input: ReviewOptimizationInput) => api.operationsResearch.optimizeReviewQueue(token!, input),
   });
-  const result = solve.data;
+  const result = solve.data ?? initialCalculation.data;
+  const calculationError = solve.isError
+    ? solve.error
+    : solve.data
+      ? null
+      : initialCalculation.error;
+  const isCalculating = solve.isPending || initialCalculation.isPending;
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,14 +86,19 @@ export default function OperationsResearchPage() {
           </select>
         </label>
         <div className="md:col-span-5">
-          <Button disabled={solve.isPending || !token}>
-            <Activity className="h-4 w-4" /> {solve.isPending ? "Resolviendo…" : "Resolver con sesiones reales"}
+          <Button disabled={isCalculating || !token}>
+            <Activity className="h-4 w-4" /> {isCalculating ? "Calculando…" : "Resolver con sesiones reales"}
           </Button>
         </div>
       </form>
 
-      {solve.isError && <p role="alert" className="rounded-lg border border-cyber-danger/40 p-4 text-sm text-cyber-danger">{solve.error.message}</p>}
+      {calculationError && <p role="alert" className="rounded-lg border border-cyber-danger/40 p-4 text-sm text-cyber-danger">No fue posible calcular la cola: {calculationError.message}</p>}
+      {isCalculating && <p role="status" className="rounded-lg border border-cyber-border/60 p-4 text-sm text-cyber-muted">Consultando sesiones reales y resolviendo la cola de revisión…</p>}
       {result && <section aria-live="polite" className="space-y-4">
+        <div role="status" className="rounded-lg border border-cyber-accent/30 bg-cyber-accent/5 p-4 text-sm text-white">
+          <p className="text-[10px] uppercase tracking-wider text-cyber-accent">Recomendación calculada</p>
+          <p className="mt-1">{result.recommendation}</p>
+        </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
             ["Candidatas reales", result.candidate_count],
@@ -85,7 +108,7 @@ export default function OperationsResearchPage() {
             ["Exposición estimada", `${result.estimated_exposure_points} / ${result.false_positive_budget} pts`],
           ].map(([label, value]) => <div key={label} className="rounded-lg border border-cyber-border/60 bg-cyber-bg/40 p-4"><p className="text-[10px] uppercase tracking-wider text-cyber-muted">{label}</p><p className="mt-1 text-xl font-mono text-white">{value}</p></div>)}
         </div>
-        {result.candidate_count === 0 && <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-200">No hay sesiones activas marcadas como sospechosas para este tenant. Verifica que los canales estén recibiendo eventos o espectadores observados.</p>}
+        {result.candidate_count === 0 && <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-200">No hay sesiones activas con señales de riesgo para este tenant. Verifica que los canales estén recibiendo eventos y actividad de chat.</p>}
         {result.candidate_count > 0 && result.eligible_count === 0 && <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-200">Hay sesiones sospechosas, pero ninguna cumple el presupuesto de exposición y el costo configurados. Aumenta el presupuesto o reduce el costo relativo.</p>}
         {result.eligible_count > 0 && result.selected_count === 0 && <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-200">Hay sesiones elegibles, pero la capacidad no alcanza para revisar ninguna con el tiempo asignado. Aumenta la capacidad o reduce los minutos por revisión.</p>}
         <div className="overflow-x-auto rounded-xl border border-cyber-border/70">

@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AnalystUser, get_db
@@ -35,7 +35,10 @@ async def optimize_review_queue_endpoint(
         .where(
             Stream.tenant_id == current_user.tenant_id,
             ViewerSession.is_active.is_(True),
-            ViewerSession.is_suspected_bot.is_(True),
+            or_(
+                ViewerSession.is_suspected_bot.is_(True),
+                ViewerSession.risk_score > 0,
+            ),
         )
         .order_by(ViewerSession.risk_score.desc(), ViewerSession.joined_at.asc())
         .limit(payload.max_candidates)
@@ -73,6 +76,8 @@ async def optimize_review_queue_endpoint(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    result["data_source"] = "viewer_sessions activos y sospechosos del tenant autenticado"
+    result["data_source"] = (
+        "sesiones activas del tenant marcadas sospechosas o con puntuación de riesgo mayor que cero"
+    )
     result["truncated"] = len(pairs) == payload.max_candidates
     return result
