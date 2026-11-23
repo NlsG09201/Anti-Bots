@@ -482,24 +482,45 @@ async def run_channel_monitor(
             from app.services.detection.anomaly_intelligence import AnomalyIntelligenceService
 
             sync_summary = await PlatformSyncService(db).sync_viewers(stream)
-            anomaly = AnomalyIntelligenceService()
-            assessment = await anomaly.assess_window(
-                str(stream.id),
-                joins_per_minute=float(sync_summary.get("chatters_synced", 0)),
-                unique_ip_ratio=0.5,
-                proxy_ratio=0.0,
-                fingerprint_collision_ratio=0.0,
-                chat_participation_ratio=0.6,
-            )
+            # Persist the actual platform/chat sync before running optional
+            # analytics. A failed dashboard or anomaly subsystem must not turn
+            # a successful Kick chat sync into a failed monitor response.
+            await db.commit()
+            assessment_payload = None
+            try:
+                assessment = await AnomalyIntelligenceService().assess_window(
+                    str(stream.id),
+                    joins_per_minute=float(sync_summary.get("chatters_synced", 0)),
+                    unique_ip_ratio=0.5,
+                    proxy_ratio=0.0,
+                    fingerprint_collision_ratio=0.0,
+                    chat_participation_ratio=0.6,
+                )
+                assessment_payload = assessment.to_dict()
+            except Exception as exc:
+                logger.exception(
+                    "channel_monitor_anomaly_failed",
+                    stream_id=str(stream_id),
+                    error_type=type(exc).__name__,
+                )
+
             summary = {
                 "status": "ok",
                 "sync_mode": "platform_live",
                 **sync_summary,
-                "anomaly": assessment.to_dict(),
+                "anomaly": assessment_payload,
             }
-            tenant_streams = await get_tenant_stream_ids(db, current_user.tenant_id)
-            await push_dashboard_realtime(db, current_user.tenant_id, tenant_streams)
-            await db.commit()
+            try:
+                tenant_streams = await get_tenant_stream_ids(db, current_user.tenant_id)
+                await push_dashboard_realtime(db, current_user.tenant_id, tenant_streams)
+            except Exception as exc:
+                await db.rollback()
+                logger.exception(
+                    "channel_monitor_dashboard_update_failed",
+                    stream_id=str(stream_id),
+                    error_type=type(exc).__name__,
+                )
+                summary["dashboard_update"] = "unavailable"
             return summary
 
         irc_seconds = min(45.0, float(settings.viewer_load_irc_seconds))
