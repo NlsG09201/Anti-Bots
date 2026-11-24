@@ -51,11 +51,14 @@ async def get_current_user(
     try:
         token_revoked = await cache.is_blacklisted(payload.get("jti", ""))
     except Exception as exc:
-        logger.error("token_revocation_check_failed", error_type=type(exc).__name__)
-        raise HTTPException(
-            status_code=503,
-            detail="Authentication services are temporarily unavailable.",
-        ) from exc
+        # Access tokens are short-lived signed JWTs; Redis only adds a revocation
+        # lookup. During a Redis outage, keep serving them and still verify the
+        # user is active in PostgreSQL below.
+        logger.warning(
+            "access_token_revocation_check_unavailable",
+            error_type=type(exc).__name__,
+        )
+        token_revoked = False
     if token_revoked:
         logger.warning(
             "authentication_rejected",

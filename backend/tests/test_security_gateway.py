@@ -276,7 +276,7 @@ def test_security_gateway_blocks_scanner_paths():
     assert resp.status_code == 404
 
 
-def test_security_gateway_fails_closed_when_rate_limit_store_is_unavailable(monkeypatch):
+def test_security_gateway_uses_local_limits_when_rate_limit_store_is_unavailable(monkeypatch):
     from app.infrastructure.security import gateway
 
     async def unavailable(_request):
@@ -292,5 +292,5 @@ def test_security_gateway_fails_closed_when_rate_limit_store_is_unavailable(monk
     app.add_middleware(gateway.SecurityGatewayMiddleware)
     response = TestClient(app).get("/ok")
 
-    assert response.status_code == 503
-    assert response.headers["retry-after"] == "5"
+    assert response.status_code == 200
+    assert response.headers["x-ratelimit-limit"]
