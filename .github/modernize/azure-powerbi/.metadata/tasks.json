@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Tasks template for the StreamShield Azure and Power BI modernization plan.",
+  "tasks": [
+    {
+      "type": "setupBaseline",
+      "id": "001-setup-baseline",
+      "description": "Capture the current behavior baseline for the in-scope Python backend before migration.",
+      "requirements": "Create a frozen behavior specification and mock/real decision table for external dependencies used by migration verification. Operate on a snapshot of backend/ only. Do not modify application code.",
+      "snapshotFolder": "backend/"
+    },
+    {
+      "type": "infrastructure",
+      "id": "002-infrastructure-bicep",
+      "description": "Generate and validate Bicep for the future StreamShield Azure environment without provisioning resources.",
+      "requirements": "Prepare Bicep for the planned Azure Container Apps API and worker, Azure Database for PostgreSQL, Azure Managed Redis, and required supporting resources. Keep BigQuery and the Vercel frontend outside the Azure migration. Do not provision resources or include credentials, subscription IDs, or resource IDs. Azure subscription and resource details remain future prerequisites.",
+      "iacType": "bicep",
+      "provision": false,
+      "skills": [
+        {
+          "name": "infrastructure-bicep-generation",
+          "location": "builtin"
+        }
+      ]
+    },
+    {
+      "type": "transform",
+      "id": "003-transform-postgresql-to-azure",
+      "description": "Move the StreamShield PostgreSQL data service from Render to Azure Database for PostgreSQL.",
+      "requirements": "Migrate the in-scope Python backend's PostgreSQL connectivity and data service from Render to Azure Database for PostgreSQL while preserving application behavior, schema, and data. Use managed identity where supported. Do not change the separate Java service or the BigQuery analytics pipeline. Do not provision resources or include secrets or resource IDs.",
+      "dependencies": [],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "004-transform-redis-to-azure",
+      "description": "Move the StreamShield Redis service from Render to Azure Managed Redis.",
+      "requirements": "Migrate the in-scope Python API and worker Redis connectivity from Render to Azure Managed Redis while preserving queue, cache, and required Redis TCP behavior. Use managed identity where supported. Do not modify the separate Java service, frontend hosting, or BigQuery pipeline. Do not provision resources or include secrets or resource IDs.",
+      "dependencies": [
+        "003-transform-postgresql-to-azure"
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "005-transform-powerbi-publish-and-embed",
+      "description": "Publish the existing Power BI project artifacts and embed the report in the application.",
+      "requirements": "Use the existing PBIP artifacts under business-intelligence/powerbi as the report source and implement app-owns-data embedding with a service principal. Do not assume a report or workspace is already published; identify and document the tenant, workspace, capacity/licensing, permissions, and cost prerequisites as open decisions. Keep credentials and secrets out of source control and the browser. The Next.js frontend remains hosted on Vercel. Preserve the existing BigQuery data pipeline and do not migrate it to Fabric.",
+      "dependencies": [
+        "004-transform-redis-to-azure"
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "integrationTest",
+      "id": "006-integrationTest",
+      "description": "Build integration tests for migrated Azure services and run post-migration verification",
+      "requirements": "Add and run integration verification for the migrated PostgreSQL and Redis integrations, the API/worker service boundaries, and the Power BI embedding integration within the confirmed scope. Use mock mode for Azure and Power BI external dependencies because no Azure environment or confirmed Power BI Service workspace is available. Reuse the frozen behavior specification and infra-decision-table from setupBaseline. Do not provision resources or store resource IDs, subscription IDs, connection strings, or secrets.",
+      "dependencies": [
+        "001-setup-baseline",
+        "002-infrastructure-bicep",
+        "003-transform-postgresql-to-azure",
+        "004-transform-redis-to-azure",
+        "005-transform-powerbi-publish-and-embed"
+      ]
+    },
+    {
+      "type": "security",
+      "id": "007-security-cve-remediation",
+      "description": "Scan and remediate known dependency vulnerabilities in the in-scope modernization components.",
+      "requirements": "Scan dependencies for the in-scope Python backend and any frontend dependencies changed for Power BI embedding. Upgrade vulnerable dependencies to the minimum patched versions; if a fix requires a major version upgrade, document the affected dependency, current and upgraded versions, and breaking-change risk. Verify applicable builds and tests. Exclude backend-spring and do not add unrelated security scope.",
+      "dependencies": [
+        "003-transform-postgresql-to-azure",
+        "004-transform-redis-to-azure",
+        "005-transform-powerbi-publish-and-embed",
+        "006-integrationTest"
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "deployment",
+      "id": "008-deployment-azure-container-apps",
+      "description": "Containerize and prepare the Python API and worker for future deployment to Azure Container Apps.",
+      "requirements": "Prepare the in-scope Python 3.11 FastAPI API and separate worker for Azure Container Apps, including required container build configuration, and deploy only when an Azure subscription and target resources have been made available and explicitly authorized. The frontend remains on Vercel. Do not provision Azure resources, deploy now, or include resource IDs or secrets.",
+      "dependencies": [
+        "002-infrastructure-bicep",
+        "003-transform-postgresql-to-azure",
+        "004-transform-redis-to-azure",
+        "005-transform-powerbi-publish-and-embed",
+        "007-security-cve-remediation"
+      ],
+      "targetAzureService": "Azure Container Apps",
+      "resourceStatus": "No Azure subscription or resources are currently available; future deployment is gated on their availability and authorization.",
+      "deploymentTool": "bicep",
+      "skills": [
+        {
+          "name": "azcli-containerapp-deploy",
+          "location": "builtin"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "planName": "azure-powerbi",
+    "projectName": "Anti-Bots / StreamShield",
+    "language": "python",
+    "createdAt": "2026-11-24T16:59:49-05:00",
+    "version": "1.0"
+  }
+}
