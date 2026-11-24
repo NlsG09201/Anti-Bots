@@ -1,8 +1,4 @@
-"""
-Worker arq (equivalente BullMQ en Python).
-
-Ejecutar: arq app.workers.arq_worker.WorkerSettings
-"""
+"""ARQ jobs for the platform worker; start the worker through its runner."""
 
 from __future__ import annotations
 
@@ -20,6 +16,7 @@ from app.events.processor import process_pipeline_event
 from app.events.queue import QUEUE_BY_CATEGORY, queue_name_for
 from app.events.schemas import EventCategory, PipelineEvent
 from app.events.streams import EventStreamService
+from app.infrastructure.cache.redis_client import create_arq_pool
 from app.infrastructure.database.models import AuditLog, KickWebhookEvent, Platform, Stream
 
 logger = get_logger(__name__)
@@ -354,10 +351,7 @@ async def startup(ctx: dict) -> None:
         except Exception as exc:
             logger.exception("live_intel_worker_start_failed", error=str(exc)[:180])
     # Schedule discovery batch every minute
-    from arq import create_pool
-    from arq.connections import RedisSettings
-    redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
-    pool = await create_pool(redis_settings)
+    pool = await create_arq_pool()
     await pool.enqueue_job("discovery_batch_job", _queue_name=UNIFIED_QUEUE, _job_id="discovery_init_batch")
     await pool.enqueue_job("reconnect_monitors_job", _queue_name=UNIFIED_QUEUE, _job_id="reconnect_init")
     await pool.close()
@@ -458,10 +452,7 @@ async def discovery_batch_job(ctx: dict) -> Dict[str, Any]:
     count = await get_live_discovery_engine().enqueue_discovery_batch()
     
     # Reschedule in 60 seconds
-    from arq import create_pool
-    from arq.connections import RedisSettings
-    redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
-    pool = await create_pool(redis_settings)
+    pool = await create_arq_pool()
     await pool.enqueue_job(
         "discovery_batch_job",
         _queue_name=UNIFIED_QUEUE,
@@ -488,10 +479,7 @@ async def poll_stream_metrics_job(ctx: dict, stream_id: str) -> Dict[str, Any]:
     
     # If still live, reschedule in 15 seconds
     if result.get("viewers") is not None:
-        from arq import create_pool
-        from arq.connections import RedisSettings
-        redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
-        pool = await create_pool(redis_settings)
+        pool = await create_arq_pool()
         await pool.enqueue_job(
             "poll_stream_metrics_job",
             stream_id,
@@ -570,10 +558,7 @@ async def reconnect_monitors_job(ctx: dict) -> Dict[str, Any]:
                 reconnected += 1
     
     # Reschedule in 30 seconds
-    from arq import create_pool
-    from arq.connections import RedisSettings
-    redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
-    pool = await create_pool(redis_settings)
+    pool = await create_arq_pool()
     await pool.enqueue_job(
         "reconnect_monitors_job",
         _queue_name=UNIFIED_QUEUE,

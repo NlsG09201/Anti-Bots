@@ -12,7 +12,11 @@ from typing import Any, Dict, Optional
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.schemas import EventCategory, PipelineEvent
-from app.infrastructure.cache.redis_client import redis_is_configured, report_redis_error
+from app.infrastructure.cache.redis_client import (
+    create_arq_pool,
+    redis_is_configured,
+    report_redis_error,
+)
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -42,11 +46,7 @@ async def enqueue_event_job(
     if not settings.event_queue_enabled or not redis_is_configured():
         return None
     try:
-        from arq import create_pool
-        from arq.connections import RedisSettings
-
-        redis_settings = RedisSettings.from_dsn(settings.redis_url)
-        pool = await create_pool(redis_settings)
+        pool = await create_arq_pool()
         job_id = f"{event.category.value}:{event.stream_id}:{event.enqueued_at}"
         try:
             job = await pool.enqueue_job(
@@ -105,10 +105,7 @@ async def enqueue_kick_webhook_job(webhook_event_id: str) -> Optional[str]:
     if not settings.event_queue_enabled or not redis_is_configured():
         return None
     try:
-        from arq import create_pool
-        from arq.connections import RedisSettings
-
-        pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        pool = await create_arq_pool()
         try:
             job = await pool.enqueue_job(
                 "process_kick_webhook_event_job",
@@ -135,11 +132,7 @@ async def get_queue_stats() -> Dict[str, Any]:
         }
     pool = None
     try:
-        from arq import create_pool
-        from arq.connections import RedisSettings
-
-        redis_settings = RedisSettings.from_dsn(settings.redis_url)
-        pool = await create_pool(redis_settings)
+        pool = await create_arq_pool()
         queued_count = await pool.zcard(UNIFIED_QUEUE)
         return {
             "enabled": True,

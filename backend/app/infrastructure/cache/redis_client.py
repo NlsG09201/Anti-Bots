@@ -1,3 +1,4 @@
+import asyncio
 import ipaddress
 import json
 import time
@@ -7,6 +8,7 @@ from urllib.parse import urlparse
 
 import httpx
 import redis.asyncio as redis
+from redis.credentials import CredentialProvider
 from redis.exceptions import (
     ConnectionError as RedisConnectionError,
     TimeoutError as RedisTimeoutError,
@@ -21,6 +23,7 @@ _pool: Optional[redis.Redis] = None
 _rest_client: Optional[httpx.AsyncClient] = None
 _memory: dict[str, tuple[str, float]] = {}
 _upstash_quota_exhausted = False
+_entra_credential_provider: Optional[CredentialProvider] = None
 
 
 def report_redis_error(error: Exception) -> bool:
@@ -136,6 +139,52 @@ def _create_redis_credential_provider():
     )
 
 
+def _get_redis_credential_provider() -> CredentialProvider:
+    global _entra_credential_provider
+    if _entra_credential_provider is None:
+        _entra_credential_provider = _create_redis_credential_provider()
+    return _entra_credential_provider
+
+
+class AzureManagedIdentityCredentialProvider(CredentialProvider):
+    def get_credentials(self) -> tuple[str] | tuple[str, str]:
+        return _get_redis_credential_provider().get_credentials()
+
+
+async def create_arq_pool():
+    from arq import create_pool
+    from arq.connections import ArqRedis, RedisSettings
+    from redis.exceptions import RedisError
+
+    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    if settings.redis_auth_mode != "managed_identity":
+        return await create_pool(redis_settings)
+
+    if not redis_is_configured():
+        raise RuntimeError(
+            "Managed identity Redis requires a rediss:// URL without embedded credentials"
+        )
+
+    pool = ArqRedis.from_url(
+        settings.redis_url,
+        credential_provider=_get_redis_credential_provider(),
+        ssl_cert_reqs="required",
+        ssl_check_hostname=True,
+    )
+    try:
+        for attempt in range(redis_settings.conn_retries + 1):
+            try:
+                await pool.ping()
+                return pool
+            except (ConnectionError, OSError, RedisError, TimeoutError):
+                if attempt >= redis_settings.conn_retries:
+                    raise
+                await asyncio.sleep(redis_settings.conn_retry_delay)
+    except Exception:
+        await pool.aclose()
+        raise
+
+
 async def get_redis() -> redis.Redis:
     global _pool
     if _upstash_quota_exhausted:
@@ -153,7 +202,8 @@ async def get_redis() -> redis.Redis:
             "max_connections": 50,
         }
         if settings.redis_auth_mode == "managed_identity":
-            options["credential_provider"] = _create_redis_credential_provider()
+            options["credential_provider"] = _get_redis_credential_provider()
+            options["ssl_check_hostname"] = True
         _pool = redis.from_url(settings.redis_url, **options)
     return _pool
 

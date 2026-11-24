@@ -12,13 +12,15 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from arq import create_pool
-from arq.connections import RedisSettings
 from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.infrastructure.cache.redis_client import get_redis, redis_is_configured
+from app.infrastructure.cache.redis_client import (
+    create_arq_pool,
+    get_redis,
+    redis_is_configured,
+)
 from app.infrastructure.cache.redis_schema import (
     live_discovery_key,
     live_heartbeat_key,
@@ -37,12 +39,11 @@ DISCOVERY_QUEUE = UNIFIED_QUEUE
 
 class LiveDiscoveryEngine:
     def __init__(self) -> None:
-        self._redis_settings = RedisSettings.from_dsn(settings.redis_url)
         self._pool: Any = None
 
     async def _get_pool(self):
         if self._pool is None:
-            self._pool = await create_pool(self._redis_settings)
+            self._pool = await create_arq_pool()
         return self._pool
 
     async def enqueue_discovery_batch(self) -> int:

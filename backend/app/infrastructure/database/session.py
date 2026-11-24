@@ -59,6 +59,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def dispose_database() -> None:
-    await engine.dispose()
-    if _azure_credential is not None:
-        await to_thread(_azure_credential.close)
+    global _azure_credential
+    credential = _azure_credential
+    _azure_credential = None
+    try:
+        await engine.dispose()
+    finally:
+        if credential is not None:
+            await to_thread(credential.close)

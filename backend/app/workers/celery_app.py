@@ -1,15 +1,43 @@
+from urllib.parse import urlparse
+
 from celery import Celery
 from celery.schedules import crontab
 
 from app.core.config import get_settings
+from app.infrastructure.cache.redis_client import _get_redis_credential_provider
 
 settings = get_settings()
+result_backend = settings.celery_result_backend or settings.redis_url
+
+
+def configure_managed_identity_backend(app: Celery, backend_url: str, auth_mode: str) -> None:
+    if auth_mode != "managed_identity":
+        return
+    parsed = urlparse(backend_url)
+    if parsed.scheme not in {"redis", "rediss"}:
+        return
+    if parsed.scheme != "rediss" or parsed.username is not None or parsed.password is not None:
+        raise ValueError(
+            "Managed identity Celery Redis backend requires rediss:// without embedded credentials"
+        )
+    app.conf.redis_backend_use_ssl = {
+        "credential_provider": _get_redis_credential_provider(),
+        "ssl_cert_reqs": "required",
+        "ssl_check_hostname": True,
+    }
+
 
 celery_app = Celery(
     "streamshield",
     broker=settings.celery_broker_url,
-    backend=settings.celery_result_backend or settings.redis_url,
+    backend=result_backend,
     include=["app.workers.tasks"],
+)
+
+configure_managed_identity_backend(
+    celery_app,
+    result_backend,
+    settings.redis_auth_mode,
 )
 
 celery_app.conf.update(

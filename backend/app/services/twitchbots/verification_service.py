@@ -19,7 +19,7 @@ from app.integrations.twitchbots_info.schemas import (
     TwitchBotsVerificationResult,
     UserReputationScores,
 )
-from app.infrastructure.cache.redis_client import redis_is_configured
+from app.infrastructure.cache.redis_client import create_arq_pool, redis_is_configured
 from app.services.viewers.session import ViewerSessionService
 
 logger = get_logger(__name__)
@@ -331,12 +331,9 @@ class TwitchBotsVerificationService:
             return None
         if not users:
             return None
-        try:
-            from arq import create_pool
-            from arq.connections import RedisSettings
 
-            redis_settings = RedisSettings.from_dsn(settings.redis_url)
-            pool = await create_pool(redis_settings)
+        try:
+            pool = await create_arq_pool()
             job = await pool.enqueue_job(
                 "twitchbots_verify_batch_job",
                 tenant_id,

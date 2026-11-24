@@ -15,8 +15,12 @@ from app.core.logging import setup_logging, get_logger
 from app.core.startup import run_startup_checks
 from app.infrastructure.database.init_db import init_database
 from app.infrastructure.database.migrations import run_startup_migrations
-from app.infrastructure.database.session import engine
-from app.infrastructure.cache.redis_client import close_redis, redis_is_configured
+from app.infrastructure.database.session import dispose_database, engine
+from app.infrastructure.cache.redis_client import (
+    close_redis,
+    create_arq_pool,
+    redis_is_configured,
+)
 from app.services.monitoring.orchestrator import get_platform_monitor_orchestrator
 
 logger = get_logger(__name__)
@@ -71,12 +75,14 @@ async def run_worker() -> None:
     # ARQ uses the native Redis protocol; Upstash REST credentials only cover
     # RedisCache operations and cannot be used as an ARQ connection URL.
     arq_task = None
+    arq_worker = None
     if redis_is_configured():
         from arq.worker import create_worker
         from app.workers.arq_worker import WorkerSettings
 
-        worker = create_worker(WorkerSettings)
-        arq_task = asyncio.create_task(worker.main())
+        redis_pool = await create_arq_pool()
+        arq_worker = create_worker(WorkerSettings, redis_pool=redis_pool)
+        arq_task = asyncio.create_task(arq_worker.main())
         logger.info("arq_worker_started_in_background")
     else:
         logger.warning("arq_worker_not_started", reason="native REDIS_URL is not configured")
@@ -91,6 +97,8 @@ async def run_worker() -> None:
             await arq_task
         except asyncio.CancelledError:
             pass
+    if arq_worker:
+        await arq_worker.close()
     if settings.platform_health_enabled:
         from app.services.platform_health.engine import get_platform_health_engine
 
@@ -105,7 +113,7 @@ async def run_worker() -> None:
 
         await get_live_intel_engine().stop()
     await close_redis()
-    await engine.dispose()
+    await dispose_database()
 
 
 def main() -> None:
