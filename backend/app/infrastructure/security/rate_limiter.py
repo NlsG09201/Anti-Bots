@@ -54,12 +54,19 @@ class AdvancedRateLimiter:
         path = request.url.path
         client_ip, _ = resolve_client_ip(request)
         route_limit, window = self._match_route_limit(path)
+        is_platform_webhook = path in {
+            "/api/v1/webhooks/kick",
+            "/api/v1/webhooks/twitch",
+            "/api/v1/integrations/kick/webhook",
+        }
         auth_header = request.headers.get("authorization", "")
         has_bearer = auth_header.lower().startswith("bearer ")
 
         global_limit = settings.security_global_ip_limit_per_minute
         if has_bearer:
             global_limit = max(global_limit, 600)
+        if is_platform_webhook:
+            global_limit = max(global_limit, 1200)
         allowed, count = self._check_local_bucket(
             f"ip:{client_ip}:global", global_limit, 60
         )
@@ -68,7 +75,7 @@ class AdvancedRateLimiter:
                 f"Global rate limit exceeded for IP ({count}/{global_limit} per minute)"
             )
 
-        if not has_bearer:
+        if not has_bearer and not is_platform_webhook:
             allowed, count = self._check_local_bucket(
                 f"ip:{client_ip}:burst", settings.rate_limit_burst, 10
             )
@@ -103,13 +110,18 @@ class AdvancedRateLimiter:
         if path in ("/health", "/metrics", "/docs", "/openapi.json", "/redoc"):
             return True, 0, ""
 
-        client_ip, _ = resolve_client_ip(request)
-        route_limit, window = self._match_route_limit(path)
         is_platform_webhook = path in {
             "/api/v1/webhooks/kick",
             "/api/v1/webhooks/twitch",
             "/api/v1/integrations/kick/webhook",
         }
+        if is_platform_webhook:
+            # Webhook handlers verify provider signatures themselves. Keep a
+            # local burst cap, but don't spend the exhausted shared Redis quota.
+            return self.check_local(request)
+
+        client_ip, _ = resolve_client_ip(request)
+        route_limit, window = self._match_route_limit(path)
         auth_header = request.headers.get("authorization", "")
         has_bearer = auth_header.lower().startswith("bearer ")
 

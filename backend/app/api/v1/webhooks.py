@@ -447,13 +447,15 @@ async def kick_webhook(
         for stored in pending_events:
             job_id = await enqueue_kick_webhook_job(str(stored.id))
             if not job_id:
-                logger.error(
-                    "kick_webhook_enqueue_failed",
+                # The signed delivery is already persisted as pending. Return
+                # success so Kick doesn't redeliver it in a tight loop; the
+                # worker's recovery job will enqueue the durable row later.
+                logger.warning(
+                    "kick_webhook_enqueue_deferred",
                     event_id=event_id,
                     event_type=event_type,
                     stream_id=str(stored.stream_id),
                 )
-                return Response(status_code=503)
         logger.info(
             "kick_webhook_accepted",
             event_id=event_id,
