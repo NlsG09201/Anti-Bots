@@ -7,7 +7,10 @@ from urllib.parse import urlparse
 
 import httpx
 import redis.asyncio as redis
-from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import (
+    ConnectionError as RedisConnectionError,
+    TimeoutError as RedisTimeoutError,
+)
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -25,7 +28,9 @@ def report_redis_error(error: Exception) -> bool:
     global _upstash_quota_exhausted
     detail = str(error).lower()
     quota_exhausted = "max requests limit exceeded" in detail
-    connection_failed = isinstance(error, (TimeoutError, RedisConnectionError)) or any(
+    connection_failed = isinstance(
+        error, (TimeoutError, RedisConnectionError, RedisTimeoutError)
+    ) or any(
         marker in detail
         for marker in (
             "timeout connecting to server",
