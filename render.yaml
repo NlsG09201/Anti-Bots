@@ -77,6 +77,8 @@ services:
         value: "true"
       - key: LIVE_INTEL_ENABLED
         value: "true"
+      - key: TWITCHBOTS_INFO_ENABLED
+        value: "true"
       - key: REDIS_URL
         sync: false
       - key: UPSTASH_REDIS_REST_URL
@@ -156,6 +158,8 @@ services:
       - key: OPENAI_ANALYSIS_CACHE_SECONDS
         value: "900"
       - key: LIVE_INTEL_ENABLED
+        value: "true"
+      - key: TWITCHBOTS_INFO_ENABLED
         value: "true"
       - key: WEKA_J48_ENABLED
         value: "false"
