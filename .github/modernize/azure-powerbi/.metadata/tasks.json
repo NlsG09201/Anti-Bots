@@ -7,7 +7,9 @@
       "id": "001-setup-baseline",
       "description": "Capture the current behavior baseline for the in-scope Python backend before migration.",
       "requirements": "Create a frozen behavior specification and mock/real decision table for external dependencies used by migration verification. Operate on a snapshot of backend/ only. Do not modify application code.",
-      "snapshotFolder": "backend/"
+      "snapshotFolder": "backend/",
+      "status": "failed",
+      "taskSummary": "Failed before application analysis or baseline generation: the backend/ snapshot attempt hit Access Denied at backend/.pytest_cache/tmp. The resulting copy was incomplete and removed. Per task contract, stopped without using the live workspace. No frozen baseline artifacts were created."
     },
     {
       "type": "infrastructure",
