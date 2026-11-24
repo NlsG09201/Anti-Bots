@@ -170,7 +170,9 @@ async function request<T>(
   if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
 
   const csrf = getCsrfToken();
-  const apiBase = baseUrl ?? DIRECT_API_URL;
+  // Use the same-origin Vercel rewrite for normal browser API calls. Direct
+  // Render requests bypass that proxy and fail CORS when Render returns errors.
+  const apiBase = baseUrl ?? API_URL;
   if (
     csrf &&
     options.method &&
