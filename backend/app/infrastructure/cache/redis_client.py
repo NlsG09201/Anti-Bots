@@ -28,6 +28,7 @@ def report_redis_error(error: Exception) -> bool:
     global _upstash_quota_exhausted
     detail = str(error).lower()
     quota_exhausted = "max requests limit exceeded" in detail
+    circuit_open = "redis circuit is open" in detail
     connection_failed = isinstance(
         error, (TimeoutError, RedisConnectionError, RedisTimeoutError)
     ) or any(
@@ -40,13 +41,19 @@ def report_redis_error(error: Exception) -> bool:
             "temporary failure in name resolution",
         )
     )
-    if not (quota_exhausted or connection_failed):
+    if not (quota_exhausted or circuit_open or connection_failed):
         return False
     if not _upstash_quota_exhausted:
         logger.error(
             "redis_unavailable_local_fallback_enabled",
             error_type=type(error).__name__,
-            failure="quota_exhausted" if quota_exhausted else "connection_unavailable",
+            failure=(
+                "quota_exhausted"
+                if quota_exhausted
+                else "circuit_open"
+                if circuit_open
+                else "connection_unavailable"
+            ),
         )
     _upstash_quota_exhausted = True
     return True

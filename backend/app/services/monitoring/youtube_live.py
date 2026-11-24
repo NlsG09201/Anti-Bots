@@ -95,12 +95,6 @@ class YouTubeLiveMonitor:
                             live.is_live = True
                             logger.info("youtube_validation_prevented_offline", stream_id=self.stream_id, reason=reason)
 
-                    # Update Redis heartbeat
-                    from app.infrastructure.cache.redis_client import get_redis
-                    from app.infrastructure.cache.redis_schema import live_heartbeat_key
-                    redis = await get_redis()
-                    await redis.set(live_heartbeat_key(self.stream_id), "1", ex=45)
-
                     prev = stream.viewer_count
                     stream.is_live = live.is_live
                     stream.viewer_count = live.viewer_count
