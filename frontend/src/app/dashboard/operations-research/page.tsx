@@ -68,19 +68,19 @@ export default function OperationsResearchPage() {
 
       <form onSubmit={submit} className="grid gap-4 rounded-xl border border-cyber-border/70 bg-cyber-surface/50 p-5 md:grid-cols-5">
         <label className="text-xs text-cyber-muted">Capacidad (minutos)
-          <input aria-label="Capacidad en minutos" type="number" min={1} max={1440} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className="mt-2 w-full rounded-md border border-cyber-border bg-cyber-bg px-3 py-2 text-sm text-white" />
+          <input id="review-capacity-minutes" name="capacity_minutes" aria-label="Capacidad en minutos" type="number" min={1} max={1440} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className="mt-2 w-full rounded-md border border-cyber-border bg-cyber-bg px-3 py-2 text-sm text-white" />
         </label>
         <label className="text-xs text-cyber-muted">Minutos por revisión
-          <input aria-label="Minutos por revisión" type="number" min={1} max={120} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="mt-2 w-full rounded-md border border-cyber-border bg-cyber-bg px-3 py-2 text-sm text-white" />
+          <input id="review-minutes-per-item" name="minutes_per_review" aria-label="Minutos por revisión" type="number" min={1} max={120} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="mt-2 w-full rounded-md border border-cyber-border bg-cyber-bg px-3 py-2 text-sm text-white" />
         </label>
         <label className="text-xs text-cyber-muted">Presupuesto de exposición (0–100)
-          <input aria-label="Presupuesto de exposición" type="number" min={0} max={100} value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="mt-2 w-full rounded-md border border-cyber-border bg-cyber-bg px-3 py-2 text-sm text-white" />
+          <input id="review-exposure-budget" name="exposure_budget" aria-label="Presupuesto de exposición" type="number" min={0} max={100} value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="mt-2 w-full rounded-md border border-cyber-border bg-cyber-bg px-3 py-2 text-sm text-white" />
         </label>
         <label className="text-xs text-cyber-muted">Costo relativo de falso positivo
-          <input aria-label="Costo relativo de falso positivo" type="number" min={0} max={10} step={0.1} value={cost} onChange={(e) => setCost(Number(e.target.value))} className="mt-2 w-full rounded-md border border-cyber-border bg-cyber-bg px-3 py-2 text-sm text-white" />
+          <input id="review-false-positive-cost" name="false_positive_cost" aria-label="Costo relativo de falso positivo" type="number" min={0} max={10} step={0.1} value={cost} onChange={(e) => setCost(Number(e.target.value))} className="mt-2 w-full rounded-md border border-cyber-border bg-cyber-bg px-3 py-2 text-sm text-white" />
         </label>
         <label className="text-xs text-cyber-muted">Canal
-          <select aria-label="Canal" value={streamId} onChange={(e) => setStreamId(e.target.value)} className="mt-2 w-full rounded-md border border-cyber-border bg-cyber-bg px-3 py-2 text-sm text-white">
+          <select id="review-stream" name="stream_id" aria-label="Canal" value={streamId} onChange={(e) => setStreamId(e.target.value)} className="mt-2 w-full rounded-md border border-cyber-border bg-cyber-bg px-3 py-2 text-sm text-white">
             <option value="">Todos mis canales</option>
             {(streams.data ?? []).map((stream) => <option key={stream.id} value={stream.id}>{stream.channel_name} · {stream.platform}</option>)}
           </select>
