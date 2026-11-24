@@ -22,6 +22,17 @@ class YouTubePlatformAdapter(PlatformAdapter):
 
     async def fetch_live_status(self, stream: Stream) -> LiveStatus:
         client = await self._client(stream)
+        known_video_id = (stream.settings or {}).get("live_video_id")
+        if known_video_id:
+            stats = await client.get_video_statistics(known_video_id)
+            if stats.get("is_live"):
+                return LiveStatus(
+                    is_live=True,
+                    viewer_count=int(stats.get("concurrent_viewers") or 0),
+                    external_live_id=known_video_id,
+                )
+            return LiveStatus(is_live=False)
+
         channel = (stream.settings or {}).get("login") or stream.channel_name
         live = await client.search_live_by_channel(channel)
 

@@ -13,6 +13,9 @@ settings = get_settings()
 
 # (requests, window_seconds)
 ROUTE_LIMITS: Dict[str, Tuple[int, int]] = {
+    "/api/v1/webhooks/kick": (1200, 60),
+    "/api/v1/webhooks/twitch": (1200, 60),
+    "/api/v1/integrations/kick/webhook": (1200, 60),
     "/api/v1/auth/login": (8, 60),
     "/api/v1/auth/register": (4, 3600),
     "/api/v1/auth/refresh": (60, 60),
@@ -49,12 +52,21 @@ class AdvancedRateLimiter:
 
         client_ip, _ = resolve_client_ip(request)
         route_limit, window = self._match_route_limit(path)
+        is_platform_webhook = path in {
+            "/api/v1/webhooks/kick",
+            "/api/v1/webhooks/twitch",
+            "/api/v1/integrations/kick/webhook",
+        }
         auth_header = request.headers.get("authorization", "")
         has_bearer = auth_header.lower().startswith("bearer ")
 
         # Bucket global por IP (anti-DDoS distribuido)
         global_key = f"ip:{client_ip}:global"
         global_limit = settings.security_global_ip_limit_per_minute
+        if is_platform_webhook:
+            # Platform deliveries can burst (and share proxy IPs); signed
+            # webhook handlers provide endpoint-level authenticity checks.
+            global_limit = max(global_limit, 1200)
         if has_bearer:
             global_limit = max(global_limit, 600)
         allowed_g, count_g = await self._cache.check_rate_limit(
@@ -66,7 +78,7 @@ class AdvancedRateLimiter:
             )
 
         # Burst corto (picos de 10s) — no aplicar a sesiones Bearer (dashboard SPA)
-        if not has_bearer:
+        if not has_bearer and not is_platform_webhook:
             burst_key = f"ip:{client_ip}:burst"
             burst_limit = settings.rate_limit_burst
             allowed_b, count_b = await self._cache.check_rate_limit(

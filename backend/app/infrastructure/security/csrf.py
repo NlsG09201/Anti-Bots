@@ -17,6 +17,7 @@ CSRF_EXEMPT_PATHS = {
     "/openapi.json",
     "/redoc",
     "/api/v1/webhooks",
+    "/api/v1/integrations/kick/webhook",
     "/api/v1/integrations/twitch/callback",
     "/api/v1/widget",
     "/api/v1/auth/login",

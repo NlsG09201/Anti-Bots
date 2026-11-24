@@ -197,4 +197,5 @@ class YouTubeLiveClient:
                 "viewer_count": int(stats.get("viewCount", 0)),
                 "concurrent_viewers": int(live.get("concurrentViewers", 0)),
                 "active_live_chat_id": live.get("activeLiveChatId"),
+                "is_live": bool(live.get("actualStartTime") and not live.get("actualEndTime")),
             }

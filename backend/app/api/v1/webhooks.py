@@ -27,6 +27,7 @@ from app.integrations.kick.oauth import KICK_WEBHOOK_EVENTS
 logger = get_logger(__name__)
 settings = get_settings()
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
+legacy_kick_router = APIRouter(tags=["Webhooks"])
 _TWITCH_MAX_MESSAGE_AGE_SECONDS = 600
 _TWITCH_FUTURE_TOLERANCE_SECONDS = 30
 _TWITCH_IDEMPOTENCY_PROCESSING_TTL_SECONDS = (
@@ -465,3 +466,27 @@ async def kick_webhook(
         return Response(status_code=503)
 
     return Response(status_code=204)
+
+
+@legacy_kick_router.post("/integrations/kick/webhook", include_in_schema=False)
+async def legacy_kick_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    event_id: str = Header("", alias="Kick-Event-Message-Id"),
+    timestamp: str = Header("", alias="Kick-Event-Message-Timestamp"),
+    signature: str = Header("", alias="Kick-Event-Signature"),
+    event_type: str = Header("", alias="Kick-Event-Type"),
+    event_version: str = Header("", alias="Kick-Event-Version"),
+    subscription_id: str = Header("", alias="Kick-Event-Subscription-Id"),
+):
+    """Accept deliveries to the old callback path while Kick subscriptions rotate."""
+    return await kick_webhook(
+        request=request,
+        db=db,
+        event_id=event_id,
+        timestamp=timestamp,
+        signature=signature,
+        event_type=event_type,
+        event_version=event_version,
+        subscription_id=subscription_id,
+    )

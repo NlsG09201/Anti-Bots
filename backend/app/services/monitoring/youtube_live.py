@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
@@ -15,6 +16,7 @@ from app.integrations.youtube.client import YouTubeLiveClient
 from app.infrastructure.database.models import Platform, Stream
 from app.services.monitoring.platform_events import emit_platform_event, normalize_platform_event
 from app.services.platform_health.registry import drop_tracker, get_or_create_tracker
+from app.services.platforms.base import LiveStatus
 from app.services.platforms.registry import get_platform_adapter
 
 logger = get_logger(__name__)
@@ -41,11 +43,11 @@ class YouTubeLiveMonitor:
 
         adapter = get_platform_adapter(Platform.YOUTUBE)
         poll_ms = 5000
+        next_status_check = 0.0
+        next_chat_lookup = 0.0
 
         while self._running:
             try:
-                import time
-
                 t0 = time.perf_counter()
                 async with AsyncSessionLocal() as db:
                     result = await db.execute(
@@ -56,7 +58,19 @@ class YouTubeLiveMonitor:
                         self._running = False
                         break
 
-                    live = await adapter.fetch_live_status(stream)
+                    now = time.monotonic()
+                    if now >= next_status_check:
+                        # Searching YouTube by channel costs 100 quota units.
+                        # Once a live video is known, status checks use videos.list
+                        # and are spaced out instead of searching every chat poll.
+                        next_status_check = now + (60 if self.video_id else 300)
+                        live = await adapter.fetch_live_status(stream)
+                    else:
+                        live = LiveStatus(
+                            is_live=stream.is_live,
+                            viewer_count=stream.viewer_count,
+                            external_live_id=self.video_id,
+                        )
                     # Chat reads require the broadcaster's OAuth token. An API
                     # key can read public video metadata, but not the live chat.
                     client = await adapter._client(stream)
@@ -92,6 +106,7 @@ class YouTubeLiveMonitor:
                     stream.viewer_count = live.viewer_count
                     if live.external_live_id:
                         self.video_id = live.external_live_id
+                        next_status_check = time.monotonic() + 60
                         meta = dict(stream.settings or {})
                         meta["live_video_id"] = live.external_live_id
                         stream.settings = meta
@@ -123,40 +138,41 @@ class YouTubeLiveMonitor:
                             live.is_live = True
                             logger.info("youtube_validation_prevented_offline", stream_id=self.stream_id, reason=reason)
 
-                    video_id = self.video_id or stream.external_id
-                    if video_id:
-                        stats = await client.get_video_statistics(video_id)
-                        chat_id = stats.get("active_live_chat_id")
-                        if chat_id:
-                            self._chat_id = chat_id
-                            chat = await client.get_live_chat_messages(
-                                chat_id,
-                                page_token=self._page_token,
+                    video_id = self.video_id
+                    if video_id and (self._chat_id or time.monotonic() >= next_chat_lookup):
+                        if not self._chat_id:
+                            next_chat_lookup = time.monotonic() + 60
+                            stats = await client.get_video_statistics(video_id)
+                            self._chat_id = stats.get("active_live_chat_id")
+                    if video_id and self._chat_id:
+                        chat = await client.get_live_chat_messages(
+                            self._chat_id,
+                            page_token=self._page_token,
+                        )
+                        poll_ms = int(chat.get("polling_interval_ms") or 5000)
+                        self._page_token = chat.get("next_page_token")
+                        for msg in chat.get("messages") or []:
+                            mid = msg.get("id")
+                            if mid and mid in self._seen_message_ids:
+                                continue
+                            if mid:
+                                self._seen_message_ids.add(mid)
+                                if len(self._seen_message_ids) > 5000:
+                                    self._seen_message_ids.clear()
+                            et, uid, username, meta = normalize_platform_event(
+                                Platform.YOUTUBE,
+                                "chat_message",
+                                msg,
                             )
-                            poll_ms = int(chat.get("polling_interval_ms") or 5000)
-                            self._page_token = chat.get("next_page_token")
-                            for msg in chat.get("messages") or []:
-                                mid = msg.get("id")
-                                if mid and mid in self._seen_message_ids:
-                                    continue
-                                if mid:
-                                    self._seen_message_ids.add(mid)
-                                    if len(self._seen_message_ids) > 5000:
-                                        self._seen_message_ids.clear()
-                                et, uid, username, meta = normalize_platform_event(
-                                    Platform.YOUTUBE,
-                                    "chat_message",
-                                    msg,
-                                )
-                                await emit_platform_event(
-                                    db,
-                                    stream,
-                                    event_type=et,
-                                    platform_user_id=uid,
-                                    platform_username=username,
-                                    metadata=meta,
-                                )
-                                self._health.record_event(et)
+                            await emit_platform_event(
+                                db,
+                                stream,
+                                event_type=et,
+                                platform_user_id=uid,
+                                platform_username=username,
+                                metadata=meta,
+                            )
+                            self._health.record_event(et)
 
                     meta = dict(stream.settings or {})
                     meta["last_platform_poll"] = datetime.now(timezone.utc).isoformat()
@@ -193,6 +209,9 @@ class YouTubeLiveMonitor:
                     if isinstance(exc, httpx.HTTPStatusError)
                     else type(exc).__name__
                 )
+                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429:
+                    # Respect quota throttling instead of retrying on the normal chat cadence.
+                    poll_ms = max(poll_ms, 60_000)
                 self._health.record_error(safe_error)
                 logger.warning(
                     "youtube_monitor_error",

@@ -69,7 +69,7 @@ class PlatformMonitorOrchestrator:
                 monitor = YouTubeLiveMonitor(
                     sid,
                     stream.channel_name,
-                    video_id=stream.external_id or None,
+                    video_id=(stream.settings or {}).get("live_video_id") or None,
                 )
             else:
                 return
