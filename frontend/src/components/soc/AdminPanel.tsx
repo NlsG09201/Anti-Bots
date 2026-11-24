@@ -10,7 +10,6 @@ import {
   Workflow,
 } from "lucide-react";
 import type { SecurityDashboard } from "@/lib/api";
-import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/authStore";
 
 const adminLinks = [
@@ -35,8 +34,12 @@ export function AdminPanel({ security }: AdminPanelProps) {
         <Workflow size={18} className="text-cyber-accent" />
         <p className="text-xs uppercase tracking-widest text-cyber-muted">Panel administrativo</p>
       </div>
-      <p className="text-sm text-white font-medium">{user?.email}</p>
-      <p className="text-xs text-cyber-muted mt-1 capitalize">Rol: {user?.role ?? "—"}</p>
+      <p className="truncate text-sm font-medium text-white" title={user?.email || undefined}>
+        {user?.email || "Usuario"}
+      </p>
+      <p className="mt-1 truncate text-xs capitalize text-cyber-muted">
+        Rol: {user?.role ?? "—"}
+      </p>
 
       {security && (
         <div className="mt-4 grid grid-cols-2 gap-2 text-center">
@@ -57,11 +60,14 @@ export function AdminPanel({ security }: AdminPanelProps) {
 
       <div className="mt-4 grid grid-cols-1 gap-2">
         {adminLinks.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} prefetch={false}>
-            <Button variant="outline" size="sm" className="w-full justify-start">
-              <Icon size={16} />
-              {label}
-            </Button>
+          <Link
+            key={href}
+            href={href}
+            prefetch={false}
+            className="flex min-h-9 w-full min-w-0 items-center justify-start gap-2 rounded-md border border-cyber-border/70 px-3 text-xs font-medium text-cyber-muted transition-colors hover:border-cyber-accent/40 hover:bg-cyber-accent/5 hover:text-cyber-text"
+          >
+            <Icon size={16} className="shrink-0" />
+            <span className="truncate">{label}</span>
           </Link>
         ))}
       </div>
