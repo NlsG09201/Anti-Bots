@@ -70,7 +70,10 @@ def validate_production_settings() -> list[str]:
             "DATABASE_URL points to localhost — set Neon URL in Render Environment"
         )
 
-    redis_tcp_configured = redis_tcp_url_is_configured(settings.redis_url)
+    redis_tcp_configured = redis_tcp_url_is_configured(
+        settings.redis_url,
+        require_tls=getattr(settings, "redis_auth_mode", "password") == "managed_identity",
+    )
     redis_rest_configured = bool(
         settings.upstash_redis_rest_url.startswith("https://")
         and settings.upstash_redis_rest_token

@@ -63,7 +63,7 @@ def redis_quota_is_exhausted() -> bool:
     return _upstash_quota_exhausted
 
 
-def redis_tcp_url_is_configured(url: Optional[str]) -> bool:
+def redis_tcp_url_is_configured(url: Optional[str], *, require_tls: bool = False) -> bool:
     """Validate a native Redis TCP URL without connecting to the service."""
     url = (url or "").strip()
     if not url or "PEGAR_" in url.upper():
@@ -75,6 +75,10 @@ def redis_tcp_url_is_configured(url: Optional[str]) -> bool:
     except ValueError:
         return False
     if parsed.scheme not in {"redis", "rediss"} or not hostname:
+        return False
+    if require_tls and (
+        parsed.scheme != "rediss" or parsed.username is not None or parsed.password is not None
+    ):
         return False
     if port is not None and not 1 <= port <= 65535:
         return False
@@ -91,7 +95,10 @@ def redis_tcp_url_is_configured(url: Optional[str]) -> bool:
 
 def redis_is_configured() -> bool:
     """Return whether native Redis TCP is configured (required by arq/pubsub)."""
-    return not _upstash_quota_exhausted and redis_tcp_url_is_configured(settings.redis_url)
+    return not _upstash_quota_exhausted and redis_tcp_url_is_configured(
+        settings.redis_url,
+        require_tls=settings.redis_auth_mode == "managed_identity",
+    )
 
 
 def redis_rest_is_configured() -> bool:
@@ -106,7 +113,26 @@ def redis_rest_is_configured() -> bool:
 
 def redis_cache_is_configured() -> bool:
     return not _upstash_quota_exhausted and (
-        redis_tcp_url_is_configured(settings.redis_url) or redis_rest_is_configured()
+        redis_is_configured() or redis_rest_is_configured()
+    )
+
+
+def _create_redis_credential_provider():
+    """Create a refreshing Entra credential provider for Azure Managed Redis."""
+    from redis_entraid.cred_provider import create_from_managed_identity
+    from redis_entraid.identity_provider import ManagedIdentityIdType, ManagedIdentityType
+
+    identity_client_id = settings.redis_managed_identity_client_id.strip()
+    if identity_client_id:
+        return create_from_managed_identity(
+            identity_type=ManagedIdentityType.USER_ASSIGNED,
+            resource="https://redis.azure.com/",
+            id_type=ManagedIdentityIdType.CLIENT_ID,
+            id_value=identity_client_id,
+        )
+    return create_from_managed_identity(
+        identity_type=ManagedIdentityType.SYSTEM_ASSIGNED,
+        resource="https://redis.azure.com/",
     )
 
 
@@ -115,14 +141,20 @@ async def get_redis() -> redis.Redis:
     if _upstash_quota_exhausted:
         raise RuntimeError("Upstash request quota exhausted; Redis circuit is open")
     if not redis_is_configured():
+        if settings.redis_auth_mode == "managed_identity":
+            raise RuntimeError(
+                "Managed identity Redis requires a rediss:// URL without embedded credentials"
+            )
         raise RuntimeError("Redis TCP URL not configured; Upstash REST cannot provide arq/pubsub connections")
     if _pool is None:
-        _pool = redis.from_url(
-            settings.redis_url,
-            encoding="utf-8",
-            decode_responses=True,
-            max_connections=50,
-        )
+        options = {
+            "encoding": "utf-8",
+            "decode_responses": True,
+            "max_connections": 50,
+        }
+        if settings.redis_auth_mode == "managed_identity":
+            options["credential_provider"] = _create_redis_credential_provider()
+        _pool = redis.from_url(settings.redis_url, **options)
     return _pool
 
 
@@ -207,7 +239,7 @@ class RedisCache:
         self._use_memory = _upstash_quota_exhausted or not redis_cache_is_configured()
         self._use_rest = (
             not self._use_memory
-            and not redis_tcp_url_is_configured(settings.redis_url)
+            and not redis_is_configured()
             and redis_rest_is_configured()
         )
 

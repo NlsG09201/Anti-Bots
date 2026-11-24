@@ -370,6 +370,9 @@ async def shutdown(ctx: dict) -> None:
     from app.services.ai.openai_engine import close_openai_client
 
     await close_openai_client()
+    from app.infrastructure.database.session import dispose_database
+
+    await dispose_database()
     logger.info("arq_worker_shutdown")
 
 

@@ -50,7 +50,7 @@ from app.core.logging import setup_logging, get_logger
 from app.core.startup import run_startup_checks
 from app.infrastructure.cache.redis_client import close_redis
 from app.infrastructure.database.init_db import init_database
-from app.infrastructure.database.session import engine
+from app.infrastructure.database.session import dispose_database, engine
 from app.infrastructure.security.csrf import CSRFMiddleware
 from app.infrastructure.security.gateway import SecurityGatewayMiddleware
 from app.infrastructure.security.middleware import (
@@ -245,7 +245,7 @@ async def lifespan(app: FastAPI):
 
     await close_openai_client()
     await close_redis()
-    await engine.dispose()
+    await dispose_database()
     logger.info("application_shutdown")
 
 
