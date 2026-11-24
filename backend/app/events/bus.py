@@ -14,7 +14,7 @@ from app.events.processor import process_pipeline_event
 from app.events.queue import enqueue_event_job
 from app.events.schemas import PipelineEvent
 from app.events.streams import EventStreamService
-from app.infrastructure.cache.redis_client import redis_is_configured
+from app.infrastructure.cache.redis_client import redis_is_configured, report_redis_error
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -127,6 +127,7 @@ async def ingest_event(
                 idempotency_key=idempotency_key,
             )
         except Exception as exc:
+            report_redis_error(exc)
             if not settings.event_pipeline_sync_fallback:
                 raise
             from app.services.ingest.event_ingest import process_stream_event

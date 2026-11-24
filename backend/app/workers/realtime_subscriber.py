@@ -9,7 +9,12 @@ from app.api.websocket.manager import ws_manager
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.realtime import CHANNEL_PREFIX
-from app.infrastructure.cache.redis_client import get_redis, redis_is_configured
+from app.infrastructure.cache.redis_client import (
+    get_redis,
+    redis_is_configured,
+    redis_quota_is_exhausted,
+    report_redis_error,
+)
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -17,7 +22,7 @@ settings = get_settings()
 _subscriber_task: asyncio.Task | None = None
 
 
-async def _subscribe_loop() -> None:
+async def _subscribe_once() -> None:
     client = await get_redis()
     pubsub = client.pubsub()
     await pubsub.psubscribe(f"{CHANNEL_PREFIX}:*")
@@ -49,6 +54,24 @@ async def _subscribe_loop() -> None:
                 await ws_manager.broadcast_live_event(tenant_id, payload)
         except Exception as exc:
             logger.warning("realtime_subscriber_message_error", error=str(exc))
+
+
+async def _subscribe_loop() -> None:
+    try:
+        await _subscribe_once()
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        if report_redis_error(exc) or redis_quota_is_exhausted():
+            logger.warning(
+                "realtime_subscriber_stopped",
+                reason="upstash_quota_exhausted",
+            )
+            return
+        logger.warning(
+            "realtime_subscriber_stopped",
+            error_type=type(exc).__name__,
+        )
 
 
 async def start_realtime_subscriber() -> asyncio.Task | None:

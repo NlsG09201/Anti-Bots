@@ -8,7 +8,11 @@ import uuid
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.bus import get_event_bus, handle_stream_message
-from app.infrastructure.cache.redis_client import redis_is_configured
+from app.infrastructure.cache.redis_client import (
+    redis_is_configured,
+    redis_quota_is_exhausted,
+    report_redis_error,
+)
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -38,6 +42,12 @@ async def _consumer_loop() -> None:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            if report_redis_error(exc) or redis_quota_is_exhausted():
+                logger.warning(
+                    "event_pipeline_consumer_stopped",
+                    reason="upstash_quota_exhausted",
+                )
+                return
             logger.warning("event_consumer_loop_error", error=str(exc))
             await asyncio.sleep(1.0)
 

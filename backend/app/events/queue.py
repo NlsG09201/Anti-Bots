@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.schemas import EventCategory, PipelineEvent
-from app.infrastructure.cache.redis_client import redis_is_configured
+from app.infrastructure.cache.redis_client import redis_is_configured, report_redis_error
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -95,6 +95,7 @@ async def enqueue_event_job(
                     error_type=type(exc).__name__,
                 )
     except Exception as exc:
+        report_redis_error(exc)
         logger.warning("event_queue_enqueue_failed", error=str(exc))
         return None
 
@@ -119,6 +120,7 @@ async def enqueue_kick_webhook_job(webhook_event_id: str) -> Optional[str]:
             await pool.close()
         return job.job_id if job else f"kick-webhook:{webhook_event_id}"
     except Exception as exc:
+        report_redis_error(exc)
         logger.warning("kick_webhook_queue_error", error_type=type(exc).__name__)
         return None
 
@@ -151,6 +153,7 @@ async def get_queue_stats() -> Dict[str, Any]:
             },
         }
     except Exception as exc:
+        report_redis_error(exc)
         logger.warning("event_queue_stats_failed", error_type=type(exc).__name__)
         return {
             "enabled": True,
