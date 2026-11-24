@@ -108,15 +108,36 @@ class SecurityGatewayMiddleware(BaseHTTPMiddleware):
                 headers={"Retry-After": "60"},
             )
         except Exception as exc:
-            logger.error(
-                "security_rate_limit_unavailable",
-                error_type=type(exc).__name__,
-            )
-            return Response(
-                status_code=503,
-                content="Request protection is temporarily unavailable",
-                headers={"Retry-After": "5"},
-            )
+            if path.startswith("/api/v1/auth/"):
+                # Keep login and session recovery available during a Redis
+                # outage, with strict per-process limits until Redis returns.
+                logger.warning(
+                    "security_rate_limit_local_fallback",
+                    path=path,
+                    error_type=type(exc).__name__,
+                )
+                try:
+                    _, current, _ = self._rate_limiter.check_local(request)
+                except RateLimitError as limit_exc:
+                    await self._record_block("rate_limit_429_local_fallback")
+                    return Response(
+                        status_code=429,
+                        content=str(limit_exc.message),
+                        headers={"Retry-After": "60"},
+                    )
+                request.state.rate_limit_remaining = max(
+                    0, settings.rate_limit_per_minute - current
+                )
+            else:
+                logger.error(
+                    "security_rate_limit_unavailable",
+                    error_type=type(exc).__name__,
+                )
+                return Response(
+                    status_code=503,
+                    content="Request protection is temporarily unavailable",
+                    headers={"Retry-After": "5"},
+                )
 
         try:
             response = await call_next(request)

@@ -26,6 +26,7 @@ from app.core.cookies import (
     set_refresh_cookie,
 )
 from app.core.exceptions import AuthenticationError, ValidationError
+from app.core.logging import get_logger
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -41,6 +42,7 @@ from app.infrastructure.security.bruteforce import BruteForceProtection
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 settings = get_settings()
 bruteforce = BruteForceProtection()
+logger = get_logger(__name__)
 
 
 def _slugify(name: str) -> str:
@@ -248,8 +250,17 @@ async def refresh_token_endpoint(
         return invalid_refresh("Invalid refresh token")
 
     cache = RedisCache()
-    if await cache.is_blacklisted(payload.get("jti", "")):
-        return invalid_refresh("Token revoked")
+    try:
+        if await cache.is_blacklisted(payload.get("jti", "")):
+            return invalid_refresh("Token revoked")
+    except Exception as exc:
+        # The refresh token's database row is authoritative and checked below.
+        # Redis is an extra revocation signal, so its outage must not strand
+        # otherwise-active sessions.
+        logger.warning(
+            "refresh_blacklist_check_unavailable",
+            error_type=type(exc).__name__,
+        )
 
     result = await db.execute(_active_refresh_token_query(payload["jti"]))
     stored = result.scalar_one_or_none()

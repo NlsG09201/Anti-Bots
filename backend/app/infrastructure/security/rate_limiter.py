@@ -1,5 +1,6 @@
 """Rate limiting avanzado por IP, ruta, burst y endpoint sensible."""
 
+import time
 from typing import Dict, Optional, Tuple
 
 from fastapi import Request
@@ -31,6 +32,58 @@ ROUTE_LIMITS: Dict[str, Tuple[int, int]] = {
 class AdvancedRateLimiter:
     def __init__(self, cache: Optional[RedisCache] = None):
         self._cache = cache or RedisCache(prefix="rl")
+        self._local_buckets: Dict[str, Tuple[int, float]] = {}
+
+    def _check_local_bucket(self, key: str, limit: int, window: int) -> Tuple[bool, int]:
+        now = time.monotonic()
+        count, expires_at = self._local_buckets.get(key, (0, 0.0))
+        if expires_at <= now:
+            count, expires_at = 0, now + window
+        count += 1
+        self._local_buckets[key] = (count, expires_at)
+        if len(self._local_buckets) > 10_000:
+            self._local_buckets = {
+                bucket: value
+                for bucket, value in self._local_buckets.items()
+                if value[1] > now
+            }
+        return count <= limit, count
+
+    def check_local(self, request: Request) -> Tuple[bool, int, str]:
+        """Emergency per-process limits for auth while the shared store is down."""
+        path = request.url.path
+        client_ip, _ = resolve_client_ip(request)
+        route_limit, window = self._match_route_limit(path)
+        auth_header = request.headers.get("authorization", "")
+        has_bearer = auth_header.lower().startswith("bearer ")
+
+        global_limit = settings.security_global_ip_limit_per_minute
+        if has_bearer:
+            global_limit = max(global_limit, 600)
+        allowed, count = self._check_local_bucket(
+            f"ip:{client_ip}:global", global_limit, 60
+        )
+        if not allowed:
+            raise RateLimitError(
+                f"Global rate limit exceeded for IP ({count}/{global_limit} per minute)"
+            )
+
+        if not has_bearer:
+            allowed, count = self._check_local_bucket(
+                f"ip:{client_ip}:burst", settings.rate_limit_burst, 10
+            )
+            if not allowed:
+                raise RateLimitError(
+                    f"Burst limit exceeded ({count}/{settings.rate_limit_burst} per 10s)"
+                )
+
+        route_key = f"ip:{client_ip}:route:{path}"
+        allowed, count = self._check_local_bucket(route_key, route_limit, window)
+        if not allowed:
+            raise RateLimitError(
+                f"Rate limit exceeded for {path} ({count}/{route_limit})"
+            )
+        return True, count, route_key
 
     def _match_route_limit(self, path: str) -> Tuple[int, int]:
         for prefix, limits in ROUTE_LIMITS.items():
