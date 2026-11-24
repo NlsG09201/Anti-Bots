@@ -16,6 +16,8 @@
       "requirements": "Prepare Bicep for the planned Azure Container Apps API and worker, Azure Database for PostgreSQL, Azure Managed Redis, and required supporting resources. Keep BigQuery and the Vercel frontend outside the Azure migration. Do not provision resources or include credentials, subscription IDs, or resource IDs. Azure subscription and resource details remain future prerequisites.",
       "iacType": "bicep",
       "provision": false,
+      "status": "completed",
+      "taskSummary": "Generated infrastructure/azure/main.bicep and its README. Compiled the template successfully with Bicep CLI 0.49.2 to a temporary ARM JSON file; no Azure-connected command or provisioning was performed. Private network design, Redis exposure, image references, and workload sizing remain prerequisites for any future deployment.",
       "skills": [
         {
           "name": "infrastructure-bicep-generation",
