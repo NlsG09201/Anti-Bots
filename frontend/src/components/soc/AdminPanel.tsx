@@ -29,7 +29,7 @@ export function AdminPanel({ security }: AdminPanelProps) {
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   return (
-    <div className="rounded-xl border border-cyber-border/80 bg-gradient-to-br from-cyber-surface/90 to-cyber-bg/50 p-5">
+    <div className="relative z-10 isolate rounded-xl border border-cyber-border/80 bg-gradient-to-br from-cyber-surface/90 to-cyber-bg/50 p-5">
       <div className="flex items-center gap-2 mb-4">
         <Workflow size={18} className="text-cyber-accent" />
         <p className="text-xs uppercase tracking-widest text-cyber-muted">Panel administrativo</p>
