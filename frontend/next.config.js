@@ -23,6 +23,9 @@ if (isVercel) {
 const nextConfig = {
   // Required by the production Docker image to copy only the standalone server.
   output: "standalone",
+  experimental: {
+    agentUpgrade: "security",
+  },
   // Prevent clients holding chunks from an older Vercel deployment from
   // requesting assets or RSC payloads against the newly promoted version.
   // Vercel supplies this ID at build time when system environment variables
