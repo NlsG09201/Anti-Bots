@@ -209,6 +209,7 @@ class Settings(BaseSettings):
     auto_twitch_ban_enabled: bool = False
     bot_suspected_attack_threshold: int = 5
     background_attack_scan_interval: int = 3
+    background_channel_monitor_enabled: bool = True
     viewer_load_irc_seconds: float = 35.0
 
     viewbot_realtime_enabled: bool = True

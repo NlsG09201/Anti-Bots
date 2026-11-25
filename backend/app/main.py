@@ -190,9 +190,12 @@ async def lifespan(app: FastAPI):
                 ),
                 name="weka_jvm_warmup",
             )
-        background_tasks.create(
-            _background_channel_monitor(), name="background_channel_monitor"
-        )
+        if _cfg.background_channel_monitor_enabled:
+            background_tasks.create(
+                _background_channel_monitor(), name="background_channel_monitor"
+            )
+        else:
+            logger.info("background_channel_monitor_disabled")
         from app.core.config import get_settings as _gs2
 
         cfg_mon = _gs2()

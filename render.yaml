@@ -48,7 +48,7 @@ services:
       - key: RENDER
         value: "true"
       - key: PLATFORM_MONITOR_RUN_IN_API
-        value: "true"
+        value: "false"
       - key: EVENT_QUEUE_ENABLED
         value: "true"
       - key: EVENT_QUEUE_WORKER_IN_API
@@ -62,9 +62,15 @@ services:
       - key: OPENAI_CHAT_ANALYSIS_ENABLED
         value: "false"
       - key: PLATFORM_MONITOR_ENABLED
-        value: "true"
+        value: "false"
       - key: LIVE_INTEL_ENABLED
-        value: "true"
+        value: "false"
+      - key: PLATFORM_HEALTH_ENABLED
+        value: "false"
+      - key: VIEWER_FLOW_ENABLED
+        value: "false"
+      - key: BACKGROUND_CHANNEL_MONITOR_ENABLED
+        value: "false"
       - key: TWITCHBOTS_INFO_ENABLED
         value: "true"
       - key: WEKA_J48_ENABLED
@@ -86,7 +92,7 @@ services:
           name: anti-bots-keyvalue
           type: keyvalue
           property: connectionString
-    healthCheckPath: /readyz
+    healthCheckPath: /health
 
   - type: keyvalue
     name: anti-bots-keyvalue
