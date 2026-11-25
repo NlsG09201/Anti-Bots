@@ -174,7 +174,11 @@ async function request<T>(
       authToken = refreshed;
     } else if (expiresAt <= Date.now()) {
       if (apiUnavailableUntil > Date.now()) {
-        throw new ApiError(503, "El servidor no pudo renovar la sesiÃ³n. Tu sesiÃ³n se conservarÃ¡ mientras vuelve a estar disponible.", apiUnavailableUntil - Date.now());
+        throw new ApiError(
+          503,
+          "El servidor no pudo renovar la sesion. Se conservara mientras vuelve a estar disponible.",
+          apiUnavailableUntil - Date.now(),
+        );
       }
       if (apiRateLimitedUntil > Date.now()) {
         throw rateLimitError(apiRateLimitedUntil - Date.now());
@@ -241,7 +245,11 @@ async function request<T>(
       }
     }
     if (apiUnavailableUntil > Date.now()) {
-      throw new ApiError(503, "El servidor no pudo renovar la sesiÃ³n. Tu sesiÃ³n se conservarÃ¡ mientras vuelve a estar disponible.", apiUnavailableUntil - Date.now());
+      throw new ApiError(
+        503,
+        "El servidor no pudo renovar la sesion. Se conservara mientras vuelve a estar disponible.",
+        apiUnavailableUntil - Date.now(),
+      );
     }
     if (apiRateLimitedUntil > Date.now()) {
       throw rateLimitError(apiRateLimitedUntil - Date.now());

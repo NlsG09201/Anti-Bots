@@ -287,7 +287,10 @@ async def refresh_token_endpoint(
             pass
         return JSONResponse(
             status_code=503,
-            content={"error": "AUTH_UNAVAILABLE", "message": "El servicio de autenticaciÃ³n no estÃ¡ disponible temporalmente."},
+            content={
+                "error": "AUTH_UNAVAILABLE",
+                "message": "El servicio de autenticacion no esta disponible temporalmente.",
+            },
             headers={"Retry-After": "5"},
         )
 
