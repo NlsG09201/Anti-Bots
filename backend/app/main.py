@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, ORJSONResponse
 from prometheus_client import Counter, Histogram, generate_latest
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.responses import Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -368,6 +369,23 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
             "message": "Request validation failed",
             "detail": details,
         },
+    )
+
+
+@app.exception_handler(SQLAlchemyError)
+async def database_exception_handler(request: Request, exc: SQLAlchemyError):
+    logger.error(
+        "database_request_failed",
+        path=request.url.path,
+        error_type=type(exc).__name__,
+    )
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": "DATABASE_UNAVAILABLE",
+            "message": "El servicio de base de datos no está disponible temporalmente.",
+        },
+        headers={"Retry-After": "5"},
     )
 
 
