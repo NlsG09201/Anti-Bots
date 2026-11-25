@@ -12,53 +12,53 @@ import clsx from "clsx";
 
 const navGroups = [
   {
-    label: "Workspace",
+    label: "Espacio de trabajo",
     items: [
-      { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-      { href: "/dashboard/channels", label: "Channels", icon: Radio },
-      { href: "/dashboard/alerts", label: "Alerts", icon: Shield },
+      { href: "/dashboard", label: "Resumen", icon: LayoutDashboard },
+      { href: "/dashboard/channels", label: "Canales", icon: Radio },
+      { href: "/dashboard/alerts", label: "Alertas", icon: Shield },
     ],
   },
   {
-    label: "Protection",
+    label: "Protección",
     items: [
-      { href: "/dashboard/attacks", label: "Attacks", icon: AlertTriangle },
-      { href: "/dashboard/bans", label: "Bans", icon: Ban },
-      { href: "/dashboard/viewers", label: "Viewers", icon: Users },
-      { href: "/dashboard/viewer-flow", label: "Viewer flow", icon: Activity },
-      { href: "/dashboard/operations-research", label: "Operations Research", icon: Calculator },
-      { href: "/dashboard/bot", label: "Kick bot", icon: Bot },
-      { href: "/dashboard/twitch-moderator", label: "Twitch moderator", icon: ShieldAlert },
+      { href: "/dashboard/attacks", label: "Ataques", icon: AlertTriangle },
+      { href: "/dashboard/bans", label: "Bloqueos", icon: Ban },
+      { href: "/dashboard/viewers", label: "Espectadores", icon: Users },
+      { href: "/dashboard/viewer-flow", label: "Flujo de audiencia", icon: Activity },
+      { href: "/dashboard/operations-research", label: "Análisis operativo", icon: Calculator },
+      { href: "/dashboard/bot", label: "Bot de Kick", icon: Bot },
+      { href: "/dashboard/twitch-moderator", label: "Moderación de Twitch", icon: ShieldAlert },
     ],
   },
   {
-    label: "Intelligence",
+    label: "Inteligencia",
     items: [
-      { href: "/dashboard/security", label: "Security center", icon: ShieldAlert },
-      { href: "/dashboard/threat-intelligence", label: "Threat intelligence", icon: Radar },
-      { href: "/dashboard/live-intelligence", label: "Live intelligence", icon: Radio },
-      { href: "/dashboard/ai", label: "AI predictions", icon: Brain },
-      { href: "/dashboard/assistant", label: "SOC assistant", icon: MessageSquare },
+      { href: "/dashboard/security", label: "Centro de seguridad", icon: ShieldAlert },
+      { href: "/dashboard/threat-intelligence", label: "Inteligencia de amenazas", icon: Radar },
+      { href: "/dashboard/live-intelligence", label: "Inteligencia en vivo", icon: Radio },
+      { href: "/dashboard/ai", label: "Predicciones de IA", icon: Brain },
+      { href: "/dashboard/assistant", label: "Asistente SOC", icon: MessageSquare },
       { href: "/dashboard/power-bi", label: "Power BI", icon: DatabaseZap },
       { href: "/dashboard/weka", label: "Weka J48", icon: Binary },
-      { href: "/dashboard/ips", label: "Suspicious IPs", icon: Globe },
-      { href: "/dashboard/fingerprints", label: "Fingerprints", icon: Fingerprint },
+      { href: "/dashboard/ips", label: "IP sospechosas", icon: Globe },
+      { href: "/dashboard/fingerprints", label: "Huellas digitales", icon: Fingerprint },
     ],
   },
   {
-    label: "Administration",
+    label: "Administración",
     items: [
       { href: "/dashboard/widget", label: "Widget", icon: Code },
-      { href: "/dashboard/users", label: "Users", icon: Users },
-      { href: "/dashboard/settings", label: "Settings", icon: Settings },
-      { href: "/dashboard/deploy", label: "Deployment", icon: Rocket },
+      { href: "/dashboard/users", label: "Usuarios", icon: Users },
+      { href: "/dashboard/settings", label: "Configuración", icon: Settings },
+      { href: "/dashboard/deploy", label: "Despliegue", icon: Rocket },
     ],
   },
 ];
 
 export function getDashboardPageTitle(pathname: string) {
   return navGroups.flatMap((group) => group.items).find((item) => item.href === pathname)?.label
-    ?? "Security workspace";
+    ?? "Espacio de seguridad";
 }
 
 export function Sidebar({
@@ -95,25 +95,25 @@ export function Sidebar({
             </span>
             <span>
               <span className="block text-sm font-semibold tracking-tight text-cyber-text">StreamShield</span>
-              <span className="block text-[10px] font-medium uppercase tracking-[0.16em] text-cyber-muted">Live protection</span>
+            <span className="block text-[10px] font-medium uppercase tracking-[0.16em] text-cyber-muted">Protección en vivo</span>
             </span>
           </Link>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close navigation"
+          aria-label="Cerrar navegación"
             className="rounded-lg p-2 text-cyber-muted hover:bg-cyber-surface-elevated hover:text-cyber-text md:hidden"
           >
             <X size={18} />
           </button>
         </div>
 
-        <nav aria-label="Main navigation" className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4">
+        <nav aria-label="Navegación principal" className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4">
           {navGroups.map((group) => {
             const activeGroup = group.items.some((item) => item.href === pathname);
             return (
               <details key={group.label} open={activeGroup || group.label === "Workspace"} className="group">
-                <summary className="flex cursor-pointer list-none items-center justify-between rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyber-muted hover:text-cyber-text [&::-webkit-details-marker]:hidden">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-md px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyber-muted hover:text-cyber-text [&::-webkit-details-marker]:hidden">
                   {group.label}
                   <ChevronDown size={13} className="transition-transform group-open:rotate-180" />
                 </summary>
@@ -128,7 +128,7 @@ export function Sidebar({
                         onClick={onClose}
                         aria-current={active ? "page" : undefined}
                         className={clsx(
-                          "flex min-h-10 items-center gap-3 rounded-lg px-3 text-[13px] font-medium transition-colors",
+                          "flex min-h-11 items-center gap-3 rounded-lg px-3 text-[13px] font-medium transition-colors",
                           active
                             ? "bg-cyber-accent/10 text-cyber-accent ring-1 ring-inset ring-cyber-accent/20"
                             : "text-cyber-muted hover:bg-cyber-surface-elevated hover:text-cyber-text",
@@ -147,15 +147,15 @@ export function Sidebar({
 
         <div className="shrink-0 border-t border-cyber-border p-4">
           <p className="mb-3 truncate text-xs text-cyber-muted" title={user?.email ?? undefined}>
-            {user?.email || "Signed in"}
+            {user?.email || "Sesión iniciada"}
           </p>
           <button
             type="button"
             onClick={logout}
-            className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-sm font-medium text-cyber-muted transition-colors hover:bg-cyber-danger/10 hover:text-cyber-danger"
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm font-medium text-cyber-muted transition-colors hover:bg-cyber-danger/10 hover:text-cyber-danger"
           >
             <LogOut size={16} />
-            Sign out
+            Cerrar sesión
           </button>
         </div>
       </aside>

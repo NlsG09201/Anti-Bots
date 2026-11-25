@@ -68,9 +68,15 @@ export function KnownBotsPanel({
         />
         <Stat
           label="MongoDB"
-          value={overview?.mongodb ? "activo" : "opcional"}
+          value={overview?.mongodb ? "conectada" : overview?.mongodb_configured ? "sin conexión" : "no configurada"}
         />
       </div>
+
+      {!overview?.mongodb && (
+        <p className="rounded-lg border border-cyber-warning/30 bg-cyber-warning/5 px-3 py-2 text-xs leading-5 text-cyber-muted" role="status">
+          El histórico de verificaciones y los perfiles persistentes requieren MongoDB Atlas. La app puede seguir operando sin la base, pero estos datos no se conservarán.
+        </p>
+      )}
 
       {overview?.top_bot_types && overview.top_bot_types.length > 0 && (
         <div className="flex flex-wrap gap-2">

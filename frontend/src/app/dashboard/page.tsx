@@ -46,13 +46,13 @@ export default function SocDashboardPage() {
         <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-cyber-accent">
-              <Shield size={15} /> Security overview
+              <Shield size={15} /> Resumen de seguridad
             </div>
             <h1 className="text-2xl font-semibold tracking-tight text-cyber-text md:text-3xl">
-              Your live security workspace
+              Tu centro de seguridad en vivo
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-cyber-muted">
-              Review channel activity, threat signals, and moderation alerts. Metrics reflect the data available from your connected channels.
+              Revisa la actividad de tus canales, las señales de amenaza y las alertas de moderación. Las métricas muestran los datos disponibles de tus canales conectados.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -63,7 +63,7 @@ export default function SocDashboardPage() {
                   connected ? "bg-cyber-accent animate-pulse" : "bg-cyber-muted",
                 )}
               />
-              {connected ? "Live feed" : "Reconnecting"}
+              {connected ? "Actividad en vivo" : "Reconectando"}
             </Badge>
             <Badge variant="info">
               <Activity size={12} className="mr-1 inline" />

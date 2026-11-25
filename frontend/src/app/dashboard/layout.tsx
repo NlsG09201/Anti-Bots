@@ -65,7 +65,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!authReady) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-cyber-bg text-sm text-cyber-muted" role="status" aria-live="polite">
-        Restoring your session...
+        Restaurando tu sesión…
       </div>
     );
   }
@@ -78,7 +78,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
-              aria-label="Open main navigation"
+              aria-label="Abrir navegación principal"
               aria-controls="primary-navigation"
               aria-expanded={mobileNavOpen}
               onClick={() => setMobileNavOpen(true)}
@@ -88,15 +88,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </button>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-cyber-text">{getDashboardPageTitle(pathname)}</p>
-              <p className="hidden text-[11px] text-cyber-muted sm:block">Security workspace</p>
+              <p className="hidden text-[11px] text-cyber-muted sm:block">Centro de seguridad en vivo</p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 sm:gap-4">
             <ThemeToggle />
             <span className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-cyber-border bg-cyber-surface px-2.5 text-xs font-medium text-cyber-muted sm:px-3" role="status" aria-live="polite">
               {connected ? <Wifi size={14} className="text-cyber-accent" /> : <WifiOff size={14} />}
-              <span className="hidden sm:inline">{connected ? "Live updates" : "Reconnecting"}</span>
-              <span className="sm:hidden">{connected ? "Live" : "Offline"}</span>
+              <span className="hidden sm:inline">{connected ? "Actualización en vivo" : "Reconectando"}</span>
+              <span className="sm:hidden">{connected ? "En vivo" : "Sin conexión"}</span>
             </span>
           </div>
         </header>

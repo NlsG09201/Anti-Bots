@@ -42,11 +42,15 @@ async def twitchbots_overview(current_user: AnalystUser) -> Dict[str, Any]:
     cfg = get_settings()
     if not svc.enabled:
         return {"enabled": False, "message": "TWITCHBOTS_INFO_ENABLED=false"}
+    from app.infrastructure.mongodb.client import get_mongo_db
+
+    mongo_available = await get_mongo_db() is not None
     store = TwitchBotsInfoMongoStore()
     stats = await store.overview(str(current_user.tenant_id))
     return {
         "enabled": True,
-        "mongodb": bool(cfg.mongodb_uri),
+        "mongodb": mongo_available,
+        "mongodb_configured": bool(cfg.mongodb_uri),
         "global_profiles_cached": await store.global_profile_count(),
         **stats.model_dump(),
     }

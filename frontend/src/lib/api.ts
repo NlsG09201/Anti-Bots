@@ -2134,6 +2134,7 @@ export interface KickBotSettings {
 export interface TwitchBotsOverview {
   enabled: boolean;
   mongodb?: boolean;
+  mongodb_configured?: boolean;
   message?: string;
   known_bots_detected?: number;
   total_verifications?: number;

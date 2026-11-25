@@ -44,10 +44,14 @@ async def intelligence_overview(
     if not engine.enabled:
         return {"enabled": False, "message": "THREAT_INTEL_ENGINE_ENABLED=false"}
     try:
+        from app.infrastructure.mongodb.client import get_mongo_db
+
+        mongo_available = await get_mongo_db() is not None
         data = await engine.overview(current_user.tenant_id)
         return {
             "enabled": True,
-            "mongodb": bool(cfg.mongodb_uri),
+            "mongodb": mongo_available,
+            "mongodb_configured": bool(cfg.mongodb_uri),
             **data,
         }
     except Exception as exc:
