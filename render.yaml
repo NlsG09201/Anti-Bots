@@ -86,7 +86,7 @@ services:
           name: anti-bots-keyvalue
           type: keyvalue
           property: connectionString
-    healthCheckPath: /health
+    healthCheckPath: /readyz
 
   - type: keyvalue
     name: anti-bots-keyvalue

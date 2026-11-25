@@ -39,7 +39,13 @@ export class ApiError extends Error {
 
 const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 60_000;
 const MAX_RATE_LIMIT_COOLDOWN_MS = 300_000;
+const SERVICE_UNAVAILABLE_COOLDOWN_MS = 5_000;
 let apiRateLimitedUntil = 0;
+let apiUnavailableUntil = 0;
+
+export function isApiTemporarilyUnavailable(): boolean {
+  return apiUnavailableUntil > Date.now() || apiRateLimitedUntil > Date.now();
+}
 
 function retryAfterMilliseconds(response: Response): number {
   const retryAfter = response.headers.get("Retry-After")?.trim();
@@ -147,6 +153,15 @@ async function request<T>(
     throw new ApiError(401, "Sesión expirada. Inicia sesión de nuevo.");
   }
 
+  const unavailableFor = apiUnavailableUntil - Date.now();
+  if (unavailableFor > 0) {
+    throw new ApiError(
+      503,
+      "El servicio no responde por el momento. Espera unos segundos y vuelve a intentar.",
+      unavailableFor,
+    );
+  }
+
   let authToken = resolveAuthToken(token);
   const expiresAt = authToken ? getAccessTokenExpiry(authToken) : null;
   if (
@@ -158,6 +173,12 @@ async function request<T>(
     if (refreshed) {
       authToken = refreshed;
     } else if (expiresAt <= Date.now()) {
+      if (apiUnavailableUntil > Date.now()) {
+        throw new ApiError(503, "El servidor no pudo renovar la sesiÃ³n. Tu sesiÃ³n se conservarÃ¡ mientras vuelve a estar disponible.", apiUnavailableUntil - Date.now());
+      }
+      if (apiRateLimitedUntil > Date.now()) {
+        throw rateLimitError(apiRateLimitedUntil - Date.now());
+      }
       await handleAuthFailure();
       throw new ApiError(401, "Sesión expirada. Inicia sesión de nuevo.");
     }
@@ -199,7 +220,8 @@ async function request<T>(
     throw rateLimitError(retryAfterMs);
   }
 
-  if (response.status === 502 || response.status === 504) {
+  if (response.status === 502 || response.status === 503 || response.status === 504) {
+    apiUnavailableUntil = Math.max(apiUnavailableUntil, Date.now() + SERVICE_UNAVAILABLE_COOLDOWN_MS);
     const error = await response.json().catch(() => null);
     const message = parseApiErrorMessage(error, response.status);
     throw new ApiError(
@@ -207,6 +229,7 @@ async function request<T>(
       message !== `HTTP ${response.status}`
         ? message
         : "La API no esta disponible temporalmente. Intentalo de nuevo en unos segundos.",
+      SERVICE_UNAVAILABLE_COOLDOWN_MS,
     );
   }
 
@@ -216,6 +239,12 @@ async function request<T>(
       if (refreshed) {
         return request<T>(path, options, refreshed, baseUrl, false, responseMode);
       }
+    }
+    if (apiUnavailableUntil > Date.now()) {
+      throw new ApiError(503, "El servidor no pudo renovar la sesiÃ³n. Tu sesiÃ³n se conservarÃ¡ mientras vuelve a estar disponible.", apiUnavailableUntil - Date.now());
+    }
+    if (apiRateLimitedUntil > Date.now()) {
+      throw rateLimitError(apiRateLimitedUntil - Date.now());
     }
     await handleAuthFailure();
     throw new ApiError(401, "Sesión expirada. Inicia sesión de nuevo.");
@@ -290,14 +319,13 @@ let refreshInFlight: Promise<string | null> | null = null;
 /** Silently renew access token using HttpOnly refresh cookie (single-flight). */
 export async function refreshAccessToken(): Promise<string | null> {
   if (!hasRefreshSessionHint()) return null;
+  if (apiRateLimitedUntil > Date.now() || apiUnavailableUntil > Date.now()) return null;
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {
     try {
       const attempt = async () => {
-        const csrf = getCsrfToken();
         const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (csrf) headers["X-CSRF-Token"] = csrf;
 
         return fetch(`${API_URL}/api/v1/auth/refresh`, {
           method: "POST",
@@ -306,10 +334,17 @@ export async function refreshAccessToken(): Promise<string | null> {
         });
       };
 
-      let response = await attempt();
-      if (response.status === 403) {
-        await fetchCsrfToken();
-        response = await attempt();
+      const response = await attempt();
+      if (response.status === 429) {
+        apiRateLimitedUntil = Math.max(
+          apiRateLimitedUntil,
+          Date.now() + retryAfterMilliseconds(response),
+        );
+        return null;
+      }
+      if (response.status >= 500) {
+        apiUnavailableUntil = Math.max(apiUnavailableUntil, Date.now() + SERVICE_UNAVAILABLE_COOLDOWN_MS);
+        return null;
       }
       if (!response.ok) return null;
       const data = (await response.json()) as { access_token: string };
@@ -317,6 +352,7 @@ export async function refreshAccessToken(): Promise<string | null> {
       sessionTerminated = false;
       return data.access_token;
     } catch {
+      apiUnavailableUntil = Math.max(apiUnavailableUntil, Date.now() + SERVICE_UNAVAILABLE_COOLDOWN_MS);
       return null;
     } finally {
       refreshInFlight = null;
@@ -330,21 +366,32 @@ async function tryRefreshToken(): Promise<string | null> {
   return refreshAccessToken();
 }
 
-export async function fetchCsrfToken(): Promise<void> {
-  await fetch(`${API_URL}/api/v1/auth/csrf`, { credentials: "include" });
-}
-
 let bootstrapInFlight: Promise<string | null> | null = null;
 
 /** Validate bearer without triggering login redirect (used during bootstrap). */
-async function probeAccessToken(token: string): Promise<"valid" | "invalid" | "rate_limited"> {
-  const response = await fetch(`${API_URL}/api/v1/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-    credentials: "include",
-  });
-  if (response.status === 401) return "invalid";
-  if (response.status === 429) return "rate_limited";
-  return response.ok ? "valid" : "invalid";
+async function probeAccessToken(token: string): Promise<"valid" | "invalid" | "rate_limited" | "unavailable"> {
+  try {
+    const response = await fetch(`${API_URL}/api/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    });
+    if (response.status === 401) return "invalid";
+    if (response.status === 429) {
+      apiRateLimitedUntil = Math.max(
+        apiRateLimitedUntil,
+        Date.now() + retryAfterMilliseconds(response),
+      );
+      return "rate_limited";
+    }
+    if (response.status >= 500) {
+      apiUnavailableUntil = Math.max(apiUnavailableUntil, Date.now() + SERVICE_UNAVAILABLE_COOLDOWN_MS);
+      return "unavailable";
+    }
+    return response.ok ? "valid" : "invalid";
+  } catch {
+    apiUnavailableUntil = Math.max(apiUnavailableUntil, Date.now() + SERVICE_UNAVAILABLE_COOLDOWN_MS);
+    return "unavailable";
+  }
 }
 
 /**
@@ -364,14 +411,17 @@ export async function bootstrapAuthSession(): Promise<string | null> {
       const existing = getAccessToken();
       if (!existing) return null;
 
+      if (isApiTemporarilyUnavailable()) {
+        await syncAuthTokenToStore(existing);
+        return existing;
+      }
+
       const status = await probeAccessToken(existing);
       if (status === "valid") {
         await syncAuthTokenToStore(existing);
         return existing;
       }
-      if (status === "rate_limited") {
-        const retryRefresh = await refreshAccessToken();
-        if (retryRefresh) return retryRefresh;
+      if (status === "rate_limited" || status === "unavailable") {
         await syncAuthTokenToStore(existing);
         return existing;
       }
@@ -389,7 +439,6 @@ export async function bootstrapAuthSession(): Promise<string | null> {
 export const api = {
   auth: {
     login: async (email: string, password: string) => {
-      await fetchCsrfToken();
       const data = await request<{
         access_token: string;
         expires_in: number;
@@ -420,7 +469,6 @@ export const api = {
       password: string;
       tenant_name: string;
     }) => {
-      await fetchCsrfToken();
       const data = await request<{ access_token: string }>(
         "/api/v1/auth/register",
         { method: "POST", body: JSON.stringify(body) },

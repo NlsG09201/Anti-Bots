@@ -84,6 +84,7 @@ async def get_current_user(
         logger.error("authenticated_user_lookup_failed", error_type=type(exc).__name__)
         raise HTTPException(
             status_code=503,
+            headers={"Retry-After": "5"},
             detail="El servicio de autenticación no está disponible temporalmente.",
         ) from exc
     if not user or not user.is_active:

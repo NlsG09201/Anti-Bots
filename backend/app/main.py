@@ -389,9 +389,7 @@ async def health():
 
 @app.get("/readyz")
 async def readiness():
-    """Check the database and configured Redis TCP dependency without exposing errors."""
-    from app.infrastructure.cache.redis_client import get_redis, redis_is_configured
-
+    """Database readiness; Redis is optional and has a local rate-limit fallback."""
     try:
         async with engine.connect() as connection:
             await connection.execute(text("SELECT 1"))
@@ -401,17 +399,6 @@ async def readiness():
             status_code=503,
             content={"status": "not_ready", "dependency": "database"},
         )
-
-    if redis_is_configured():
-        try:
-            await (await get_redis()).ping()
-        except Exception:
-            logger.warning("readiness_check_failed", dependency="redis_tcp")
-            return JSONResponse(
-                status_code=503,
-                content={"status": "not_ready", "dependency": "redis_tcp"},
-            )
-
     return {"status": "ready"}
 
 

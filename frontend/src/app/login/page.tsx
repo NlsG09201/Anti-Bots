@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shield, Eye, EyeOff, Zap } from "lucide-react";
-import { api, bootstrapAuthSession, fetchCsrfToken, resetAuthSessionState } from "@/lib/api";
+import { api, bootstrapAuthSession, isApiTemporarilyUnavailable, resetAuthSessionState } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 
 const TWITCH_CALLBACK =
@@ -31,12 +31,28 @@ function LoginForm() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const token = await bootstrapAuthSession();
-      if (!cancelled && token) {
+      try {
+        const token = await bootstrapAuthSession();
+        if (cancelled) return;
+        if (!token) {
+          if (isApiTemporarilyUnavailable()) {
+            setError("El servidor está temporalmente ocupado. Espera unos segundos antes de iniciar sesión.");
+          }
+          return;
+        }
         setTokens(token);
+        if (isApiTemporarilyUnavailable()) {
+          setError("El servidor está temporalmente ocupado. Tu sesión se conservará y puedes reintentar pronto.");
+          return;
+        }
         const user = await api.auth.me(token);
+        if (cancelled) return;
         setUser(user);
         router.replace("/dashboard");
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "No se pudo validar la sesión con el servidor.");
+        }
       }
     })();
     return () => {
@@ -56,7 +72,6 @@ function LoginForm() {
   const finishLogin = async (accessToken: string) => {
     resetAuthSessionState();
     setTokens(accessToken);
-    await fetchCsrfToken();
     const user = await api.auth.me(accessToken);
     setUser(user);
     router.push("/dashboard");

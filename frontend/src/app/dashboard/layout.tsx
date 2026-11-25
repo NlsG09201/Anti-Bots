@@ -6,7 +6,7 @@ import { Menu, Wifi, WifiOff } from "lucide-react";
 import { Sidebar, getDashboardPageTitle } from "@/components/Sidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
-import { bootstrapAuthSession, fetchCsrfToken, getAccessToken } from "@/lib/api";
+import { bootstrapAuthSession, getAccessToken } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -34,7 +34,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (cancelled) return;
       if (token) {
         setTokens(token);
-        await fetchCsrfToken();
         setAuthReady(true);
         return;
       }

@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
@@ -262,21 +263,33 @@ async def refresh_token_endpoint(
             error_type=type(exc).__name__,
         )
 
-    result = await db.execute(_active_refresh_token_query(payload["jti"]))
-    stored = result.scalar_one_or_none()
-    if not stored or _as_utc(stored.expires_at) < _utc_now():
-        return invalid_refresh("Refresh token expired")
+    try:
+        result = await db.execute(_active_refresh_token_query(payload["jti"]))
+        stored = result.scalar_one_or_none()
+        if not stored or _as_utc(stored.expires_at) < _utc_now():
+            return invalid_refresh("Refresh token expired")
 
-    result = await db.execute(select(User).where(User.id == UUID(payload["sub"])))
-    user = result.scalar_one_or_none()
-    if not user or not user.is_active:
-        return invalid_refresh("User not found")
+        result = await db.execute(select(User).where(User.id == UUID(payload["sub"])))
+        user = result.scalar_one_or_none()
+        if not user or not user.is_active:
+            return invalid_refresh("User not found")
 
-    stored.is_revoked = True
-    access_token = create_access_token(str(user.id), str(user.tenant_id), user.role.value)
-    new_refresh, new_jti, expires = create_refresh_token(str(user.id), str(user.tenant_id))
-    db.add(RefreshToken(user_id=user.id, jti=new_jti, expires_at=expires))
-    await db.flush()
+        stored.is_revoked = True
+        access_token = create_access_token(str(user.id), str(user.tenant_id), user.role.value)
+        new_refresh, new_jti, expires = create_refresh_token(str(user.id), str(user.tenant_id))
+        db.add(RefreshToken(user_id=user.id, jti=new_jti, expires_at=expires))
+        await db.flush()
+    except SQLAlchemyError as exc:
+        logger.error("refresh_database_unavailable", error_type=type(exc).__name__)
+        try:
+            await db.rollback()
+        except SQLAlchemyError:
+            pass
+        return JSONResponse(
+            status_code=503,
+            content={"error": "AUTH_UNAVAILABLE", "message": "El servicio de autenticaciÃ³n no estÃ¡ disponible temporalmente."},
+            headers={"Retry-After": "5"},
+        )
 
     return _auth_response(response, access_token, new_refresh)
 
