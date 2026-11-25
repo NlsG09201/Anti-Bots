@@ -140,6 +140,26 @@ async def _background_channel_monitor() -> None:
         await asyncio.sleep(55)
 
 
+async def _retry_database_startup(app: FastAPI) -> None:
+    from app.infrastructure.database.migrations import run_startup_migrations
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            await init_database(engine, max_attempts=1)
+            await run_startup_migrations(engine)
+        except Exception as exc:
+            logger.warning(
+                "database_startup_retry_failed",
+                error_type=type(exc).__name__,
+                retry_seconds=60,
+            )
+            continue
+        app.state.database_ready = True
+        logger.info("database_startup_recovered")
+        return
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     invalidate_settings_cache()
@@ -147,20 +167,38 @@ async def lifespan(app: FastAPI):
     logger.info("starting_application", env=get_settings().app_env)
     background_tasks = BackgroundTaskRegistry(logger)
     app.state.background_tasks = background_tasks
+    app.state.database_ready = False
+    _cfg = get_settings()
     try:
-        await init_database(engine)
         from app.infrastructure.database.migrations import run_startup_migrations
 
-        await run_startup_migrations(engine)
-        from app.core.config import get_settings as _gs
+        try:
+            await init_database(engine)
+            await run_startup_migrations(engine)
+            app.state.database_ready = True
+        except Exception as exc:
+            if not _cfg.is_production:
+                raise
+            logger.error(
+                "database_startup_degraded",
+                error_type=type(exc).__name__,
+                retry_seconds=60,
+            )
+            background_tasks.create(
+                _retry_database_startup(app), name="database_startup_retry"
+            )
+
         from app.integrations.twitchinsights.bot_database import get_twitch_insights_db
 
-        _cfg = _gs()
         if _cfg.mongodb_uri:
             from app.infrastructure.mongodb.startup import ensure_all_mongo_indexes_safe
 
             await ensure_all_mongo_indexes_safe()
-        if _cfg.twitchbots_info_enabled and _cfg.twitchbots_info_cache_warm_on_startup:
+        if (
+            app.state.database_ready
+            and _cfg.twitchbots_info_enabled
+            and _cfg.twitchbots_info_cache_warm_on_startup
+        ):
             from app.services.twitchbots.verification_service import (
                 get_twitchbots_verification_service,
             )
@@ -170,7 +208,7 @@ async def lifespan(app: FastAPI):
                 logger.info("twitchbots_info_cache_warmed", count=warmed)
             except Exception as exc:
                 logger.warning("twitchbots_info_warm_failed", error=str(exc)[:120])
-        if _cfg.twitch_insights_enabled:
+        if app.state.database_ready and _cfg.twitch_insights_enabled:
             background_tasks.create(
                 get_twitch_insights_db().ensure_loaded(),
                 name="twitch_insights_cache_load",
@@ -312,6 +350,25 @@ app.add_middleware(SecurityGatewayMiddleware)
 app.add_middleware(RequestTimingMiddleware)
 
 API_PREFIX = f"/api/{settings.app_api_version}"
+
+
+@app.middleware("http")
+async def reject_api_requests_while_database_unavailable(request: Request, call_next):
+    if (
+        request.url.path.startswith(API_PREFIX)
+        and not getattr(app.state, "database_ready", True)
+    ):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "DATABASE_UNAVAILABLE",
+                "message": "La base de datos no está disponible temporalmente.",
+            },
+            headers={"Retry-After": "60"},
+        )
+    return await call_next(request)
+
+
 app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(mfa.router, prefix=API_PREFIX)
 app.include_router(twitch_integration.router, prefix=API_PREFIX)
@@ -411,6 +468,12 @@ async def health():
 @app.get("/readyz")
 async def readiness():
     """Database readiness; Redis is optional and has a local rate-limit fallback."""
+    if not getattr(app.state, "database_ready", True):
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "dependency": "database"},
+            headers={"Retry-After": "60"},
+        )
     try:
         async with engine.connect() as connection:
             await connection.execute(text("SELECT 1"))
