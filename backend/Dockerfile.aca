@@ -1,0 +1,38 @@
+# ACA API image. Unlike the Render Dockerfile, this does not run the
+# Render-specific preflight script. Production validation still runs in
+# app.main during application startup.
+FROM python:3.11-slim AS build-deps
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefix=/install -r requirements.txt
+
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
+    PATH=/usr/lib/jvm/java-21-openjdk-amd64/bin:${PATH}
+
+# The API uses the Weka/JVM integration; the dedicated worker image does not.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 libpq5 openjdk-21-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build-deps /install/ /usr/local/
+COPY . .
+
+RUN adduser --disabled-password --gecos '' appuser && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "25"]

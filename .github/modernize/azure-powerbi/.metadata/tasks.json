@@ -1,23 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "Tasks template for the StreamShield Azure and Power BI modernization plan.",
+  "description": "Tasks for the StreamShield Azure and Microsoft Fabric modernization plan.",
   "tasks": [
     {
       "type": "setupBaseline",
       "id": "001-setup-baseline",
-      "description": "Capture the current behavior baseline for the in-scope Python backend before migration.",
+      "description": "Capture current behavior of the in-scope Python backend before migration.",
       "requirements": "Create a frozen behavior specification and mock/real decision table for external dependencies used by migration verification. Operate on a snapshot of backend/ only. Do not modify application code.",
       "snapshotFolder": "backend/"
     },
     {
       "type": "infrastructure",
       "id": "002-infrastructure-bicep",
-      "description": "Generate and validate Bicep for the future StreamShield Azure environment without provisioning resources.",
-      "requirements": "Prepare Bicep for the planned Azure Container Apps API and worker, Azure Database for PostgreSQL, Azure Managed Redis, and required supporting resources. Keep BigQuery and the Vercel frontend outside the Azure migration. Do not provision resources or include credentials, subscription IDs, or resource IDs. Azure subscription and resource details remain future prerequisites.",
+      "description": "Prepare Bicep and connectivity design for the future Azure and Fabric environment without provisioning.",
+      "requirements": "Prepare the Azure Container Apps API and worker, Azure Database for PostgreSQL, Azure Managed Redis, private networking, monitoring, and required application configuration. Document how Fabric capacity/workspace/pipeline will be configured using supported Azure/Fabric management interfaces; do not assume Bicep covers Fabric workspace items. Keep provisioning disabled and do not include resource IDs, subscription IDs, connection strings, or secrets. East US is only a pricing reference; deployment region, resource group, SKUs, and sizes remain unconfirmed.",
+      "dependencies": [],
       "iacType": "bicep",
       "provision": false,
-      "status": "completed",
-      "taskSummary": "Generated infrastructure/azure/main.bicep and its README. Compiled the template successfully with Bicep CLI 0.49.2 to a temporary ARM JSON file; no Azure-connected command or provisioning was performed. Private network design, Redis exposure, image references, and workload sizing remain prerequisites for any future deployment.",
       "skills": [
         {
           "name": "infrastructure-bicep-generation",
@@ -28,8 +27,8 @@
     {
       "type": "transform",
       "id": "003-transform-postgresql-to-azure",
-      "description": "Move the StreamShield PostgreSQL data service from Render to Azure Database for PostgreSQL.",
-      "requirements": "Migrate the in-scope Python backend's PostgreSQL connectivity and data service from Render to Azure Database for PostgreSQL while preserving application behavior, schema, and data. Use managed identity where supported. Do not change the separate Java service or the BigQuery analytics pipeline. Do not provision resources or include secrets or resource IDs.",
+      "description": "Move the StreamShield operational and dimensional PostgreSQL database from Render to Azure Database for PostgreSQL.",
+      "requirements": "Migrate the in-scope Python backend's PostgreSQL connectivity and data service while preserving application behavior, schema, and data. Use managed identity where supported, configure private connectivity, and define a verified data migration/cutover procedure. Do not change backend-spring, frontend hosting, or the analytics destination in this task. Do not provision resources or include credentials or resource IDs.",
       "dependencies": [],
       "successCriteria": {
         "passBuild": "true",
@@ -40,8 +39,8 @@
     {
       "type": "transform",
       "id": "004-transform-redis-to-azure",
-      "description": "Move the StreamShield Redis service from Render to Azure Managed Redis.",
-      "requirements": "Migrate the in-scope Python API and worker Redis connectivity from Render to Azure Managed Redis while preserving queue, cache, and required Redis TCP behavior. Use managed identity where supported. Do not modify the separate Java service, frontend hosting, or BigQuery pipeline. Do not provision resources or include secrets or resource IDs.",
+      "description": "Move the StreamShield API and worker Redis connectivity from Render to Azure Managed Redis.",
+      "requirements": "Migrate Redis connectivity while preserving queue, cache, worker, and required TCP behavior. Use managed identity and TLS where supported; document private network access and failover behavior. Do not provision Azure resources or include secrets or resource IDs.",
       "dependencies": [
         "003-transform-postgresql-to-azure"
       ],
@@ -53,9 +52,9 @@
     },
     {
       "type": "transform",
-      "id": "005-transform-powerbi-publish-and-embed",
-      "description": "Publish the existing Power BI project artifacts and embed the report in the application.",
-      "requirements": "Use the existing PBIP artifacts under business-intelligence/powerbi as the report source and implement app-owns-data embedding with a service principal. Do not assume a report or workspace is already published; identify and document the tenant, workspace, capacity/licensing, permissions, and cost prerequisites as open decisions. Keep credentials and secrets out of source control and the browser. The Next.js frontend remains hosted on Vercel. Preserve the existing BigQuery data pipeline and do not migrate it to Fabric.",
+      "id": "005-transform-bigquery-to-fabric",
+      "description": "Replace the optional BigQuery replication flow with a Microsoft Fabric Warehouse analytics pipeline.",
+      "requirements": "Use the existing PostgreSQL dimensional warehouse as the source for Fabric Warehouse. Replace the manual/daily BigQuery synchronization with a supported, monitored Fabric ingestion and refresh path. Migrate required history, compare row counts and analytical results against the source, and retain tenant isolation equivalent to the current tenant-scoped BigQuery datasets. Document identity, private connectivity, retry, scheduling, retention, cost, and rollback requirements. Do not disable or remove BigQuery production behavior until parity and cutover are verified. No resource provisioning or credentials in source control.",
       "dependencies": [
         "004-transform-redis-to-azure"
       ],
@@ -66,28 +65,44 @@
       }
     },
     {
+      "type": "transform",
+      "id": "006-transform-powerbi-fabric",
+      "description": "Retarget the Power BI project to Fabric and preserve secure application embedding.",
+      "requirements": "Update the existing PBIP data source from BigQuery to the Fabric Warehouse destination. Validate model, measures, report refresh, and tenant-specific authorization against migrated data. Complete the app-owns-data embedding flow only after the Power BI workspace, report, identity, capacity/licensing, and viewer model are confirmed. Keep secrets server-side and out of source control/browser code. The frontend remains hosted on Vercel; do not claim a live report or embedding connection until verified.",
+      "dependencies": [
+        "005-transform-bigquery-to-fabric"
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
       "type": "integrationTest",
-      "id": "006-integrationTest",
-      "description": "Build integration tests for migrated Azure services and run post-migration verification",
-      "requirements": "Add and run integration verification for the migrated PostgreSQL and Redis integrations, the API/worker service boundaries, and the Power BI embedding integration within the confirmed scope. Use mock mode for Azure and Power BI external dependencies because no Azure environment or confirmed Power BI Service workspace is available. Reuse the frozen behavior specification and infra-decision-table from setupBaseline. Do not provision resources or store resource IDs, subscription IDs, connection strings, or secrets.",
+      "id": "007-integrationTest",
+      "description": "Build integration tests for the migrated Azure services and Fabric analytics path, then verify behavior.",
+      "requirements": "Use mock mode while no Azure/Fabric environment is available. Verify API/worker service boundaries, PostgreSQL and Redis behavior, Fabric ingestion/data parity, Power BI source and embedding contracts, and tenant-isolation cases. Reuse the frozen behavior specification and external-dependency decision table from setupBaseline. Do not provision resources or store identifiers, connection strings, or secrets.",
       "dependencies": [
         "001-setup-baseline",
         "002-infrastructure-bicep",
         "003-transform-postgresql-to-azure",
         "004-transform-redis-to-azure",
-        "005-transform-powerbi-publish-and-embed"
+        "005-transform-bigquery-to-fabric",
+        "006-transform-powerbi-fabric"
       ]
     },
     {
       "type": "security",
-      "id": "007-security-cve-remediation",
-      "description": "Scan and remediate known dependency vulnerabilities in the in-scope modernization components.",
-      "requirements": "Scan dependencies for the in-scope Python backend and any frontend dependencies changed for Power BI embedding. Upgrade vulnerable dependencies to the minimum patched versions; if a fix requires a major version upgrade, document the affected dependency, current and upgraded versions, and breaking-change risk. Verify applicable builds and tests. Exclude backend-spring and do not add unrelated security scope.",
+      "id": "008-security-cve-remediation",
+      "description": "Scan and remediate dependency vulnerabilities in the in-scope migration components.",
+      "requirements": "Scan dependencies for the Python backend and any frontend dependencies changed for Power BI embedding. Upgrade vulnerable dependencies to patched versions and verify applicable builds/tests. Exclude backend-spring and unrelated security scope.",
       "dependencies": [
         "003-transform-postgresql-to-azure",
         "004-transform-redis-to-azure",
-        "005-transform-powerbi-publish-and-embed",
-        "006-integrationTest"
+        "005-transform-bigquery-to-fabric",
+        "006-transform-powerbi-fabric",
+        "007-integrationTest"
       ],
       "successCriteria": {
         "passBuild": "true",
@@ -97,18 +112,20 @@
     },
     {
       "type": "deployment",
-      "id": "008-deployment-azure-container-apps",
-      "description": "Containerize and prepare the Python API and worker for future deployment to Azure Container Apps.",
-      "requirements": "Prepare the in-scope Python 3.11 FastAPI API and separate worker for Azure Container Apps, including required container build configuration, and deploy only when an Azure subscription and target resources have been made available and explicitly authorized. The frontend remains on Vercel. Do not provision Azure resources, deploy now, or include resource IDs or secrets.",
+      "id": "009-deployment-azure-container-apps",
+      "description": "Prepare and, after separate authorization, deploy the Python API and worker to Azure Container Apps.",
+      "requirements": "Complete the future deployment only after the user approves the itemized cost estimate and confirms subscription, region, resource group, sizing, image registry, and required service identities. Until then, keep provisioning disabled and make no cloud changes. Migrate data and cut over only after tested parity, rollback, private connectivity, monitoring, and Power BI/Fabric access are verified. Keep the frontend on Vercel.",
       "dependencies": [
         "002-infrastructure-bicep",
         "003-transform-postgresql-to-azure",
         "004-transform-redis-to-azure",
-        "005-transform-powerbi-publish-and-embed",
-        "007-security-cve-remediation"
+        "005-transform-bigquery-to-fabric",
+        "006-transform-powerbi-fabric",
+        "007-integrationTest",
+        "008-security-cve-remediation"
       ],
       "targetAzureService": "Azure Container Apps",
-      "resourceStatus": "No Azure subscription or resources are currently available; future deployment is gated on their availability and authorization.",
+      "resourceStatus": "No Azure or Fabric resources are provisioned by this plan; deployment is gated on cost review and separate explicit authorization.",
       "deploymentTool": "bicep",
       "skills": [
         {
