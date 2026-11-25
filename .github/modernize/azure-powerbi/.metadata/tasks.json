@@ -13,7 +13,7 @@
       "type": "infrastructure",
       "id": "002-infrastructure-bicep",
       "description": "Prepare and validate the Azure infrastructure design without provisioning.",
-      "requirements": "Prepare a deployable Bicep design for the Azure Container Apps API and worker, Azure Database for PostgreSQL, Azure Managed Redis, private networking, monitoring, and application configuration. Keep provisioning disabled. Target the enabled Azure for Students subscription and East US only after verifying availability and cost; the subscription currently has no resource groups. The total Azure consumption must remain within US$50/month including credits. Do not include identifiers, connection strings, or secrets. Fabric and Power BI integration are deferred.",
+      "requirements": "Prepare a deployable Bicep design for the Azure Container Apps API and worker, Azure Database for PostgreSQL, Azure Managed Redis, private networking, monitoring, and application configuration. Keep provisioning disabled. Target the enabled Azure for Students subscription in East US 2, confirmed by the user; the subscription currently has no resource groups. Quota and full cost remain unverified. The total Azure consumption must remain within US$50/month including credits. Do not include identifiers, connection strings, or secrets. Fabric and Power BI integration are deferred.",
       "dependencies": [],
       "iacType": "bicep",
       "provision": false,
@@ -82,7 +82,7 @@
       "type": "deployment",
       "id": "007-deployment-azure-container-apps",
       "description": "Deploy the Python API and worker to Azure Container Apps after the cost and resource gates are satisfied.",
-      "requirements": "Deploy only after a current itemized estimate confirms all Azure consumption remains within US$50/month, Azure for Students credits/overage are verified, and the user explicitly approves the exact resource creation. Confirm region, resource group, SKUs, images, identities, private network, secrets, database migration, health checks, and rollback before cutover. Until then make no cloud changes. Keep the frontend on Vercel and Fabric/Power BI deferred.",
+      "requirements": "Prepare an isolated Azure test for 25 November 2026 18:00 through 26 November 2026 18:00 UTC-05:00; keep existing Vercel/Render production traffic unchanged and delete all Azure resources created for the test at the end. Do not provision until a current itemized estimate confirms all Azure consumption remains within US$50/month, credit application/overage and quota are verified, and the user explicitly approves the exact resource creation. The user-provided screenshot shows US$100 Azure for Students credit available until 2027-11-24 and US$0 November cost; do not treat this as approval to exceed the US$50/month consumption cap. Use the user-confirmed East US 2 region. Confirm resource group, SKUs, images, identities, private network, secrets, test data strategy, health checks, and reliable cleanup before creating resources. Fabric/Power BI remain deferred.",
       "dependencies": [
         "002-infrastructure-bicep",
         "003-transform-postgresql-to-azure",
@@ -91,7 +91,7 @@
         "006-security-cve-remediation"
       ],
       "targetAzureService": "Azure Container Apps",
-      "resourceStatus": "Azure for Students subscription is enabled but currently has no resource groups; no deployment or provisioning is authorized yet.",
+      "resourceStatus": "Azure for Students subscription is enabled but currently has no resource groups. The user asked to begin deployment and confirmed East US 2, but exact resource creation remains gated on cost, quota, and access verification.",
       "deploymentTool": "bicep",
       "skills": [
         {

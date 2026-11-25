@@ -41,15 +41,18 @@ specific resources.
 | IaC Tool | Bicep |
 | Provision | false |
 | Subscription | Azure for Students (enabled; no resource groups found) |
-| Region | East US |
+| Region | East US 2 (confirmed by the user) |
 | Monthly consumption limit | US$50 maximum, including Azure credits |
 
 The current Azure account has an enabled subscription, but no resource group
-exists. Azure CLI and Bicep CLI are unavailable in the local environment, and
-the Bicep template is not yet deployable. It lacks private networking, complete
-database/Redis endpoint configuration, PostgreSQL Entra enablement and roles,
-and registry/image setup. The template has not been validated with Bicep in
-this environment.
+exists. East US 2 was confirmed after PostgreSQL was found unavailable in East
+US. The subscription quota lookup returned inconclusive Container Apps values
+and could not read network quota; a separate availability tool could not access
+the subscription. Azure CLI and Bicep CLI are unavailable in the local
+environment, and the Bicep template is not yet deployable. It lacks private
+networking, complete database/Redis endpoint configuration, PostgreSQL Entra
+enablement and roles, and registry/image setup. The template has not been
+validated with Bicep in this environment.
 
 ```text
 Vercel frontend (unchanged)
@@ -70,11 +73,24 @@ remain deferred; do not describe them as operational.
 
 The user's hard limit is **US$50/month of total Azure consumption**, including
 Azure for Students credits. A complete itemized estimate for the application
-stack has not been validated: PostgreSQL/Redis SKUs, API/worker active time,
-networking, storage, and monitoring are unresolved. Azure Retail Pricing
-queries for those SKUs were unavailable or timed out during this check. Do not
-provision based on an incomplete estimate, and do not assume student credits
-make consumption free.
+stack has not been validated. Retail catalog results provide candidate minimum
+rates for PostgreSQL and Managed Redis, but Container Apps usage, storage,
+networking, monitoring, and actual workload are not fully costed. SKU-specific
+pricing queries for several services returned no results, and quota
+availability could not be verified. Do not provision based on an incomplete
+estimate, and do not assume student credits make consumption free.
+
+The user-provided Azure for Students screenshot shows US$100 of US$100 credit
+available, expiration on 24 November 2027, and US$0 November cost. This is
+user-provided billing evidence, not an independently queried balance. It does
+not change the US$50/month consumption cap; credit application and overage
+behavior remain unverified.
+
+The user authorized planning an isolated 24-hour Azure test from 25 November
+2026 at 18:00 through 26 November 2026 at 18:00 (UTC−05:00), with all Azure
+resources created for the test deleted at the end. Existing Vercel/Render
+production traffic is to remain unchanged. This window does not approve
+unestimated charges or bypass quota, readiness, or cost gates.
 
 The previously checked Fabric reference is outside this phase: Fabric F2
 running continuously is approximately US$262.80/month before application
@@ -100,22 +116,30 @@ approval after the estimate.
 
 ## Open Questions & Questionnaire
 
-- [x] Q: Should infrastructure be provisioned now? → A: No; prepare first and
-  keep provisioning disabled until an exact estimate is approved.
+- [x] Q: Should infrastructure be provisioned now? → A: The user later asked to
+  begin deployment; resource creation remains gated on a complete estimate,
+  quota/access verification, and approval of the specific resources.
+- [x] Q: How should the one-day deployment be used and ended? → A: Isolated
+  Azure test, keep current production unchanged, run 25 November 2026 18:00 to
+  26 November 2026 18:00 UTC−05:00, then delete the test resources.
 - [x] Q: Should integration testing be included? → A: Yes, use mock mode until
   Azure resources are available.
 - [x] Q: Should security/CVE remediation be included? → A: Yes.
 - [x] Q: Which Azure deployment target should be used? → A: Azure Container
   Apps for the API and separate worker.
-- [x] Q: Which subscription and region? → A: Azure for Students, East US.
-  Subscription is enabled; no resource groups are present.
+- [x] Q: Which subscription and region? → A: Azure for Students, East US 2.
+  The user confirmed East US 2 after PostgreSQL was found unavailable in East
+  US. The subscription is enabled; no resource groups are present.
 - [x] Q: How should Phase 1 handle analytics within the budget? → A: Use the
   Azure PostgreSQL dimensional warehouse; defer Fabric and Power BI embedding.
 - [x] Q: What is the monthly Azure consumption limit? → A: US$50 total,
   including student credits.
 - [ ] Confirm the exact PostgreSQL, Redis, Container Apps, networking, registry,
   and monitoring SKUs and a complete estimate within the cap.
-- [ ] Confirm Azure for Students credit balance, expiry, and overage behavior
-  before creating billable resources.
+- [x] Q: What Azure for Students credit is available? → A: The user-provided
+  screenshot shows US$100 available, expiring 24 November 2027, and US$0
+  November cost.
+- [ ] Confirm credit application and whether Azure blocks or bills consumption
+  beyond available credit before creating billable resources.
 - [ ] Confirm Power BI consumer count and the future Fabric/workspace/licensing
   model before resuming the deferred BI work.

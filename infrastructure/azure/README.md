@@ -8,11 +8,12 @@ this deployment.
 
 ## Provisioning is disabled
 
-The template is intentionally **not deployed** by this task. No Azure resource
-group, subscription, region, registry, SKU selection, or workload sizing has
-been confirmed. The required image and SKU parameters have no sample values.
-The PostgreSQL password is a required secure parameter and has no value in this
-repository. Do not add a populated parameter file or commit secret material.
+The template is intentionally **not deployed** by this task. The Azure for
+Students subscription and East US 2 region are confirmed, but no resource group
+exists; registry, SKU selection, and workload sizing remain unconfirmed. The
+required image and SKU parameters have no sample values. The PostgreSQL
+password is a required secure parameter and has no value in this repository.
+Do not add a populated parameter file or commit secret material.
 
 Compile locally without contacting Azure:
 
@@ -26,7 +27,8 @@ Azure-connected command is part of validation for this task.
 
 ## Before any future deployment
 
-- Select a supported region, PostgreSQL SKU, Redis SKU, and API/worker sizing.
+- Use the confirmed East US 2 region; verify quota and select PostgreSQL/Redis
+  SKUs and API/worker sizing.
 - Provide private connectivity (VNet integration for Container Apps and
   PostgreSQL, plus a private endpoint and DNS for Managed Redis) before enabling
   application access. PostgreSQL explicitly disables public network access.
