@@ -141,6 +141,7 @@ function EmptyState({ label }: { label: string }) {
 export function SocDashboard() {
   const [hours, setHours] = useState(168);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [reportBusy, setReportBusy] = useState(false);
   const [bigQueryStatus, setBigQueryStatus] = useState<string | null>(null);
   const [bigQueryTarget, setBigQueryTarget] = useState<string | null>(null);
   const [bigQueryConfigured, setBigQueryConfigured] = useState(false);
@@ -257,19 +258,22 @@ export function SocDashboard() {
     }
   }
 
-  async function downloadPublishedReport(format: "pdf" | "pptx" | "pbix") {
-    if (!accessToken) return;
+  async function downloadExecutiveReport() {
+    if (!accessToken || reportBusy) return;
+    setReportBusy(true);
     setExportError(null);
     try {
-      const blob = await api.powerBiAnalytics.exportPublishedReport(accessToken, format);
+      const blob = await api.powerBiAnalytics.exportExecutiveReport(accessToken, hours);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `streamshield-powerbi-report.${format}`;
+      anchor.download = "streamshield-informe-ejecutivo.pdf";
       anchor.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
-      setExportError(error instanceof Error ? error.message : `No se pudo descargar el informe Power BI (${format}).`);
+      setExportError(error instanceof Error ? error.message : "No se pudo generar el informe ejecutivo.");
+    } finally {
+      setReportBusy(false);
     }
   }
 
@@ -578,14 +582,9 @@ export function SocDashboard() {
                   <Download size={14} />
                   Package
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => void downloadPublishedReport("pdf")}>
-                  <Download size={14} /> Power BI PDF
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => void downloadPublishedReport("pptx")}>
-                  <Download size={14} /> PowerPoint
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => void downloadPublishedReport("pbix")}>
-                  <Download size={14} /> PBIX
+                <Button variant="outline" size="sm" onClick={() => void downloadExecutiveReport()} disabled={reportBusy}>
+                  {reportBusy ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+                  {reportBusy ? "Generando informe…" : "Generar informe PDF"}
                 </Button>
               </div>
             }

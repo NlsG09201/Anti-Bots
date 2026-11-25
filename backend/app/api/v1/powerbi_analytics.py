@@ -21,6 +21,7 @@ from app.services.analytics.powerbi import (
     powerbi_model_manifest,
     powerbi_package_bytes,
 )
+from app.services.analytics.pdf_report import build_executive_pdf
 from app.services.analytics.bigquery import BigQueryWarehouseService, WAREHOUSE_SCHEMAS
 
 logger = get_logger(__name__)
@@ -66,6 +67,34 @@ async def analytics_export_published_powerbi_report(
         content=content,
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/exports/executive-report")
+async def analytics_export_executive_report(
+    current_user: AnalystUser,
+    db: AsyncSession = Depends(get_db),
+    hours: int = Query(168, ge=1, le=2160),
+):
+    """Generate a real PDF from this tenant's current analytics, without Power BI Service credentials."""
+    service = AnalyticsWarehouseService(db, current_user.tenant_id, hours=hours)
+    try:
+        report = await service.executive_report()
+        content = build_executive_pdf(report)
+    except Exception as exc:
+        logger.error(
+            "powerbi_executive_pdf_failed",
+            tenant_id=str(current_user.tenant_id),
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo generar el informe con los datos disponibles. Intenta de nuevo.",
+        ) from exc
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="streamshield-informe-ejecutivo.pdf"'},
     )
 
 

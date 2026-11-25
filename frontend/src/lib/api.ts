@@ -468,6 +468,15 @@ export const api = {
       ),
   },
   powerBiAnalytics: {
+    exportExecutiveReport: (token: ApiAuthToken, hours = 168) =>
+      request<Blob>(
+        `/api/v1/analytics/exports/executive-report?hours=${encodeURIComponent(String(hours))}`,
+        {},
+        token,
+        DIRECT_API_URL,
+        true,
+        "blob",
+      ),
     dashboardData: (token: ApiAuthToken, hours = 168) =>
       request<PowerBiDashboardData>(
         `/api/v1/analytics/dashboard-data?hours=${hours}`,
