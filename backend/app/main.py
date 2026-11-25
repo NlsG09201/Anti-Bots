@@ -67,6 +67,31 @@ REQUEST_COUNT = Counter("http_requests_total", "Total HTTP requests", ["method",
 REQUEST_LATENCY = Histogram("http_request_duration_seconds", "HTTP request latency", ["method", "endpoint"])
 
 
+async def _run_embedded_arq_worker(settings) -> None:
+    """Run the queue worker beside the API on Render's single free web instance."""
+    from arq.worker import Worker
+    from app.workers.arq_worker import WorkerSettings
+
+    worker = Worker(
+        functions=WorkerSettings.functions,
+        queue_name=WorkerSettings.queue_name,
+        cron_jobs=WorkerSettings.cron_jobs,
+        redis_settings=WorkerSettings.redis_settings,
+        on_startup=WorkerSettings.on_startup,
+        on_shutdown=WorkerSettings.on_shutdown,
+        max_jobs=min(settings.event_queue_max_jobs, 2),
+        job_timeout=settings.event_queue_job_timeout_seconds,
+        max_tries=settings.event_queue_max_tries,
+        keep_result=60,
+        handle_signals=False,
+        ctx={"shared_api_process": True},
+    )
+    try:
+        await worker.async_run()
+    finally:
+        await worker.close()
+
+
 async def _background_channel_monitor() -> None:
     """Monitorea canales en vivo (IRC + picos de viewers) de forma rotativa."""
     from sqlalchemy import select
@@ -203,6 +228,17 @@ async def lifespan(app: FastAPI):
 
         await start_pipeline_consumer()
         await start_realtime_subscriber()
+        if _cfg.event_queue_enabled and _cfg.event_queue_worker_in_api:
+            from app.infrastructure.cache.redis_client import redis_is_configured
+
+            if redis_is_configured():
+                background_tasks.create(
+                    _run_embedded_arq_worker(_cfg),
+                    name="arq_worker_in_api",
+                )
+                logger.info("arq_worker_running_in_api_process", max_jobs=min(_cfg.event_queue_max_jobs, 2))
+            else:
+                logger.warning("arq_worker_in_api_skipped", reason="redis_not_configured")
         if _cfg.prometheus_enabled:
             from app.events.metrics import event_pipeline_metrics_loop
 

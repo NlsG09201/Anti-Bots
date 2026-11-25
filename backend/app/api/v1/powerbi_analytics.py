@@ -102,7 +102,15 @@ async def analytics_bigquery_sync(
 ):
     service = BigQueryWarehouseService()
     if not service.configured:
-        raise HTTPException(status_code=503, detail="Google BigQuery no está configurado en el backend.")
+        cfg = get_settings()
+        return {
+            "enabled": False,
+            "configured": False,
+            "project_id": cfg.google_cloud_project_id or None,
+            "dataset": None,
+            "tables_loaded": [],
+            "message": "BigQuery está desactivado o no configurado; no se realizó ninguna sincronización.",
+        }
     try:
         await db.execute(
             text(

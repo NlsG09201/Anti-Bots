@@ -5,7 +5,7 @@ services:
     rootDir: backend
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    plan: starter
+    plan: free
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
@@ -46,121 +46,26 @@ services:
       - key: RENDER
         value: "true"
       - key: PLATFORM_MONITOR_RUN_IN_API
-        value: "false"
+        value: "true"
       - key: EVENT_QUEUE_ENABLED
         value: "true"
-      - key: AI_ENABLED
+      - key: EVENT_QUEUE_WORKER_IN_API
         value: "true"
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_MODEL
-        value: gpt-4o-mini
-      - key: OPENAI_MODERATION_MODEL
-        value: omni-moderation-latest
-      - key: OPENAI_INPUT_COST_PER_MILLION
-        sync: false
-      - key: OPENAI_OUTPUT_COST_PER_MILLION
-        sync: false
-      - key: OPENAI_CHAT_ANALYSIS_ENABLED
-        value: "true"
-      - key: OPENAI_TIMEOUT_SECONDS
-        value: "12"
-      - key: OPENAI_MAX_RETRIES
+      - key: EVENT_QUEUE_MAX_JOBS
         value: "2"
-      - key: OPENAI_MAX_OUTPUT_TOKENS
-        value: "350"
-      - key: OPENAI_RATE_LIMIT_PER_MINUTE
-        value: "60"
-      - key: OPENAI_ANALYSIS_CACHE_SECONDS
-        value: "900"
-      - key: PLATFORM_MONITOR_ENABLED
-        value: "true"
-      - key: LIVE_INTEL_ENABLED
-        value: "true"
-      - key: TWITCHBOTS_INFO_ENABLED
-        value: "true"
-      - key: REDIS_URL
-        fromService:
-          name: anti-bots-keyvalue
-          type: keyvalue
-          property: connectionString
-    healthCheckPath: /health
-
-  - type: worker
-    name: anti-bots-platform-monitor
-    runtime: docker
-    rootDir: backend
-    dockerfilePath: ./Dockerfile.worker
-    dockerContext: .
-    plan: starter
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.9"
-      - key: APP_ENV
-        value: production
-      - key: DATABASE_URL
-        sync: false
-      - key: APP_SECRET_KEY
-        sync: false
-      - key: JWT_SECRET_KEY
-        sync: false
-      - key: AES_ENCRYPTION_KEY
-        sync: false
-      - key: APP_DEBUG
+      - key: AI_ENABLED
         value: "false"
-      - key: APP_CORS_ORIGINS
-        value: https://anti-bots.vercel.app,https://anti-bots-vhbo.vercel.app
-      - key: TRUSTED_HOSTS
-        value: anti-bots.onrender.com,anti-bots-api.onrender.com
-      - key: COOKIE_SECURE
-        value: "true"
-      - key: RENDER
-        value: "true"
-      - key: PLATFORM_MONITOR_WORKER
-        value: "true"
-      - key: PLATFORM_MONITOR_RUN_IN_API
+      - key: OPENAI_CHAT_ANALYSIS_ENABLED
         value: "false"
       - key: PLATFORM_MONITOR_ENABLED
         value: "true"
-      - key: KICK_CLIENT_ID
-        sync: false
-      - key: KICK_CLIENT_SECRET
-        sync: false
-      - key: KICK_REDIRECT_URI
-        value: https://anti-bots.onrender.com/api/v1/integrations/kick/callback
-      - key: KICK_WEBHOOK_CALLBACK_URL
-        value: https://anti-bots.onrender.com/api/v1/webhooks/kick
-      - key: EVENT_QUEUE_ENABLED
-        value: "true"
-      - key: AI_ENABLED
-        value: "true"
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_MODEL
-        value: gpt-4o-mini
-      - key: OPENAI_MODERATION_MODEL
-        value: omni-moderation-latest
-      - key: OPENAI_INPUT_COST_PER_MILLION
-        sync: false
-      - key: OPENAI_OUTPUT_COST_PER_MILLION
-        sync: false
-      - key: OPENAI_CHAT_ANALYSIS_ENABLED
-        value: "true"
-      - key: OPENAI_TIMEOUT_SECONDS
-        value: "12"
-      - key: OPENAI_MAX_RETRIES
-        value: "2"
-      - key: OPENAI_MAX_OUTPUT_TOKENS
-        value: "350"
-      - key: OPENAI_RATE_LIMIT_PER_MINUTE
-        value: "60"
-      - key: OPENAI_ANALYSIS_CACHE_SECONDS
-        value: "900"
       - key: LIVE_INTEL_ENABLED
         value: "true"
       - key: TWITCHBOTS_INFO_ENABLED
         value: "true"
       - key: WEKA_J48_ENABLED
+        value: "false"
+      - key: WEKA_JVM_EAGER_START
         value: "false"
       - key: TWITCH_INSIGHTS_ENABLED
         value: "false"
@@ -169,7 +74,7 @@ services:
           name: anti-bots-keyvalue
           type: keyvalue
           property: connectionString
-      # Mismas secrets que anti-bots-api (DATABASE_URL, REDIS_URL, keys OAuth, etc.)
+    healthCheckPath: /health
 
   - type: keyvalue
     name: anti-bots-keyvalue
@@ -178,20 +83,3 @@ services:
     maxmemoryPolicy: noeviction
     persistenceMode: off
     ipAllowList: []
-
-  - type: cron
-    name: anti-bots-bi-refresh
-    runtime: docker
-    rootDir: backend
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    schedule: "0 7 * * *"
-    plan: starter
-    startCommand: python scripts/refresh_warehouse.py
-    envVars:
-      - key: APP_ENV
-        value: production
-      - key: RENDER
-        value: "true"
-      - key: DATABASE_URL
-        sync: false

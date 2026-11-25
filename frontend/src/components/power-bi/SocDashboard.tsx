@@ -143,6 +143,7 @@ export function SocDashboard() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [bigQueryStatus, setBigQueryStatus] = useState<string | null>(null);
   const [bigQueryTarget, setBigQueryTarget] = useState<string | null>(null);
+  const [bigQueryConfigured, setBigQueryConfigured] = useState(false);
   const [bigQueryBusy, setBigQueryBusy] = useState(false);
   const {
     accessToken,
@@ -166,12 +167,18 @@ export function SocDashboard() {
     let active = true;
     api.powerBiAnalytics.bigQueryConfig(accessToken)
       .then((config) => {
+        if (active) setBigQueryConfigured(config.enabled && config.configured);
         if (active && config.configured && config.project_id && config.dataset) {
           setBigQueryTarget(`${config.project_id}.${config.dataset}`);
+        } else if (active) {
+          setBigQueryTarget(null);
         }
       })
       .catch(() => {
-        if (active) setBigQueryTarget(null);
+        if (active) {
+          setBigQueryConfigured(false);
+          setBigQueryTarget(null);
+        }
       });
     return () => { active = false; };
   }, [accessToken]);
@@ -267,7 +274,7 @@ export function SocDashboard() {
   }
 
   async function syncBigQuery() {
-    if (!accessToken) return;
+    if (!accessToken || !bigQueryConfigured) return;
     setBigQueryBusy(true);
     setBigQueryStatus(null);
     setExportError(null);
@@ -336,7 +343,13 @@ export function SocDashboard() {
               <DatabaseZap size={14} />
               {sync.isPending ? "Syncing" : "Sync Power BI"}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => void syncBigQuery()} disabled={bigQueryBusy || !accessToken}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void syncBigQuery()}
+              disabled={bigQueryBusy || !accessToken || !bigQueryConfigured}
+              title={bigQueryConfigured ? undefined : "BigQuery no está configurado en este despliegue."}
+            >
               <DatabaseZap size={14} />
               {bigQueryBusy ? "Syncing BigQuery…" : "Sync BigQuery"}
             </Button>
@@ -352,6 +365,7 @@ export function SocDashboard() {
         </div>
       )}
       {bigQueryStatus && <div role="status" className="rounded-lg border border-cyber-accent/30 bg-cyber-accent/10 p-3 text-sm text-cyber-accent">{bigQueryStatus}</div>}
+      {accessToken && !bigQueryConfigured && <p className="text-xs text-cyber-muted">La sincronización con Google BigQuery está desactivada en el despliegue gratuito.</p>}
       {bigQueryTarget && <p className="text-xs text-cyber-muted">Google BigQuery tenant dataset: <code className="text-cyber-accent">{bigQueryTarget}</code></p>}
 
       {loading ? (
