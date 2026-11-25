@@ -13,7 +13,7 @@ from sqlalchemy import case, select, update
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.processor import process_pipeline_event
-from app.events.queue import QUEUE_BY_CATEGORY, queue_name_for
+from app.events.queue import QUEUE_BY_CATEGORY, UNIFIED_QUEUE, queue_name_for
 from app.events.schemas import EventCategory, PipelineEvent
 from app.events.streams import EventStreamService
 from app.infrastructure.cache.redis_client import create_arq_pool
