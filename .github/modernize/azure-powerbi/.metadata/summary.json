@@ -1,0 +1,23 @@
+{
+  "planName": "azure-powerbi",
+  "tasks": [
+    {
+      "taskId": "001-setup-baseline",
+      "status": "failed",
+      "taskSummary": "Failed before application analysis or baseline generation: the backend/ snapshot attempt hit Access Denied at backend/.pytest_cache/tmp. The resulting copy was incomplete and removed. Per task contract, stopped without using the live workspace. No frozen baseline artifacts were created.",
+      "goalStatus": {
+        "totalTestCases": 0,
+        "passed": 0,
+        "failed": 0,
+        "allCasesPassed": false,
+        "testCasesFile": "backend/tests/test-cases/test-cases.md"
+      },
+      "risks": [
+        "Snapshot integrity is not established because access to backend/.pytest_cache/tmp was denied."
+      ],
+      "followUps": [
+        "Resolve access to the snapshot source or provide a complete readable backend/ snapshot, then rerun 001-setup-baseline."
+      ]
+    }
+  ]
+}
