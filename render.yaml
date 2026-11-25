@@ -173,10 +173,10 @@ services:
 
   - type: keyvalue
     name: anti-bots-keyvalue
-    plan: 256mb
+    plan: free
     region: oregon
     maxmemoryPolicy: noeviction
-    persistenceMode: journal-snapshot
+    persistenceMode: off
     ipAllowList: []
 
   - type: cron
