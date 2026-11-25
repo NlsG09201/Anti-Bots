@@ -1,5 +1,14 @@
 # Analítica StreamShield en Google Cloud y Power BI
 
+> **Estado del destino Azure/Fabric (revisión local 2026-11-24):** esta guía
+> describe el flujo actual PostgreSQL → BigQuery → Power BI. No se encontró una
+> canalización a Microsoft Fabric ni se modificó el origen del PBIP: sus
+> consultas y expresiones siguen usando `GoogleBigQuery.Database`. El plan de
+> Fabric es futuro y está bloqueado hasta aprobar conectividad privada,
+> identidad/licencias/capacidad, seguridad por tenant, volumen/retención y
+> costes. No se ha conectado, publicado ni migrado nada a Fabric; conserve
+> BigQuery y los informes actuales hasta validar paridad de datos e informes.
+
 Esta integración toma datos operacionales de StreamShield, mantiene un Data Warehouse dimensional en PostgreSQL y replica sus dimensiones y hechos a **BigQuery** en Google Cloud. Power BI Desktop/Service conecta directamente a BigQuery. Cada tenant se escribe en un dataset independiente; la API vuelve a generar esas tablas desde el almacén real y no crea filas de demostración.
 
 ## Arquitectura que ejecuta el código
