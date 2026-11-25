@@ -33,7 +33,8 @@ param apiMinReplicas int = 1
 
 @description('Maximum API replicas. Set sizing after workload and cost review.')
 @minValue(1)
-param apiMaxReplicas int = 3
+@maxValue(1)
+param apiMaxReplicas int = 1
 
 @description('Minimum worker replicas. Set sizing after workload and cost review.')
 @minValue(1)
@@ -56,6 +57,9 @@ resource logWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   location: location
   properties: {
     retentionInDays: 30
+    workspaceCapping: {
+      dailyQuotaGb: 1
+    }
     features: {
       enableLogAccessUsingOnlyResourcePermissions: true
     }
@@ -128,7 +132,7 @@ resource managedRedis 'Microsoft.Cache/redisEnterprise@2025-04-01' = {
   }
   properties: {
     encryption: {}
-    highAvailability: 'Enabled'
+    highAvailability: 'Disabled'
     minimumTlsVersion: '1.2'
   }
 }

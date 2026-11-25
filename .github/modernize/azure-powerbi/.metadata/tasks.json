@@ -13,7 +13,7 @@
       "type": "infrastructure",
       "id": "002-infrastructure-bicep",
       "description": "Prepare and validate the Azure infrastructure design without provisioning.",
-      "requirements": "Prepare a deployable Bicep design for the Azure Container Apps API and worker, Azure Database for PostgreSQL, Azure Managed Redis, private networking, monitoring, and application configuration. Keep provisioning disabled. Target the enabled Azure for Students subscription in East US 2, confirmed by the user; the subscription currently has no resource groups. Quota and full cost remain unverified. The total Azure consumption must remain within US$50/month including credits. Do not include identifiers, connection strings, or secrets. Fabric and Power BI integration are deferred.",
+      "requirements": "Prepare and locally validate a deployable Bicep design for Azure Container Apps API and worker, PostgreSQL, Azure Managed Redis, private networking, monitoring, registry, and app configuration. Keep provisioning disabled in this planning task. Target the enabled Azure for Students subscription in East US 2; no resource group exists. The user authorized an isolated one-day trial despite unverified costs and accepts possible charges above US$50; do not claim a hard spending cap. Use an empty database; do not copy production data. Do not include secrets or connection strings. Fabric and Power BI integration are deferred.",
       "dependencies": [],
       "iacType": "bicep",
       "provision": false,
@@ -28,7 +28,7 @@
       "type": "transform",
       "id": "003-transform-postgresql-to-azure",
       "description": "Move the operational and dimensional PostgreSQL database to Azure.",
-      "requirements": "Migrate the in-scope Python backend's PostgreSQL connection and data from its current host to Azure Database for PostgreSQL while preserving schema, application behavior, and the dimensional analytics warehouse. Use managed identity where supported and document backup, parity, cutover, and rollback. Ensure API analytics continues to use PostgreSQL. Do not migrate or enable BigQuery, Fabric, or Power BI embedding in this phase. Do not provision resources or include credentials or resource IDs.",
+      "requirements": "Configure the in-scope Python backend to use Azure Database for PostgreSQL. The trial database starts empty and the application initializes its schema; do not copy production data or claim historical warehouse parity. Verify application behavior and analytics queries against the initialized schema. Use the supported Azure authentication method and document connection/security requirements. Do not migrate or enable BigQuery, Fabric, or Power BI embedding. Do not include credentials or resource IDs.",
       "dependencies": [],
       "successCriteria": {
         "passBuild": "true",
@@ -81,8 +81,8 @@
     {
       "type": "deployment",
       "id": "007-deployment-azure-container-apps",
-      "description": "Deploy the Python API and worker to Azure Container Apps after the cost and resource gates are satisfied.",
-      "requirements": "Prepare an isolated Azure test for 25 November 2026 18:00 through 26 November 2026 18:00 UTC-05:00; keep existing Vercel/Render production traffic unchanged and delete all Azure resources created for the test at the end. Do not provision until a current itemized estimate confirms all Azure consumption remains within US$50/month, credit application/overage and quota are verified, and the user explicitly approves the exact resource creation. The user-provided screenshot shows US$100 Azure for Students credit available until 2027-11-24 and US$0 November cost; do not treat this as approval to exceed the US$50/month consumption cap. Use the user-confirmed East US 2 region. Confirm resource group, SKUs, images, identities, private network, secrets, test data strategy, health checks, and reliable cleanup before creating resources. Fabric/Power BI remain deferred.",
+      "description": "Deploy the Python API and worker to Azure Container Apps after technical readiness and cleanup gates pass.",
+      "requirements": "Deploy an isolated Azure trial in the confirmed window, 25 November 2026 18:00 through 26 November 2026 18:00 UTC-05:00; the user confirmed to keep this start time rather than deploy immediately. Use an empty database; do not access or copy production data. The user explicitly accepted unverified costs and possible charges above US$50; do not claim a hard spending cap. Keep Vercel/Render production unchanged; configure only a Preview if authorized and available. Use East US 2. Before provisioning, complete and validate private networking, identity/authentication, immutable real API/worker images, secure app settings, health checks, and reliable deletion of only the dedicated trial resource group at the end. Run `what-if` before apply and stop on any failed readiness check. Fabric/Power BI remain deferred.",
       "dependencies": [
         "002-infrastructure-bicep",
         "003-transform-postgresql-to-azure",
@@ -91,7 +91,7 @@
         "006-security-cve-remediation"
       ],
       "targetAzureService": "Azure Container Apps",
-      "resourceStatus": "Azure for Students subscription is enabled but currently has no resource groups. The user asked to begin deployment and confirmed East US 2, but exact resource creation remains gated on cost, quota, and access verification.",
+      "resourceStatus": "Azure for Students subscription is enabled; no resource group or Container App exists. Required providers are registered. Cost Management returns HTTP 404; the user explicitly accepts resulting cost uncertainty and possible charges above US$50. The user confirmed the 25 November 18:00 to 26 November 18:00 UTC-05:00 window and an empty database. Bicep remains incomplete and has not passed Azure what-if; private networking, identity/auth, ACR image publishing/pull, app settings, and reliable timed deletion remain unresolved. Docker Desktop is currently not running. Vercel/Render production remain unchanged.",
       "deploymentTool": "bicep",
       "skills": [
         {

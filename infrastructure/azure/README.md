@@ -6,47 +6,67 @@ Flexible Server/database, Azure Managed Redis, and Log Analytics for Container
 Apps logs. The Vercel frontend and existing BigQuery pipeline remain outside
 this deployment.
 
-## Provisioning is disabled
+## Confirmed trial decisions
 
-The template is intentionally **not deployed** by this task. The Azure for
-Students subscription and East US 2 region are confirmed, but no resource group
-exists; registry, SKU selection, and workload sizing remain unconfirmed. The
-required image and SKU parameters have no sample values. The PostgreSQL
-password is a required secure parameter and has no value in this repository.
-Do not add a populated parameter file or commit secret material.
+- Subscription: Azure for Students `beb4d6e4-38ab-4bc8-aacf-49e4c91db93f`.
+- Region: East US 2.
+- Window: 2026-11-25 18:00 through 2026-11-26 18:00, UTC-05:00.
+- PostgreSQL starts empty; no historical snapshot or production data is used.
+- The user accepted an unverified cost estimate and possible spend above
+  US$50. This is not a spending cap or an estimate of actual charges.
+- Vercel Production and Render production must remain untouched. Power BI and
+  Fabric are deferred.
 
-Compile locally without contacting Azure:
+## Do not deploy: readiness blockers
+
+No resource group exists and no Azure resource has been created. The current
+`main.bicep` is **not deployment-ready**; local compilation does not validate
+Azure provider behavior or prove a working end-to-end deployment. Do not use
+this template to deploy until all of these are resolved:
+
+- The template does not configure the required private network path for
+  PostgreSQL and Redis, including the required subnets, private endpoint(s),
+  private DNS, and Container Apps VNet integration.
+- It does not configure Redis managed-identity authorization or the required
+  PostgreSQL application identity/role. The existing database connection
+  settings and application identity are not wired into the apps.
+- It does not provision/configure a private ACR and managed-identity image
+  pulls. There are no immutable, published API/worker image references. Do not
+  invent tags or use placeholder images.
+- Required application settings and secure values are not configured:
+  `APP_SECRET_KEY`, `JWT_SECRET_KEY`, `AES_ENCRYPTION_KEY`, HTTPS
+  `APP_CORS_ORIGINS`, explicit `TRUSTED_HOSTS`, and the production PostgreSQL
+  and Redis connection/authentication settings. Do not commit secret values.
+- A dependable deletion automation for the dedicated resource group at the
+  confirmed end time has not been implemented or verified. Do not rely on a
+  local scheduled task or an untested subscription-wide deletion permission.
+- Cost Management could not independently verify costs/credit, and no
+  resource-group `what-if` or Azure provider validation has been run. User
+  acceptance of cost uncertainty does not resolve the functional or cleanup
+  blockers.
+- The Docker daemon currently does not respond, so the images cannot be
+  rebuilt and locally smoke-tested now. Vercel Preview configuration and its
+  URL have not been supplied; production must not be changed.
+
+The API initializes an empty schema at startup, so a historical snapshot is
+not required. Only provider registration and read-only Azure checks have been
+performed; there has been no deployment, image push, Vercel/Render change, or
+data transfer.
+
+Compile locally:
 
 ```powershell
-bicep build infrastructure/azure/main.bicep --no-restore --outfile "$env:TEMP\streamshield-main.json"
+az bicep build --file infrastructure\azure\main.bicep --stdout | Out-Null
 ```
 
-The generated ARM JSON is a temporary local build artifact and is not committed.
-No `az deployment`, resource-group, subscription, quota, or other
-Azure-connected command is part of validation for this task.
+This compiles without writing an ARM JSON artifact. Compilation alone does not
+clear any readiness blocker above.
 
 ## Before any future deployment
 
-- Use the confirmed East US 2 region; verify quota and select PostgreSQL/Redis
-  SKUs and API/worker sizing.
-- Provide private connectivity (VNet integration for Container Apps and
-  PostgreSQL, plus a private endpoint and DNS for Managed Redis) before enabling
-  application access. PostgreSQL explicitly disables public network access.
-  Managed Redis connectivity is not configured in this template and must be
-  reviewed before use.
-- Revisit PostgreSQL and Redis authentication. The app-service migration tasks
-  must implement supported managed-identity authentication or wire secrets
-  through an approved secret store; this template contains no credential
-  values, connection strings, or Redis keys.
-- Supply immutable API and worker image references from an approved registry,
-  and configure registry pull authorization without embedding credentials.
-- Review cost, backup/HA, monitoring retention, and API ingress exposure.
-- Ensure deployment is explicitly authorized and use a protected parameter
-  source for the secure PostgreSQL administrator parameter.
-
-The API and worker receive separate system-assigned identities, but this
-infrastructure task does not grant data-plane roles or change application
-authentication. API ingress is external HTTPS for the Vercel frontend; the
-worker has no ingress. PostgreSQL public access is disabled. Managed Redis networking is left
-unconfigured; do not treat it as ready for application access until private
-connectivity and endpoint exposure have been reviewed.
+Resolve and locally validate every blocker, pin available AVM module versions
+where applicable, and independently verify the deletion automation is scoped
+to only the dedicated trial group and runs at the confirmed end time. Then
+review the complete template and deployment `what-if` before any provisioning.
+Keep all secrets out of the repository and all changes isolated from
+production. Do not deploy if any gate remains unresolved.

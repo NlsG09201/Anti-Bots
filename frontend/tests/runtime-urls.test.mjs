@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import runtimeUrls from "../.test-build/runtime-urls.js";
+import runtimeUrls from "../.test-build/lib/runtime-urls.js";
 import platformBadgeModule from "../.test-build/components/PlatformBadge.js";
 import statCardModule from "../.test-build/components/StatCard.js";
 import lucideModule from "lucide-react";
