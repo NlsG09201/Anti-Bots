@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.core.logging import get_logger
@@ -23,12 +24,13 @@ def weka_python_installed() -> bool:
 
 
 def java_available(java_home: str = "") -> bool:
-    if java_home:
-        return True
-    if os.environ.get("JAVA_HOME"):
-        return True
     from shutil import which
 
+    configured_home = java_home or os.environ.get("JAVA_HOME", "")
+    if configured_home:
+        java_name = "java.exe" if os.name == "nt" else "java"
+        java_path = Path(configured_home) / "bin" / java_name
+        return java_path.is_file()
     return which("java") is not None
 
 
@@ -43,8 +45,8 @@ def get_last_jvm_error() -> Optional[str]:
 def warm_weka_jvm(
     *,
     java_home: str = "",
-    max_heap: str = "512m",
-    include_packages: bool = True,
+    max_heap: str = "192m",
+    include_packages: bool = False,
 ) -> Dict[str, Any]:
     """Start JPype + Weka JVM (blocking — call from thread pool in async apps)."""
     global _jvm_started, _last_error

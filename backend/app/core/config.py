@@ -221,7 +221,7 @@ class Settings(BaseSettings):
     weka_j48_prefer_weka: bool = True
     weka_python_enabled: bool = True
     weka_jvm_eager_start: bool = True
-    weka_jvm_max_heap: str = "512m"
+    weka_jvm_max_heap: str = "192m"
     weka_j48_model_path: str = "data/weka_models"
     weka_java_home: str = ""
     weka_j48_min_training_samples: int = 50

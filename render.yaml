@@ -68,9 +68,17 @@ services:
       - key: TWITCHBOTS_INFO_ENABLED
         value: "true"
       - key: WEKA_J48_ENABLED
-        value: "false"
+        value: "true"
+      - key: WEKA_PYTHON_ENABLED
+        value: "true"
+      - key: WEKA_J48_PREFER_WEKA
+        value: "true"
       - key: WEKA_JVM_EAGER_START
         value: "false"
+      - key: WEKA_JVM_MAX_HEAP
+        value: 192m
+      - key: WEKA_J48_MIN_TRAINING_SAMPLES
+        value: "50"
       - key: TWITCH_INSIGHTS_ENABLED
         value: "false"
       - key: REDIS_URL
