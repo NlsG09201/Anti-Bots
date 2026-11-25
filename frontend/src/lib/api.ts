@@ -468,6 +468,13 @@ export const api = {
       ),
   },
   powerBiAnalytics: {
+    dashboardData: (token: ApiAuthToken, hours = 168) =>
+      request<PowerBiDashboardData>(
+        `/api/v1/analytics/dashboard-data?hours=${hours}`,
+        {},
+        token,
+        DIRECT_API_URL,
+      ),
     exportFile: (token: ApiAuthToken, kind: "json" | "excel" | "powerbi-package", hours = 168) =>
       request<Blob>(
         `/api/v1/analytics/exports/${kind}?hours=${encodeURIComponent(String(hours))}`,
@@ -1923,6 +1930,18 @@ export interface PowerBiSyncResult {
   dataset_id?: string;
   dataset_name?: string;
   tables_pushed?: { table: string; rows: number }[];
+}
+
+export interface PowerBiDashboardData {
+  overview: PowerBiOverview;
+  live: PowerBiLiveMetrics;
+  streams: PowerBiStreamAnalytics;
+  attacks: PowerBiAttackAnalytics;
+  ai: PowerBiAiAnalytics;
+  engagement: PowerBiEngagementAnalytics;
+  suspicious: PowerBiSuspiciousActivity;
+  metadata: PowerBiMetadata;
+  executive: PowerBiExecutiveReport;
 }
 
 export interface SocPlatformMetrics {

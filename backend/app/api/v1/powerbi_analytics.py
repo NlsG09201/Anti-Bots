@@ -145,6 +145,27 @@ async def analytics_overview(
     return await AnalyticsWarehouseService(db, current_user.tenant_id, hours=hours).overview()
 
 
+@router.get("/dashboard-data")
+async def analytics_dashboard_data(
+    current_user: AnalystUser,
+    db: AsyncSession = Depends(get_db),
+    hours: int = Query(168, ge=1, le=2160),
+):
+    """Return the SOC dashboard in one tenant-scoped request for low-resource hosts."""
+    service = AnalyticsWarehouseService(db, current_user.tenant_id, hours=hours)
+    return {
+        "overview": await service.overview(),
+        "live": await service.live_metrics(),
+        "streams": await service.stream_analytics(),
+        "attacks": await service.attack_analytics(),
+        "ai": await service.ai_analytics(),
+        "engagement": await service.engagement_analytics(),
+        "suspicious": await service.suspicious_activity(),
+        "metadata": await service.powerbi_metadata(),
+        "executive": await service.executive_report(),
+    }
+
+
 @router.get("/live-metrics")
 async def analytics_live_metrics(
     current_user: AnalystUser,

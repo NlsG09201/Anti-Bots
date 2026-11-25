@@ -293,8 +293,11 @@ export function SocDashboard() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-5 text-sm text-red-200">
-        No se pudo cargar analytics Power BI. Revisa sesion, permisos y API backend.
+      <div className="space-y-3 rounded-lg border border-red-500/40 bg-red-500/10 p-5 text-sm text-red-200" role="alert">
+        <p>No se pudieron cargar los análisis de Power BI: {error instanceof Error ? error.message : "falló la conexión con la API"}.</p>
+        <Button variant="outline" size="sm" onClick={() => void refresh()}>
+          <RefreshCw size={14} /> Reintentar
+        </Button>
       </div>
     );
   }
@@ -335,13 +338,18 @@ export function SocDashboard() {
                 </button>
               ))}
             </div>
-            <Button variant="outline" size="sm" onClick={refresh}>
+        <Button variant="outline" size="sm" onClick={() => void refresh()}>
               <RefreshCw size={14} />
               Refresh
             </Button>
-            <Button size="sm" onClick={() => sync.mutate()} disabled={sync.isPending}>
+            <Button
+              size="sm"
+              onClick={() => sync.mutate()}
+              disabled={sync.isPending || !metadata?.powerbi_service.configured}
+              title={metadata?.powerbi_service.configured ? undefined : "Configura las credenciales del servicio Power BI en el backend para sincronizar en la nube."}
+            >
               <DatabaseZap size={14} />
-              {sync.isPending ? "Syncing" : "Sync Power BI"}
+              {sync.isPending ? "Sincronizando…" : "Sincronizar con Power BI"}
             </Button>
             <Button
               variant="outline"
@@ -363,6 +371,11 @@ export function SocDashboard() {
             ? `Power BI dataset synced: ${sync.data.tables_pushed?.length ?? 0} tables pushed.`
             : sync.data.message ?? "Power BI Service credentials are not configured."}
         </div>
+      )}
+      {metadata && !metadata.powerbi_service.configured && (
+        <p className="rounded-lg border border-cyber-border bg-cyber-surface/40 p-3 text-xs leading-5 text-cyber-muted" role="status">
+          El análisis y las exportaciones están disponibles. La sincronización directa con Power BI Service requiere configurar sus credenciales en el backend.
+        </p>
       )}
       {bigQueryStatus && <div role="status" className="rounded-lg border border-cyber-accent/30 bg-cyber-accent/10 p-3 text-sm text-cyber-accent">{bigQueryStatus}</div>}
       {accessToken && !bigQueryConfigured && <p className="text-xs text-cyber-muted">La sincronización con Google BigQuery está desactivada en el despliegue gratuito.</p>}
