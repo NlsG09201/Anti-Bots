@@ -50,7 +50,9 @@ def _api_key() -> str:
     return key
 
 
-def validate_production_env(env: Mapping[str, str]) -> None:
+def validate_production_env(
+    env: Mapping[str, str], *, allow_render_managed_redis: bool = False
+) -> None:
     """Fail before contacting Render when known startup blockers are present."""
     if env.get("APP_ENV", "").strip().lower() != "production":
         return
@@ -84,14 +86,15 @@ def validate_production_env(env: Mapping[str, str]) -> None:
         except ValueError:
             port = None
             invalid_port = True
-        if (
-            parsed.scheme not in {"redis", "rediss"}
-            or not parsed.hostname
-            or parsed.hostname.lower() in {"localhost", "127.0.0.1", "::1"}
-            or port == 0
-            or invalid_port
-        ):
-            errors.append("REDIS_URL requiere una URL Redis TCP redis:// o rediss:// válida")
+        if not (allow_render_managed_redis and not redis_url):
+            if (
+                parsed.scheme not in {"redis", "rediss"}
+                or not parsed.hostname
+                or parsed.hostname.lower() in {"localhost", "127.0.0.1", "::1"}
+                or port == 0
+                or invalid_port
+            ):
+                errors.append("REDIS_URL requiere una URL Redis TCP redis:// o rediss:// válida")
 
     if errors:
         raise ValueError("Configuración Render inválida: " + "; ".join(errors))
@@ -204,7 +207,9 @@ def main() -> None:
             sys.exit("Falta deploy/render.import.env")
 
     env = _parse_env_file(import_path)
-    validate_production_env(env)
+    # Production Blueprint wires REDIS_URL from Render Key Value. The secret
+    # import intentionally does not contain that generated connection string.
+    validate_production_env(env, allow_render_managed_redis=True)
     api_key = _api_key()
     print(f"Buscando {SERVICE_NAME}...")
     service = _find_service(api_key, SERVICE_NAME)

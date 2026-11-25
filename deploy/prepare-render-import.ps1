@@ -32,9 +32,7 @@ if (-not $trustedHosts -or $trustedHosts -contains '') {
 } elseif ($trustedHosts | Where-Object { $_ -in @('localhost', '127.0.0.1', '::1', '*') }) {
     $problems += 'TRUSTED_HOSTS contains a loopback host or wildcard; use anti-bots.onrender.com,anti-bots-api.onrender.com.'
 }
-if ([string]::IsNullOrWhiteSpace($values['REDIS_URL'])) {
-    $problems += 'REDIS_URL is blank; set the native redis:// or rediss:// connection URL (Upstash REST credentials are not a substitute).'
-} elseif ($values['REDIS_URL'] -notmatch '^rediss?://[^\s/]+') {
+if (-not [string]::IsNullOrWhiteSpace($values['REDIS_URL']) -and $values['REDIS_URL'] -notmatch '^rediss?://[^\s/]+') {
     $problems += 'REDIS_URL must be a native Redis TCP URL starting with redis:// or rediss://; Upstash REST HTTPS URLs are cache-only.'
 }
 if ($problems.Count -gt 0) {

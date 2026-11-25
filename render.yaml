@@ -80,11 +80,10 @@ services:
       - key: TWITCHBOTS_INFO_ENABLED
         value: "true"
       - key: REDIS_URL
-        sync: false
-      - key: UPSTASH_REDIS_REST_URL
-        value: https://cosmic-condor-242943.upstash.io
-      - key: UPSTASH_REDIS_REST_TOKEN
-        sync: false
+        fromService:
+          name: anti-bots-keyvalue
+          type: keyvalue
+          property: connectionString
     healthCheckPath: /health
 
   - type: worker
@@ -166,12 +165,19 @@ services:
       - key: TWITCH_INSIGHTS_ENABLED
         value: "false"
       - key: REDIS_URL
-        sync: false
-      - key: UPSTASH_REDIS_REST_URL
-        value: https://cosmic-condor-242943.upstash.io
-      - key: UPSTASH_REDIS_REST_TOKEN
-        sync: false
+        fromService:
+          name: anti-bots-keyvalue
+          type: keyvalue
+          property: connectionString
       # Mismas secrets que anti-bots-api (DATABASE_URL, REDIS_URL, keys OAuth, etc.)
+
+  - type: keyvalue
+    name: anti-bots-keyvalue
+    plan: 256mb
+    region: oregon
+    maxmemoryPolicy: noeviction
+    persistenceMode: journal-snapshot
+    ipAllowList: []
 
   - type: cron
     name: anti-bots-bi-refresh
