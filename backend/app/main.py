@@ -156,13 +156,13 @@ async def lifespan(app: FastAPI):
         ):
             from app.ml.weka_j48.runtime import warm_weka_jvm
 
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: warm_weka_jvm(
+            background_tasks.create(
+                asyncio.to_thread(
+                    warm_weka_jvm,
                     java_home=_cfg.weka_java_home or "",
                     max_heap=_cfg.weka_jvm_max_heap,
                 ),
+                name="weka_jvm_warmup",
             )
         background_tasks.create(
             _background_channel_monitor(), name="background_channel_monitor"
