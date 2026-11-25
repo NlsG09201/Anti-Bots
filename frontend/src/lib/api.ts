@@ -1890,6 +1890,14 @@ export interface PowerBiReportPage {
 export interface PowerBiMetadata {
   generated_at: string;
   window_hours: number;
+  data_source: {
+    type: string;
+    relational_connection: string;
+    viewer_flow_tables: string[];
+    tenant_scoped: boolean;
+    dashboard_refresh_seconds: number;
+    optional_nosql_connection: string;
+  };
   dataset_name: string;
   tables: { name: string; rows: number; columns: { name: string; dataType: string }[] }[];
   relationships: { fromTable: string; fromColumn: string; toTable: string; toColumn: string }[];
@@ -1948,6 +1956,22 @@ export interface PowerBiDashboardData {
   attacks: PowerBiAttackAnalytics;
   ai: PowerBiAiAnalytics;
   engagement: PowerBiEngagementAnalytics;
+  viewer_flow: {
+    source: string;
+    updated_at: string;
+    entries: number;
+    exits: number;
+    active_viewers: number;
+    by_channel: Array<{
+      stream_id: string;
+      channel_name: string;
+      platform_key: string;
+      entries: number;
+      exits: number;
+      suspicious: number;
+    }>;
+    timeline: Array<{ bucket_start: string; entries: number; exits: number }>;
+  };
   suspicious: PowerBiSuspiciousActivity;
   metadata: PowerBiMetadata;
   executive: PowerBiExecutiveReport;

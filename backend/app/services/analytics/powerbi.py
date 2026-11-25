@@ -47,6 +47,7 @@ EXPORT_DATASETS = (
     "streamers",
     "streams",
     "viewers",
+    "viewer_flow",
     "suspicious_viewers",
     "attacks",
     "follows",
@@ -114,6 +115,24 @@ POWERBI_TABLE_DEFINITIONS: Dict[str, List[Dict[str, str]]] = {
         {"name": "joined_at", "dataType": "DateTime"},
         {"name": "left_at", "dataType": "DateTime"},
         {"name": "source", "dataType": "string"},
+    ],
+    "viewer_flow": [
+        {"name": "flow_event_id", "dataType": "string"},
+        {"name": "stream_id", "dataType": "string"},
+        {"name": "platform_key", "dataType": "string"},
+        {"name": "streamer_id", "dataType": "string"},
+        {"name": "channel_name", "dataType": "string"},
+        {"name": "event_type", "dataType": "string"},
+        {"name": "direction", "dataType": "string"},
+        {"name": "platform_username", "dataType": "string"},
+        {"name": "platform_user_id", "dataType": "string"},
+        {"name": "is_suspected_bot", "dataType": "bool"},
+        {"name": "risk_score", "dataType": "Double"},
+        {"name": "event_at", "dataType": "DateTime"},
+        {"name": "source", "dataType": "string"},
+        {"name": "is_proxy", "dataType": "bool"},
+        {"name": "is_vpn", "dataType": "bool"},
+        {"name": "is_tor", "dataType": "bool"},
     ],
     "suspicious_viewers": [
         {"name": "viewer_session_id", "dataType": "string"},
@@ -244,6 +263,7 @@ POWERBI_RELATIONSHIPS = [
     {"fromTable": "streams", "fromColumn": "platform_key", "toTable": "platforms", "toColumn": "platform_key"},
     {"fromTable": "streams", "fromColumn": "streamer_id", "toTable": "streamers", "toColumn": "streamer_id"},
     {"fromTable": "viewers", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
+    {"fromTable": "viewer_flow", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
     {"fromTable": "suspicious_viewers", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
     {"fromTable": "attacks", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
     {"fromTable": "follows", "fromColumn": "stream_id", "toTable": "streams", "toColumn": "stream_id"},
@@ -256,6 +276,10 @@ POWERBI_RELATIONSHIPS = [
 
 POWERBI_DAX_MEASURES = {
     "Viewers Monitoreados": "Viewers Monitoreados = DISTINCTCOUNT(viewers[viewer_session_id])",
+    "Ingresos de espectadores": "Ingresos de espectadores = CALCULATE(COUNTROWS(viewer_flow), viewer_flow[direction] = \"entry\")",
+    "Salidas de espectadores": "Salidas de espectadores = CALCULATE(COUNTROWS(viewer_flow), viewer_flow[direction] = \"exit\")",
+    "Espectadores activos": "Espectadores activos = CALCULATE(DISTINCTCOUNT(viewers[viewer_session_id]), viewers[is_active] = TRUE())",
+    "Duración media de visualización (min)": "Duración media de visualización (min) = DIVIDE(AVERAGE(viewers[watch_duration_seconds]), 60, 0)",
     "Viewers Sospechosos": "Viewers Sospechosos = COUNTROWS(suspicious_viewers)",
     "Ataques Detectados": "Ataques Detectados = COUNTROWS(attacks)",
     "Streams Activos": "Streams Activos = CALCULATE(COUNTROWS(streams), streams[is_live] = TRUE())",
@@ -298,6 +322,18 @@ POWERBI_REPORT_PAGES: List[Dict[str, Any]] = [
             {"type": "Table", "title": "Live Streams", "table": "streams"},
         ],
         "slicers": ["streams[platform_name]", "streams[channel_name]"],
+    },
+    {
+        "page": "Flujo de espectadores",
+        "purpose": "Ingresos y salidas por canal desde los eventos SQL existentes; sesiones activas y permanencia desde viewer_sessions.",
+        "visuals": [
+            {"type": "KPI Card", "title": "Ingresos registrados", "measure": "Ingresos de espectadores"},
+            {"type": "KPI Card", "title": "Espectadores activos", "measure": "Espectadores activos"},
+            {"type": "KPI Card", "title": "Duración media (min)", "measure": "Duración media de visualización (min)"},
+            {"type": "Line Chart", "title": "Ingresos y salidas por hora", "table": "viewer_flow", "axis": "event_at", "legend": "direction"},
+            {"type": "Matrix", "title": "Flujo por canal", "table": "viewer_flow"},
+        ],
+        "slicers": ["streams[platform_name]", "streams[channel_name]", "viewer_flow[source]"],
     },
     {
         "page": "Threat Intelligence",
@@ -460,6 +496,7 @@ class AnalyticsWarehouseService:
             "streamers": await self.streamer_rows(),
             "streams": await self.stream_rows(),
             "viewers": await self.viewer_rows(),
+            "viewer_flow": await self.viewer_flow_rows(),
             "suspicious_viewers": await self.suspicious_viewer_rows(),
             "attacks": await self.attack_rows(),
             "follows": await self.follow_rows(),
@@ -881,6 +918,121 @@ class AnalyticsWarehouseService:
             })
         return rows
 
+    async def viewer_flow_rows(self) -> List[Dict[str, Any]]:
+        """Export historical viewer entry/exit events from the existing SQL DB."""
+        stream_map = {str(ctx.stream.id): ctx for ctx in await self._load_streams()}
+        rows: List[Dict[str, Any]] = []
+        exit_event_types = {"viewer_leave", "leave", "part"}
+        # viewer_pulse is a heartbeat, not a new entry; including it inflates
+        # arrivals on channels that report presence repeatedly.
+        flow_event_types = (JOIN_EVENT_TYPES - {"viewer_pulse"}) | exit_event_types
+        for event in await self._load_events():
+            event_type = str(event.event_type or "").lower()
+            if event_type not in flow_event_types:
+                continue
+            ctx = stream_map.get(str(event.stream_id))
+            if not ctx:
+                continue
+            metadata = event.event_metadata or {}
+            risk_score = _safe_float(event.risk_score)
+            rows.append({
+                "flow_event_id": str(event.id),
+                "stream_id": str(event.stream_id),
+                "platform_key": _platform_key(ctx.stream.platform),
+                "streamer_id": str(ctx.owner.id),
+                "channel_name": ctx.stream.channel_name,
+                "event_type": event_type,
+                "direction": "exit" if event_type in exit_event_types else "entry",
+                "platform_username": event.platform_username,
+                "platform_user_id": event.platform_user_id,
+                "is_suspected_bot": risk_score >= 55.0,
+                "risk_score": round(risk_score, 2),
+                "event_at": _to_iso(event.created_at),
+                "source": str(metadata.get("source") or metadata.get("platform") or "sql_event"),
+                "is_proxy": bool(event.is_proxy),
+                "is_vpn": bool(event.is_vpn),
+                "is_tor": bool(event.is_tor),
+            })
+        # Chat presence may update viewer_sessions without emitting a distinct
+        # join event. Use those SQL sessions for streams lacking event history,
+        # avoiding double-counting streams where stream_events is available.
+        streams_with_event_history = {row["stream_id"] for row in rows}
+        for session in await self._load_viewers():
+            stream_id = str(session.stream_id)
+            if stream_id in streams_with_event_history:
+                continue
+            ctx = stream_map.get(stream_id)
+            if not ctx:
+                continue
+            session_events = [
+                ("entry", "viewer_join", session.joined_at),
+                ("exit", "viewer_leave", session.left_at),
+            ]
+            for direction, event_type, event_at in session_events:
+                if event_at is None:
+                    continue
+                comparable_event_at = (
+                    event_at.replace(tzinfo=timezone.utc)
+                    if event_at.tzinfo is None
+                    else event_at.astimezone(timezone.utc)
+                )
+                if comparable_event_at < self.since:
+                    continue
+                rows.append({
+                    "flow_event_id": f"session:{session.id}:{direction}",
+                    "stream_id": stream_id,
+                    "platform_key": _platform_key(ctx.stream.platform),
+                    "streamer_id": str(ctx.owner.id),
+                    "channel_name": ctx.stream.channel_name,
+                    "event_type": event_type,
+                    "direction": direction,
+                    "platform_username": session.platform_username,
+                    "platform_user_id": session.platform_user_id,
+                    "is_suspected_bot": bool(session.is_suspected_bot),
+                    "risk_score": round(_safe_float(session.risk_score), 2),
+                    "event_at": _to_iso(event_at),
+                    "source": "viewer_sessions_sql",
+                    "is_proxy": False,
+                    "is_vpn": False,
+                    "is_tor": False,
+                })
+        return sorted(rows, key=lambda row: row["event_at"] or "")
+
+    async def viewer_flow_analytics(self) -> Dict[str, Any]:
+        """Small SQL-backed flow summary for the auto-refreshing SOC dashboard."""
+        by_channel: Dict[str, Dict[str, Any]] = {}
+        by_hour: Dict[str, Dict[str, Any]] = {}
+        events = await self.viewer_flow_rows()
+        for event in events:
+            counter_key = "entries" if event["direction"] == "entry" else "exits"
+            channel_key = event["stream_id"]
+            channel = by_channel.setdefault(channel_key, {
+                "stream_id": channel_key,
+                "channel_name": event["channel_name"],
+                "platform_key": event["platform_key"],
+                "entries": 0,
+                "exits": 0,
+                "suspicious": 0,
+            })
+            channel[counter_key] += 1
+            channel["suspicious"] += int(event["is_suspected_bot"])
+
+            event_at = event.get("event_at") or ""
+            bucket = event_at[:13] + ":00:00+00:00" if len(event_at) >= 13 else event_at
+            hourly = by_hour.setdefault(bucket, {"bucket_start": bucket, "entries": 0, "exits": 0})
+            hourly[counter_key] += 1
+
+        active_sessions = sum(1 for row in await self.viewer_rows() if row["is_active"])
+        return {
+            "source": "existing_sql_database",
+            "updated_at": self.snapshot_at.isoformat(),
+            "entries": sum(row["entries"] for row in by_channel.values()),
+            "exits": sum(row["exits"] for row in by_channel.values()),
+            "active_viewers": active_sessions,
+            "by_channel": sorted(by_channel.values(), key=lambda row: (-row["entries"], row["channel_name"])),
+            "timeline": [by_hour[key] for key in sorted(by_hour)],
+        }
+
     async def suspicious_viewer_rows(self) -> List[Dict[str, Any]]:
         rows = []
         for row in await self.viewer_rows():
@@ -1190,6 +1342,14 @@ class AnalyticsWarehouseService:
         return {
             "generated_at": self.snapshot_at.isoformat(),
             "window_hours": self.hours,
+            "data_source": {
+                "type": "existing_application_databases",
+                "relational_connection": "backend DATABASE_URL",
+                "viewer_flow_tables": ["stream_events", "viewer_sessions"],
+                "optional_nosql_connection": "existing MongoDB collections when configured",
+                "tenant_scoped": True,
+                "dashboard_refresh_seconds": 30,
+            },
             "dataset_name": settings.powerbi_dataset_name,
             "tables": [
                 {
@@ -1268,7 +1428,9 @@ class AnalyticsWarehouseService:
             select(ViewerSession)
             .where(
                 ViewerSession.stream_id.in_(stream_ids),
-                ViewerSession.joined_at >= self.since,
+                (ViewerSession.joined_at >= self.since)
+                | (ViewerSession.left_at >= self.since)
+                | (ViewerSession.is_active.is_(True)),
             )
             .order_by(ViewerSession.joined_at.desc())
         )
@@ -1527,7 +1689,26 @@ class PowerBIService:
             list_resp.raise_for_status()
             for item in list_resp.json().get("value", []):
                 if item.get("name") == dataset_name:
-                    return str(item["id"])
+                    dataset_id = str(item["id"])
+                    tables_resp = await client.get(
+                        f"{self.API_BASE}/groups/{settings.powerbi_group_id}/datasets/{dataset_id}/tables",
+                        headers=headers,
+                    )
+                    tables_resp.raise_for_status()
+                    existing_tables = {
+                        str(table.get("name"))
+                        for table in tables_resp.json().get("value", [])
+                    }
+                    for table_name, columns in POWERBI_TABLE_DEFINITIONS.items():
+                        if table_name in existing_tables:
+                            continue
+                        table_resp = await client.put(
+                            f"{self.API_BASE}/groups/{settings.powerbi_group_id}/datasets/{dataset_id}/tables/{table_name}",
+                            headers=headers,
+                            json={"name": table_name, "columns": columns},
+                        )
+                        table_resp.raise_for_status()
+                    return dataset_id
 
             create_resp = await client.post(
                 f"{self.API_BASE}/groups/{settings.powerbi_group_id}/datasets",

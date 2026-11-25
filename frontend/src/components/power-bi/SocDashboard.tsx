@@ -154,6 +154,7 @@ export function SocDashboard() {
     attacks,
     ai,
     engagement,
+    viewerFlow,
     suspicious,
     metadata,
     executive,
@@ -234,6 +235,9 @@ export function SocDashboard() {
       })),
     [engagement?.chat_activity],
   );
+
+  const viewerFlowTimeline = viewerFlow?.timeline ?? [];
+  const viewerFlowChannels = viewerFlow?.by_channel ?? [];
 
   const topThreatStreams = live?.top_streams ?? overview?.kpis.streams_mas_sospechosos ?? [];
 
@@ -564,6 +568,57 @@ export function SocDashboard() {
               </Panel>
             </div>
           </div>
+
+          <Panel
+            title="Flujo de espectadores por canal (SQL)"
+            icon={Users}
+            action={<Badge variant="default">Actualizado automáticamente · 30 s</Badge>}
+          >
+            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <MetricCard icon={Users} label="Ingresos observados" value={formatNumber(viewerFlow?.entries)} tone="info" />
+              <MetricCard icon={Users} label="Salidas observadas" value={formatNumber(viewerFlow?.exits)} tone="warning" />
+              <MetricCard icon={Activity} label="Sesiones activas" value={formatNumber(viewerFlow?.active_viewers)} tone="accent" />
+            </div>
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <div>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-cyber-muted">Ingresos y salidas por canal</h3>
+                {viewerFlowChannels.length ? (
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={viewerFlowChannels.slice(0, 12)}>
+                        <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
+                        <XAxis dataKey="channel_name" stroke={colors.muted} tick={{ fontSize: 10 }} />
+                        <YAxis stroke={colors.muted} tick={{ fontSize: 11 }} />
+                        <Tooltip contentStyle={{ background: "#0f1419", border: "1px solid #1e293b" }} />
+                        <Bar dataKey="entries" fill={colors.info} name="Ingresos" />
+                        <Bar dataKey="exits" fill={colors.warning} name="Salidas" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : <EmptyState label="No hay eventos de entrada o salida SQL en este periodo." />}
+              </div>
+              <div>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-cyber-muted">Tendencia por hora</h3>
+                {viewerFlowTimeline.length ? (
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={viewerFlowTimeline}>
+                        <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
+                        <XAxis dataKey="bucket_start" tickFormatter={(value: string) => value.slice(5, 16).replace("T", " ")} stroke={colors.muted} tick={{ fontSize: 10 }} />
+                        <YAxis stroke={colors.muted} tick={{ fontSize: 11 }} />
+                        <Tooltip contentStyle={{ background: "#0f1419", border: "1px solid #1e293b" }} />
+                        <Line type="monotone" dataKey="entries" stroke={colors.info} name="Ingresos" />
+                        <Line type="monotone" dataKey="exits" stroke={colors.warning} name="Salidas" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : <EmptyState label="No hay historial de flujo SQL en este periodo." />}
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-cyber-muted">
+              Fuente: eventos y sesiones SQL existentes. Los datos se actualizan junto con el panel; no se crea una base adicional.
+            </p>
+          </Panel>
 
           <Panel
             title="Power BI Dataset And Exports"

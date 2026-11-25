@@ -189,6 +189,7 @@ async def analytics_dashboard_data(
         "attacks": await service.attack_analytics(),
         "ai": await service.ai_analytics(),
         "engagement": await service.engagement_analytics(),
+        "viewer_flow": await service.viewer_flow_analytics(),
         "suspicious": await service.suspicious_activity(),
         "metadata": await service.powerbi_metadata(),
         "executive": await service.executive_report(),

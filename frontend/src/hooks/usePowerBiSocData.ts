@@ -59,6 +59,7 @@ export function usePowerBiSocData(hours = 168) {
     attacks: dashboard.data?.attacks,
     ai: dashboard.data?.ai,
     engagement: dashboard.data?.engagement,
+    viewerFlow: dashboard.data?.viewer_flow,
     suspicious: dashboard.data?.suspicious,
     metadata: dashboard.data?.metadata,
     executive: dashboard.data?.executive,
