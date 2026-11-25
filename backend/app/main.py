@@ -356,7 +356,8 @@ API_PREFIX = f"/api/{settings.app_api_version}"
 async def reject_api_requests_while_database_unavailable(request: Request, call_next):
     if (
         request.url.path.startswith(API_PREFIX)
-        and not getattr(app.state, "database_ready", True)
+        and request.url.path != f"{API_PREFIX}/auth/csrf"
+        and not getattr(request.app.state, "database_ready", True)
     ):
         return JSONResponse(
             status_code=503,
@@ -466,9 +467,9 @@ async def health():
 
 
 @app.get("/readyz")
-async def readiness():
+async def readiness(request: Request):
     """Database readiness; Redis is optional and has a local rate-limit fallback."""
-    if not getattr(app.state, "database_ready", True):
+    if not getattr(request.app.state, "database_ready", True):
         return JSONResponse(
             status_code=503,
             content={"status": "not_ready", "dependency": "database"},
