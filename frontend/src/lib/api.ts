@@ -212,11 +212,28 @@ async function request<T>(
     throw rateLimitError(cooldownRemaining);
   }
 
-  const response = await fetch(`${apiBase}${path}`, {
+  // Render Free may return 503 while the service wakes or reconnects to its database.
+  // Retry only auth requests; don't replay general mutations.
+  const authRetryDelaysMs = [1_000, 2_000, 4_000, 8_000];
+  let response = await fetch(`${apiBase}${path}`, {
     ...options,
     headers,
     credentials: "include",
   });
+  for (
+    let retry = 0;
+    isAuthAttempt &&
+      retry < authRetryDelaysMs.length &&
+      (response.status === 502 || response.status === 503 || response.status === 504);
+    retry += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, authRetryDelaysMs[retry]));
+    response = await fetch(`${apiBase}${path}`, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
+  }
 
   if (response.status === 429) {
     const retryAfterMs = retryAfterMilliseconds(response);
@@ -232,7 +249,9 @@ async function request<T>(
       response.status,
       message !== `HTTP ${response.status}`
         ? message
-        : "La API no esta disponible temporalmente. Intentalo de nuevo en unos segundos.",
+        : isAuthAttempt
+          ? "El servidor de autenticación está iniciando o no puede conectarse a la base de datos. Se hicieron varios reintentos; vuelve a intentar en unos segundos."
+          : "La API no esta disponible temporalmente. Intentalo de nuevo en unos segundos.",
       SERVICE_UNAVAILABLE_COOLDOWN_MS,
     );
   }
